@@ -1,6 +1,7 @@
-import React, { useContext } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { AuthContext } from '../App';
+import { AuthContext, API } from '../App';
+import axios from 'axios';
 import { 
   Store, 
   LayoutDashboard, 
@@ -8,12 +9,28 @@ import {
   Package, 
   BarChart3, 
   Users, 
+  Settings,
+  CreditCard,
   LogOut 
 } from 'lucide-react';
 
 const Sidebar = () => {
   const { user, logout } = useContext(AuthContext);
   const location = useLocation();
+  const [config, setConfig] = useState(null);
+
+  useEffect(() => {
+    fetchConfiguration();
+  }, []);
+
+  const fetchConfiguration = async () => {
+    try {
+      const response = await axios.get(`${API}/config`);
+      setConfig(response.data);
+    } catch (error) {
+      console.error('Error loading configuration');
+    }
+  };
 
   const isActive = (path) => location.pathname === path;
 
@@ -26,6 +43,12 @@ const Sidebar = () => {
       path: '/', 
       label: 'Dashboard', 
       icon: LayoutDashboard, 
+      roles: ['admin', 'supervisor', 'cajero'] 
+    },
+    { 
+      path: '/cash', 
+      label: 'Gestión de Caja', 
+      icon: CreditCard, 
       roles: ['admin', 'supervisor', 'cajero'] 
     },
     { 
@@ -51,6 +74,12 @@ const Sidebar = () => {
       label: 'Usuarios', 
       icon: Users, 
       roles: ['admin'] 
+    },
+    { 
+      path: '/settings', 
+      label: 'Configuración', 
+      icon: Settings, 
+      roles: ['admin'] 
     }
   ];
 
@@ -62,8 +91,16 @@ const Sidebar = () => {
     <div className="sidebar">
       <div className="sidebar-header">
         <div className="sidebar-title">
-          <Store className="w-6 h-6 text-green-600" />
-          SuperMarket POS
+          {config?.company_logo ? (
+            <img 
+              src={config.company_logo} 
+              alt="Company Logo" 
+              className="w-8 h-8 object-contain"
+            />
+          ) : (
+            <Store className="w-6 h-6 text-green-600" />
+          )}
+          {config?.company_name || 'SuperMarket POS'}
         </div>
       </div>
 

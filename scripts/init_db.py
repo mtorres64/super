@@ -228,6 +228,101 @@ async def init_database():
     else:
         print("ℹ️ Categories and products already exist")
     
+    # Create branches
+    print("Creating branches...")
+    branches_exist = await db.branches.find_one()
+    if not branches_exist:
+        branches = [
+            {
+                "id": str(uuid.uuid4()),
+                "nombre": "Sucursal Principal",
+                "direccion": "Av. Principal 123",
+                "telefono": "+593 99 123 4567",
+                "activo": True,
+                "created_at": datetime.now(timezone.utc)
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "nombre": "Sucursal Norte",
+                "direccion": "Calle Norte 456",
+                "telefono": "+593 99 765 4321",
+                "activo": True,
+                "created_at": datetime.now(timezone.utc)
+            }
+        ]
+        
+        await db.branches.insert_many(branches)
+        print("✅ Branches created successfully")
+        
+        # Get branch IDs for users
+        branch_docs = await db.branches.find().to_list(None)
+        main_branch_id = branch_docs[0]['id']
+        
+        # Update users with branch assignment
+        await db.users.update_many({}, {"$set": {"branch_id": main_branch_id}})
+        
+        # Create branch products from existing products
+        products = await db.products.find().to_list(None)
+        branch_products = []
+        
+        for branch in branch_docs:
+            for product in products:
+                branch_product = {
+                    "id": str(uuid.uuid4()),
+                    "product_id": product['id'],
+                    "branch_id": branch['id'],
+                    "precio": product['precio'],
+                    "precio_por_peso": product.get('precio_por_peso'),
+                    "stock": product['stock'],
+                    "stock_minimo": product['stock_minimo'],
+                    "activo": True,
+                    "created_at": datetime.now(timezone.utc)
+                }
+                branch_products.append(branch_product)
+        
+        if branch_products:
+            await db.branch_products.insert_many(branch_products)
+            print("✅ Branch products created successfully")
+    else:
+        print("ℹ️ Branches already exist")
+    
+    # Create default configuration
+    print("Creating default configuration...")
+    config_exists = await db.configuration.find_one()
+    if not config_exists:
+        default_config = {
+            "id": str(uuid.uuid4()),
+            "company_name": "SuperMarket POS",
+            "company_address": "",
+            "company_phone": "",
+            "company_email": "",
+            "company_tax_id": "",
+            "tax_rate": 0.12,
+            "currency_symbol": "$",
+            "currency_code": "USD",
+            "sounds_enabled": True,
+            "auto_focus_barcode": True,
+            "barcode_scan_timeout": 100,
+            "receipt_footer_text": "¡Gracias por su compra!",
+            "default_minimum_stock": 10,
+            "low_stock_alert_enabled": True,
+            "auto_update_inventory": True,
+            "date_format": "DD/MM/YYYY",
+            "time_format": "24h",
+            "language": "es",
+            "print_receipt_auto": False,
+            "receipt_width": 80,
+            "items_per_page": 10,
+            "company_logo": None,
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc)
+        }
+        
+        await db.configuration.insert_one(default_config)
+        print("✅ Default configuration created successfully")
+    else:
+        print("ℹ️ Configuration already exists")
+    
     client.close()
     print("🎉 Database initialization completed!")
 

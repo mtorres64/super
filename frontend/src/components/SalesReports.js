@@ -327,7 +327,7 @@ const SalesReports = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredSales.map(sale => (
+              {filteredSales.slice(0, 20).map(sale => (
                 <tr key={sale.id}>
                   <td>
                     <span className="font-medium text-blue-600">

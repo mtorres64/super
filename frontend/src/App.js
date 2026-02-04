@@ -10,6 +10,9 @@ import POS from './components/POS';
 import ProductManagement from './components/ProductManagement';
 import SalesReports from './components/SalesReports';
 import UserManagement from './components/UserManagement';
+import Settings from './components/Settings';
+import CashManager from './components/CashManager';
+import CashReport from './components/CashReport';
 import Sidebar from './components/Sidebar';
 import { Toaster } from './components/ui/sonner';
 
@@ -135,6 +138,30 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['admin']}>
                   <UserManagement />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <Settings />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/cash"
+              element={
+                <ProtectedRoute allowedRoles={['admin', 'cajero', 'supervisor']}>
+                  <CashManager />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/cash-report/:sessionId"
+              element={
+                <ProtectedRoute allowedRoles={['admin', 'cajero', 'supervisor']}>
+                  <CashReport />
                 </ProtectedRoute>
               }
             />

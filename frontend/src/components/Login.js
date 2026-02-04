@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import axios from 'axios';
 import { AuthContext, API } from '../App';
@@ -21,10 +21,10 @@ const Login = () => {
     setLoading(true);
 
     try {
-      //const response = await axios.post(`${API}/auth/login`, {
-      //  email,
-      //  password
-      //});
+      const response = await axios.post(`${API}/auth/login`, {
+        email,
+        password
+      });
 
       const { access_token, user: userData } = response.data;
       login(userData, access_token);

@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { API, AuthContext } from '../App';
 import { toast } from 'sonner';
 import BarcodeScanner from './BarcodeScanner';
+import Pagination from './Pagination';
 import { 
   Search, 
   Plus, 
@@ -21,6 +23,7 @@ import {
 const POS = () => {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [config, setConfig] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [barcode, setBarcode] = useState('');
   const [cart, setCart] = useState([]);
@@ -29,6 +32,9 @@ const POS = () => {
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [scannerMode, setScannerMode] = useState('manual'); // 'manual' or 'camera'
   const [isAutoScanning, setIsAutoScanning] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [currentSession, setCurrentSession] = useState(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
   const { user } = useContext(AuthContext);
   const barcodeInputRef = useRef(null);
   const lastKeyTime = useRef(0);
@@ -36,19 +42,43 @@ const POS = () => {
   useEffect(() => {
     fetchProducts();
     fetchCategories();
+    fetchConfiguration();
+    fetchCurrentSession();
     
     // Focus barcode input on component mount
-    if (barcodeInputRef.current) {
+    if (barcodeInputRef.current && config?.auto_focus_barcode !== false) {
       barcodeInputRef.current.focus();
     }
   }, []);
 
+  const fetchCurrentSession = async () => {
+    try {
+      const response = await axios.get(`${API}/cash-sessions/current`);
+      setCurrentSession(response.data);
+    } catch (error) {
+      if (error.response?.status !== 404) {
+        console.error('Error verificando sesión de caja');
+      }
+    } finally {
+      setSessionLoading(false);
+    }
+  };
+
+  const fetchConfiguration = async () => {
+    try {
+      const response = await axios.get(`${API}/config`);
+      setConfig(response.data);
+    } catch (error) {
+      console.error('Error loading configuration');
+    }
+  };
+
   const fetchProducts = async () => {
     try {
-      const response = await axios.get(`${API}/products`);
+      const response = await axios.get(`${API}/branch-products`);
       setProducts(response.data);
     } catch (error) {
-      toast.error('Error al cargar productos');
+      toast.error('Error al cargar productos de la sucursal');
     }
   };
 
@@ -65,24 +95,27 @@ const POS = () => {
     if (!code.trim()) return;
 
     try {
-      const response = await axios.get(`${API}/products/barcode/${code}`);
-      addToCart(response.data);
-      setBarcode('');
+      // First try to find in branch products
+      const branchProducts = products.filter(p => p.codigo_barras === code);
+      if (branchProducts.length > 0) {
+        addToCart(branchProducts[0]);
+        setBarcode('');
+        playSuccessSound();
+        toast.success(`${branchProducts[0].nombre} agregado al carrito`);
+      } else {
+        // If not found, show error
+        playErrorSound();
+        toast.error('Producto no encontrado en esta sucursal');
+        setBarcode('');
+      }
       
-      // Play success sound
-      playSuccessSound();
-      
-      toast.success(`${response.data.nombre} agregado al carrito`);
-      
-      // Focus back to barcode input for next scan
-      if (barcodeInputRef.current) {
+      // Focus back to barcode input
+      if (barcodeInputRef.current && config?.auto_focus_barcode !== false) {
         barcodeInputRef.current.focus();
       }
     } catch (error) {
-      // Play error sound
       playErrorSound();
-      toast.error('Producto no encontrado');
-      setBarcode('');
+      toast.error('Error al buscar producto');
     }
   };
 
@@ -92,8 +125,9 @@ const POS = () => {
     
     setBarcode(value);
     
-    // Detect rapid input (typical of barcode scanners)
-    if (currentTime - lastKeyTime.current < 50 && value.length > 3) {
+    // Detect rapid input (typical of barcode scanners) - use config timeout
+    const scanTimeout = config?.barcode_scan_timeout || 100;
+    if (currentTime - lastKeyTime.current < scanTimeout && value.length > 3) {
       setIsAutoScanning(true);
     }
     lastKeyTime.current = currentTime;
@@ -103,7 +137,7 @@ const POS = () => {
       setTimeout(() => {
         searchProductByBarcode(value);
         setIsAutoScanning(false);
-      }, 100);
+      }, scanTimeout);
     }
   };
 
@@ -122,6 +156,8 @@ const POS = () => {
   };
 
   const playSuccessSound = () => {
+    if (config?.sounds_enabled === false) return;
+    
     try {
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       const oscillator = audioContext.createOscillator();
@@ -144,6 +180,8 @@ const POS = () => {
   };
 
   const playErrorSound = () => {
+    if (config?.sounds_enabled === false) return;
+    
     try {
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       const oscillator = audioContext.createOscillator();
@@ -169,6 +207,22 @@ const POS = () => {
     product.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (product.codigo_barras && product.codigo_barras.includes(searchTerm))
   );
+
+  // Pagination logic for POS
+  const itemsPerPage = config?.items_per_page || 10;
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+  };
+
+  // Reset to first page when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
 
   const addToCart = (product, quantity = 1) => {
     const existingItem = cart.find(item => item.id === product.id);
@@ -207,8 +261,8 @@ const POS = () => {
 
   const clearCart = () => {
     setCart([]);
-    // Focus back to barcode input
-    if (barcodeInputRef.current) {
+    // Focus back to barcode input if auto-focus is enabled
+    if (barcodeInputRef.current && config?.auto_focus_barcode !== false) {
       barcodeInputRef.current.focus();
     }
   };
@@ -218,7 +272,8 @@ const POS = () => {
   };
 
   const calculateTax = () => {
-    return calculateSubtotal() * 0.12; // 12% tax
+    const taxRate = config?.tax_rate || 0.12; // Use dynamic tax rate or default 12%
+    return calculateSubtotal() * taxRate;
   };
 
   const calculateTotal = () => {
@@ -275,7 +330,52 @@ const POS = () => {
         </p>
       </div>
 
-      <div className="pos-container">
+      {/* Cash Session Alert */}
+      {sessionLoading ? (
+        <div className="mb-6 bg-gray-50 border border-gray-200 p-4 rounded-lg">
+          <div className="flex items-center">
+            <div className="spinner w-5 h-5 mr-3"></div>
+            <p className="text-gray-600">Verificando estado de caja...</p>
+          </div>
+        </div>
+      ) : !currentSession ? (
+        <div className="mb-6 bg-red-50 border-l-4 border-red-400 p-4 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <div className="text-red-600 mr-3">⚠️</div>
+              <div>
+                <h3 className="font-medium text-red-800">Caja Cerrada</h3>
+                <p className="text-red-700">Debe abrir una caja antes de realizar ventas</p>
+              </div>
+            </div>
+            <Link
+              to="/cash"
+              className="btn btn-primary"
+            >
+              Ir a Gestión de Caja
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-6 bg-green-50 border-l-4 border-green-400 p-4 rounded-lg">
+          <div className="flex items-center">
+            <div className="text-green-600 mr-3">✅</div>
+            <div>
+              <h3 className="font-medium text-green-800">Caja Abierta</h3>
+              <p className="text-green-700">
+                Sesión activa - Monto inicial: ${currentSession.monto_inicial.toFixed(2)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="pos-container"
+        style={{ 
+          opacity: !sessionLoading && !currentSession ? 0.5 : 1,
+          pointerEvents: !sessionLoading && !currentSession ? 'none' : 'auto'
+        }}
+      >
         {/* Left Section - Products */}
         <div className="pos-left">
           {/* Search Section */}
@@ -344,7 +444,7 @@ const POS = () => {
           {/* Products Grid */}
           <div className="pos-products">
             <div className="products-grid">
-              {filteredProducts.map(product => (
+              {paginatedProducts.map(product => (
                 <div
                   key={product.id}
                   className="product-card"
@@ -352,7 +452,7 @@ const POS = () => {
                 >
                   <div className="product-name">{product.nombre}</div>
                   <div className="product-price">
-                    ${product.precio.toFixed(2)}
+                    {config?.currency_symbol || '$'}{product.precio.toFixed(2)}
                     {product.tipo === 'por_peso' && '/kg'}
                   </div>
                   <div className="product-stock">
@@ -369,6 +469,17 @@ const POS = () => {
                 </div>
               ))}
             </div>
+            
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="mt-4">
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={handlePageChange}
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -409,8 +520,8 @@ const POS = () => {
                   <div className="cart-item-info">
                     <div className="cart-item-name">{item.nombre}</div>
                     <div className="cart-item-price">
-                      ${item.precio.toFixed(2)} x {item.quantity} = 
-                      ${(item.precio * item.quantity).toFixed(2)}
+                      {config?.currency_symbol || '$'}{item.precio.toFixed(2)} x {item.quantity} = 
+                      {config?.currency_symbol || '$'}{(item.precio * item.quantity).toFixed(2)}
                     </div>
                   </div>
                   
@@ -454,15 +565,15 @@ const POS = () => {
               <div className="cart-total">
                 <div className="total-row">
                   <span className="total-label">Subtotal:</span>
-                  <span className="total-value">${calculateSubtotal().toFixed(2)}</span>
+                  <span className="total-value">{config?.currency_symbol || '$'}{calculateSubtotal().toFixed(2)}</span>
                 </div>
                 <div className="total-row">
-                  <span className="total-label">Impuestos (12%):</span>
-                  <span className="total-value">${calculateTax().toFixed(2)}</span>
+                  <span className="total-label">Impuestos ({((config?.tax_rate || 0.12) * 100).toFixed(1)}%):</span>
+                  <span className="total-value">{config?.currency_symbol || '$'}{calculateTax().toFixed(2)}</span>
                 </div>
                 <div className="total-row total-final">
                   <span>Total:</span>
-                  <span>${calculateTotal().toFixed(2)}</span>
+                  <span>{config?.currency_symbol || '$'}{calculateTotal().toFixed(2)}</span>
                 </div>
               </div>
 
@@ -529,7 +640,7 @@ const POS = () => {
                 ) : (
                   <>
                     <CreditCard className="w-5 h-5" />
-                    Procesar Venta (${calculateTotal().toFixed(2)})
+                    Procesar Venta ({config?.currency_symbol || '$'}{calculateTotal().toFixed(2)})
                   </>
                 )}
               </button>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '../App';
 import { toast } from 'sonner';
+import Pagination from './Pagination';
 import { 
   Plus, 
   Edit, 
@@ -16,12 +17,14 @@ import {
 const ProductManagement = () => {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [newCategory, setNewCategory] = useState({ nombre: '', descripcion: '' });
   const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const [formData, setFormData] = useState({
     nombre: '',
@@ -37,7 +40,17 @@ const ProductManagement = () => {
   useEffect(() => {
     fetchProducts();
     fetchCategories();
+    fetchConfiguration();
   }, []);
+
+  const fetchConfiguration = async () => {
+    try {
+      const response = await axios.get(`${API}/config`);
+      setConfig(response.data);
+    } catch (error) {
+      console.error('Error loading configuration');
+    }
+  };
 
   const fetchProducts = async () => {
     try {
@@ -148,6 +161,22 @@ const ProductManagement = () => {
     (product.codigo_barras && product.codigo_barras.includes(searchTerm))
   );
 
+  // Pagination logic
+  const itemsPerPage = config?.items_per_page || 10;
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+  };
+
+  // Reset to first page when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
   const getLowStockProducts = () => {
     return products.filter(product => product.stock <= product.stock_minimo);
   };
@@ -237,7 +266,7 @@ const ProductManagement = () => {
             </tr>
           </thead>
           <tbody>
-            {filteredProducts.map(product => (
+            {paginatedProducts.map(product => (
               <tr key={product.id}>
                 <td>
                   <div>
@@ -311,6 +340,16 @@ const ProductManagement = () => {
             ))}
           </tbody>
         </table>
+        
+        {/* Pagination */}
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={filteredProducts.length}
+          itemsPerPage={itemsPerPage}
+          onPageChange={handlePageChange}
+          itemName="productos"
+        />
       </div>
 
       {/* Product Modal */}
