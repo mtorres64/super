@@ -863,15 +863,13 @@ async def get_dashboard_stats(user: User = Depends(require_role([UserRole.ADMIN,
 # Include the router in the main app
 app.include_router(api_router)
 
+origins = os.environ.get("CORS_ORIGINS", "")
+allow_origins = [o.strip() for o in origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "https://super-lake-theta.vercel.app"
-    ],
+    allow_origins=allow_origins,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )
