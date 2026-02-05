@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 
 class SuperMarketAPITester:
-    def __init__(self, base_url="https://minimarket-snowy.vercel.app"):
+    def __init__(self, base_url="https://super-th5j.onrender.com"):
         self.base_url = base_url
         self.api_url = f"{base_url}/api"
         self.tokens = {}
