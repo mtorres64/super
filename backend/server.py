@@ -76,6 +76,12 @@ class BranchCreate(BaseModel):
     direccion: str
     telefono: Optional[str] = None
 
+class BranchUpdate(BaseModel):
+    nombre: Optional[str] = None
+    direccion: Optional[str] = None
+    telefono: Optional[str] = None
+    activo: Optional[bool] = None
+
 class CashSession(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     branch_id: str
@@ -121,6 +127,7 @@ class BranchProduct(BaseModel):
 
 class BranchProductCreate(BaseModel):
     product_id: str
+    branch_id: Optional[str] = None
     precio: float
     precio_por_peso: Optional[float] = None
     stock: int = 0
@@ -216,6 +223,13 @@ class UserCreate(BaseModel):
     password: str
     rol: UserRole
     branch_id: Optional[str] = None
+
+class UserUpdate(BaseModel):
+    nombre: Optional[str] = None
+    email: Optional[str] = None
+    rol: Optional[UserRole] = None
+    branch_id: Optional[str] = None
+    activo: Optional[bool] = None
 
 class UserLogin(BaseModel):
     email: str
@@ -330,12 +344,61 @@ def require_role(required_roles: List[UserRole]):
 async def create_branch(branch_data: BranchCreate):
     branch = Branch(**branch_data.dict())
     await db.branches.insert_one(branch.dict())
+    # Auto-sync: create branch_products for all existing active products
+    products = await db.products.find({"activo": True}).to_list(10000)
+    for product in products:
+        existing = await db.branch_products.find_one({
+            "product_id": product["id"],
+            "branch_id": branch.id
+        })
+        if not existing:
+            bp = BranchProduct(
+                product_id=product["id"],
+                branch_id=branch.id,
+                precio=product["precio"],
+                precio_por_peso=product.get("precio_por_peso"),
+                stock=product.get("stock", 0),
+                stock_minimo=product.get("stock_minimo", 10)
+            )
+            await db.branch_products.insert_one(bp.dict())
     return branch
 
 @api_router.get("/branches", response_model=List[Branch])
 async def get_branches(user: User = Depends(get_current_user)):
-    branches = await db.branches.find({"activo": True}).to_list(1000)
+    branches = await db.branches.find().to_list(1000)
     return [Branch(**branch) for branch in branches]
+
+@api_router.get("/branches/{branch_id}/products")
+async def get_branch_products_admin(branch_id: str, user: User = Depends(get_current_user)):
+    if user.rol not in [UserRole.ADMIN]:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    branch = await db.branches.find_one({"id": branch_id})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Branch not found")
+    # Get all active global products
+    products = await db.products.find({"activo": True}).to_list(10000)
+    result = []
+    for product in products:
+        bp = await db.branch_products.find_one({
+            "product_id": product.get("id"),
+            "branch_id": branch_id
+        })
+        result.append({
+            "product_id": product.get("id"),
+            "nombre": product.get("nombre"),
+            "codigo_barras": product.get("codigo_barras"),
+            "tipo": product.get("tipo"),
+            "categoria_id": product.get("categoria_id"),
+            "precio_global": product.get("precio"),
+            "stock_global": product.get("stock", 0),
+            "branch_product_id": bp.get("id") if bp else None,
+            "precio_sucursal": bp.get("precio") if bp else None,
+            "precio_por_peso_sucursal": bp.get("precio_por_peso") if bp else None,
+            "stock_sucursal": bp.get("stock") if bp else None,
+            "stock_minimo_sucursal": bp.get("stock_minimo") if bp else None,
+            "activo_sucursal": bp.get("activo", True) if bp else True,
+        })
+    return result
 
 @api_router.get("/branches/{branch_id}", response_model=Branch)
 async def get_branch(branch_id: str, user: User = Depends(get_current_user)):
@@ -343,6 +406,17 @@ async def get_branch(branch_id: str, user: User = Depends(get_current_user)):
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
     return Branch(**branch)
+
+@api_router.put("/branches/{branch_id}", response_model=Branch, dependencies=[Depends(require_role([UserRole.ADMIN]))])
+async def update_branch(branch_id: str, branch_data: BranchUpdate):
+    branch = await db.branches.find_one({"id": branch_id})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Branch not found")
+    update_data = {k: v for k, v in branch_data.dict().items() if v is not None}
+    if update_data:
+        await db.branches.update_one({"id": branch_id}, {"$set": update_data})
+    updated = await db.branches.find_one({"id": branch_id})
+    return Branch(**updated)
 
 # Cash Session routes
 @api_router.post("/cash-sessions", response_model=CashSession)
@@ -493,22 +567,43 @@ async def get_categories(user: User = Depends(get_current_user)):
 # Branch Product routes
 @api_router.post("/branch-products", response_model=BranchProduct, dependencies=[Depends(require_role([UserRole.ADMIN]))])
 async def create_branch_product(product_data: BranchProductCreate, user: User = Depends(get_current_user)):
+    target_branch_id = product_data.branch_id or user.branch_id
+    if not target_branch_id:
+        raise HTTPException(status_code=400, detail="branch_id requerido")
     # Verify product exists
     product = await db.products.find_one({"id": product_data.product_id})
     if not product:
         raise HTTPException(status_code=400, detail="Product not found")
-    
     # Check if product already exists in branch
     existing = await db.branch_products.find_one({
         "product_id": product_data.product_id,
-        "branch_id": user.branch_id or product_data.dict().get('branch_id')
+        "branch_id": target_branch_id
     })
     if existing:
         raise HTTPException(status_code=400, detail="Product already exists in this branch")
-    
-    branch_product = BranchProduct(**product_data.dict(), branch_id=user.branch_id)
+    data = {k: v for k, v in product_data.dict().items() if k != "branch_id"}
+    branch_product = BranchProduct(**data, branch_id=target_branch_id)
     await db.branch_products.insert_one(branch_product.dict())
     return branch_product
+
+@api_router.put("/branch-products/{branch_product_id}", response_model=BranchProduct, dependencies=[Depends(require_role([UserRole.ADMIN]))])
+async def update_branch_product(branch_product_id: str, product_data: BranchProductUpdate):
+    bp = await db.branch_products.find_one({"id": branch_product_id})
+    if not bp:
+        raise HTTPException(status_code=404, detail="Branch product not found")
+    update_data = {k: v for k, v in product_data.dict().items() if v is not None}
+    if update_data:
+        await db.branch_products.update_one({"id": branch_product_id}, {"$set": update_data})
+    updated = await db.branch_products.find_one({"id": branch_product_id})
+    return BranchProduct(**updated)
+
+@api_router.delete("/branch-products/{branch_product_id}", dependencies=[Depends(require_role([UserRole.ADMIN]))])
+async def delete_branch_product(branch_product_id: str):
+    bp = await db.branch_products.find_one({"id": branch_product_id})
+    if not bp:
+        raise HTTPException(status_code=404, detail="Branch product not found")
+    await db.branch_products.delete_one({"id": branch_product_id})
+    return {"message": "Producto eliminado de la sucursal"}
 
 @api_router.get("/branch-products", response_model=List[dict])
 async def get_branch_products(user: User = Depends(get_current_user)):
@@ -536,6 +631,7 @@ async def get_branch_products(user: User = Depends(get_current_user)):
         },
         {
             "$project": {
+                "_id": 0,
                 "id": 1,
                 "product_id": 1,
                 "branch_id": 1,
@@ -571,6 +667,23 @@ async def create_product(product_data: ProductCreate):
     
     product = Product(**product_data.dict())
     await db.products.insert_one(product.dict())
+    # Auto-sync: create branch_products for all active branches
+    branches = await db.branches.find({"activo": True}).to_list(1000)
+    for branch in branches:
+        existing = await db.branch_products.find_one({
+            "product_id": product.id,
+            "branch_id": branch["id"]
+        })
+        if not existing:
+            bp = BranchProduct(
+                product_id=product.id,
+                branch_id=branch["id"],
+                precio=product.precio,
+                precio_por_peso=product.precio_por_peso,
+                stock=product.stock,
+                stock_minimo=product.stock_minimo
+            )
+            await db.branch_products.insert_one(bp.dict())
     return product
 
 @api_router.get("/products", response_model=List[Product])
@@ -607,6 +720,26 @@ async def update_product(product_id: str, product_data: ProductUpdate):
     
     updated_product = await db.products.find_one({"id": product_id})
     return Product(**updated_product)
+
+# User management routes
+@api_router.get("/users", response_model=List[User], dependencies=[Depends(require_role([UserRole.ADMIN]))])
+async def get_users():
+    users = await db.users.find().to_list(1000)
+    return [User(**u) for u in users]
+
+@api_router.put("/users/{user_id}", response_model=User, dependencies=[Depends(require_role([UserRole.ADMIN]))])
+async def update_user(user_id: str, user_data: UserUpdate):
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    update_data = {k: v for k, v in user_data.dict().items() if v is not None}
+    # Allow explicitly setting branch_id to None (removing branch assignment)
+    if "branch_id" in user_data.dict() and user_data.branch_id is None:
+        update_data["branch_id"] = None
+    if update_data:
+        await db.users.update_one({"id": user_id}, {"$set": update_data})
+    updated = await db.users.find_one({"id": user_id})
+    return User(**updated)
 
 # Configuration routes
 @api_router.get("/config", response_model=Configuration)
@@ -667,10 +800,6 @@ async def upload_logo(file: UploadFile = File(...)):
 # Sales routes
 @api_router.post("/sales", response_model=Sale)
 async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_user)):
-    # Validate user has branch assigned
-    if not user.branch_id:
-        raise HTTPException(status_code=400, detail="Usuario debe estar asignado a una sucursal")
-    
     # Check if user has an open cash session
     current_session = await db.cash_sessions.find_one({
         "user_id": user.id,
@@ -678,37 +807,51 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
     })
     if not current_session:
         raise HTTPException(status_code=400, detail="Debe abrir una caja antes de realizar ventas")
-    
+
     # Get current configuration for tax rate
     config = await db.configuration.find_one()
     tax_rate = config['tax_rate'] if config else 0.12  # Default 12%
-    
+
     # Verify products and calculate totals
     total_amount = 0
     validated_items = []
-    
+
     for item in sale_data.items:
-        # Get product from branch inventory
-        branch_product = await db.branch_products.find_one({
-            "product_id": item.producto_id,
-            "branch_id": user.branch_id,
-            "activo": True
-        })
-        if not branch_product:
-            product = await db.products.find_one({"id": item.producto_id})
-            product_name = product['nombre'] if product else item.producto_id
-            raise HTTPException(status_code=400, detail=f"Producto {product_name} no disponible en esta sucursal")
-        
-        # Check stock
-        if branch_product['stock'] < item.cantidad:
-            product = await db.products.find_one({"id": item.producto_id})
-            raise HTTPException(status_code=400, detail=f"Stock insuficiente para {product['nombre']}")
-        
-        # Use branch-specific price
-        precio_unitario = branch_product['precio']
-        if branch_product.get('precio_por_peso') and item.cantidad != int(item.cantidad):
-            precio_unitario = branch_product['precio_por_peso']
-        
+        # Try branch-specific product first (if user has branch assigned)
+        precio_unitario = None
+        if user.branch_id:
+            branch_product = await db.branch_products.find_one({
+                "product_id": item.producto_id,
+                "branch_id": user.branch_id,
+                "activo": True
+            })
+            if branch_product:
+                if branch_product['stock'] < item.cantidad:
+                    product = await db.products.find_one({"id": item.producto_id})
+                    raise HTTPException(status_code=400, detail=f"Stock insuficiente para {product['nombre']}")
+                precio_unitario = branch_product['precio']
+                if branch_product.get('precio_por_peso') and item.cantidad != int(item.cantidad):
+                    precio_unitario = branch_product['precio_por_peso']
+                await db.branch_products.update_one(
+                    {"product_id": item.producto_id, "branch_id": user.branch_id},
+                    {"$inc": {"stock": -int(item.cantidad)}}
+                )
+
+        # Fall back to global product
+        if precio_unitario is None:
+            product = await db.products.find_one({"id": item.producto_id, "activo": True})
+            if not product:
+                raise HTTPException(status_code=400, detail=f"Producto no encontrado")
+            if product['stock'] < item.cantidad:
+                raise HTTPException(status_code=400, detail=f"Stock insuficiente para {product['nombre']}")
+            precio_unitario = product['precio']
+            if product.get('precio_por_peso') and item.cantidad != int(item.cantidad):
+                precio_unitario = product['precio_por_peso']
+            await db.products.update_one(
+                {"id": item.producto_id},
+                {"$inc": {"stock": -int(item.cantidad)}}
+            )
+
         # Calculate subtotal
         subtotal = item.cantidad * precio_unitario
         validated_items.append(SaleItem(
@@ -718,16 +861,11 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
             subtotal=subtotal
         ))
         total_amount += subtotal
-        
-        # Update branch stock
-        await db.branch_products.update_one(
-            {"product_id": item.producto_id, "branch_id": user.branch_id},
-            {"$inc": {"stock": -item.cantidad}}
-        )
     
-    # Generate invoice number per branch
+    # Generate invoice number
+    branch_id_for_sale = user.branch_id or "global"
     last_sale = await db.sales.find_one(
-        {"branch_id": user.branch_id}, 
+        {"branch_id": branch_id_for_sale},
         sort=[("fecha", -1)]
     )
     if last_sale and last_sale.get('numero_factura'):
@@ -735,16 +873,16 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
         numero_factura = f"FAC-{last_number + 1:06d}"
     else:
         numero_factura = "FAC-000001"
-    
+
     # Calculate totals
     subtotal = total_amount
     impuestos = total_amount * tax_rate
     total = total_amount * (1 + tax_rate)
-    
+
     # Create sale
     sale = Sale(
         cajero_id=user.id,
-        branch_id=user.branch_id,
+        branch_id=branch_id_for_sale,
         session_id=current_session['id'],
         items=validated_items,
         subtotal=subtotal,

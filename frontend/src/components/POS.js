@@ -75,10 +75,16 @@ const POS = () => {
 
   const fetchProducts = async () => {
     try {
-      const response = await axios.get(`${API}/branch-products`);
-      setProducts(response.data);
+      // If user has a branch, use branch-specific prices
+      if (user?.branch_id) {
+        const response = await axios.get(`${API}/branch-products`);
+        setProducts(response.data);
+      } else {
+        const response = await axios.get(`${API}/products`);
+        setProducts(response.data);
+      }
     } catch (error) {
-      toast.error('Error al cargar productos de la sucursal');
+      toast.error('Error al cargar productos');
     }
   };
 
@@ -290,7 +296,7 @@ const POS = () => {
     try {
       const saleData = {
         items: cart.map(item => ({
-          producto_id: item.id,
+          producto_id: item.product_id || item.id,
           cantidad: item.quantity,
           precio_unitario: item.precio,
           subtotal: item.precio * item.quantity
@@ -327,6 +333,11 @@ const POS = () => {
         </h1>
         <p className="text-gray-600">
           Cajero: {user?.nombre}
+          {user?.branch_id && (
+            <span className="ml-3 px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+              Sucursal asignada — precios diferenciados
+            </span>
+          )}
         </p>
       </div>
 

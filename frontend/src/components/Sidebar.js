@@ -2,16 +2,17 @@ import React, { useContext, useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { AuthContext, API } from '../App';
 import axios from 'axios';
-import { 
-  Store, 
-  LayoutDashboard, 
-  ShoppingCart, 
-  Package, 
-  BarChart3, 
-  Users, 
+import {
+  Store,
+  LayoutDashboard,
+  ShoppingCart,
+  Package,
+  BarChart3,
+  Users,
   Settings,
   CreditCard,
-  LogOut 
+  LogOut,
+  Building2
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -57,11 +58,17 @@ const Sidebar = () => {
       icon: ShoppingCart, 
       roles: ['admin', 'supervisor', 'cajero'] 
     },
-    { 
-      path: '/products', 
-      label: 'Productos', 
-      icon: Package, 
-      roles: ['admin'] 
+    {
+      path: '/products',
+      label: 'Productos',
+      icon: Package,
+      roles: ['admin']
+    },
+    {
+      path: '/branches',
+      label: 'Sucursales',
+      icon: Building2,
+      roles: ['admin']
     },
     { 
       path: '/sales', 

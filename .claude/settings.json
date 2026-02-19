@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(py:*)",
+      "Bash(PYTHONIOENCODING=utf-8 py:*)",
+      "Read(//c/Users/MARCEL~1.TOR/AppData/Local/Temp/claude/c--Users-marcelo-torres-source-repos-super/tasks/**)",
+      "Bash(yarn start)",
+      "Bash(cmd /c \"cd C:\\\\Users\\\\marcelo.torres\\\\source\\\\repos\\\\super\\\\frontend && npm start\")"
+    ]
+  }
+}
