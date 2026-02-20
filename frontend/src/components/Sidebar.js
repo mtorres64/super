@@ -12,10 +12,11 @@ import {
   Settings,
   CreditCard,
   LogOut,
-  Building2
+  Building2,
+  X
 } from 'lucide-react';
 
-const Sidebar = () => {
+const Sidebar = ({ isOpen, onClose }) => {
   const { user, logout } = useContext(AuthContext);
   const location = useLocation();
   const [config, setConfig] = useState(null);
@@ -95,13 +96,17 @@ const Sidebar = () => {
   );
 
   return (
-    <div className="sidebar">
+    <div className={`sidebar ${isOpen ? 'sidebar-open' : ''}`}>
+      <button className="sidebar-close" onClick={onClose}>
+        <X className="w-5 h-5" />
+      </button>
+
       <div className="sidebar-header">
         <div className="sidebar-title">
           {config?.company_logo ? (
-            <img 
-              src={config.company_logo} 
-              alt="Company Logo" 
+            <img
+              src={config.company_logo}
+              alt="Company Logo"
               className="w-8 h-8 object-contain"
             />
           ) : (
@@ -117,6 +122,7 @@ const Sidebar = () => {
             key={path}
             to={path}
             className={`nav-item ${isActive(path) ? 'active' : ''}`}
+            onClick={onClose}
           >
             <Icon className="w-5 h-5" />
             {label}

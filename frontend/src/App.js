@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
+import { Menu } from 'lucide-react';
 import './App.css';
 
 // Components
@@ -62,12 +63,29 @@ export const AuthProvider = ({ children }) => {
 
 // Layout component
 const Layout = ({ children }) => {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   return (
     <div className="flex h-screen bg-gray-100">
-      <Sidebar />
-      <main className="flex-1 overflow-auto">
-        {children}
-      </main>
+      {sidebarOpen && (
+        <div
+          className="sidebar-overlay overlay-visible"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="mobile-topbar">
+          <button className="hamburger-btn" onClick={() => setSidebarOpen(true)}>
+            <Menu className="w-6 h-6" />
+          </button>
+          <span className="text-sm font-semibold text-gray-700">SuperMarket POS</span>
+          <div className="w-9" />
+        </div>
+        <main className="flex-1 overflow-auto">
+          {children}
+        </main>
+      </div>
     </div>
   );
 };
@@ -96,6 +114,22 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
 };
 
 function App() {
+  // Apply saved color theme before first render
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('app_theme');
+      if (saved) {
+        const theme = JSON.parse(saved);
+        const root = document.documentElement;
+        root.style.setProperty('--primary',        theme.primary);
+        root.style.setProperty('--primary-dark',   theme.dark);
+        root.style.setProperty('--primary-darker', theme.darker);
+        root.style.setProperty('--primary-light',  theme.light);
+        root.style.setProperty('--primary-bg',     theme.bg);
+      }
+    } catch (_) {}
+  }, []);
+
   return (
     <div className="App">
       <AuthProvider>

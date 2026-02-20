@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { Camera, X, Scan, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -78,13 +78,21 @@ const BarcodeScanner = ({ onScan, onClose }) => {
       html5QrcodeRef.current = html5QrCode;
 
       const config = {
-        fps: 10,
-        qrbox: { width: 250, height: 150 },
+        fps: 15,
+        qrbox: { width: 300, height: 120 },
         aspectRatio: 1.777778,
         disableFlip: false,
-        videoConstraints: {
-          facingMode: "environment"
-        }
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.CODE_93,
+          Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.QR_CODE,
+        ]
       };
 
       await html5QrCode.start(
@@ -113,7 +121,7 @@ const BarcodeScanner = ({ onScan, onClose }) => {
       );
     } catch (error) {
       console.error('Error starting scanner:', error);
-      toast.error(`Error al iniciar el escáner: ${error.message}`);
+      toast.error(`Error al iniciar el escáner: ${error.message || error}`);
       setScanning(false);
     }
   };
@@ -226,7 +234,25 @@ const BarcodeScanner = ({ onScan, onClose }) => {
         </div>
 
         <div className="p-4">
-          {!scanning ? (
+          {/* El div del escáner siempre está en el DOM para que html5-qrcode lo encuentre */}
+          <div
+            id="barcode-scanner"
+            className="w-full bg-black rounded-lg overflow-hidden mb-4"
+            style={{ minHeight: '300px', display: scanning ? 'block' : 'none' }}
+          ></div>
+
+          {scanning ? (
+            <div className="text-center">
+              <p className="text-sm text-gray-600 mb-4 flex items-center justify-center">
+                <Volume2 className="w-4 h-4 mr-2" />
+                Apunta la cámara hacia el código de barras
+              </p>
+              <button onClick={stopScanning} className="btn btn-secondary">
+                <X className="w-4 h-4" />
+                Detener Escaneo
+              </button>
+            </div>
+          ) : (
             <div className="text-center">
               <div className="bg-gray-100 rounded-lg p-8 mb-4">
                 <Camera className="w-16 h-16 text-gray-400 mx-auto mb-4" />
@@ -236,46 +262,36 @@ const BarcodeScanner = ({ onScan, onClose }) => {
                 <p className="text-sm text-gray-500">
                   Apunta la cámara hacia el código de barras
                 </p>
-                {cameras.length > 0 && (
-                  <p className="text-xs text-gray-400 mt-2">
-                    {cameras.length} cámara(s) detectada(s)
-                  </p>
-                )}
               </div>
-              
+
+              {cameras.length > 1 && (
+                <div className="mb-4">
+                  <label className="form-label text-sm">Cámara</label>
+                  <select
+                    className="form-select"
+                    value={selectedCamera || ''}
+                    onChange={(e) => setSelectedCamera(e.target.value)}
+                  >
+                    {cameras.map((cam, index) => (
+                      <option key={cam.id} value={cam.id}>
+                        {cam.label || `Cámara ${index + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="flex justify-center space-x-3">
                 <button onClick={handleClose} className="btn btn-secondary">
                   Cancelar
                 </button>
-                <button 
-                  onClick={startScanning} 
+                <button
+                  onClick={startScanning}
                   className="btn btn-primary"
                   disabled={!selectedCamera}
                 >
                   <Camera className="w-4 h-4" />
                   Iniciar Escáner
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div>
-              <div className="mb-4">
-                <div 
-                  id="barcode-scanner" 
-                  className="w-full bg-black rounded-lg overflow-hidden"
-                  style={{ minHeight: '300px' }}
-                ></div>
-              </div>
-              
-              <div className="text-center">
-                <p className="text-sm text-gray-600 mb-4 flex items-center justify-center">
-                  <Volume2 className="w-4 h-4 mr-2" />
-                  Apunta la cámara hacia el código de barras
-                </p>
-                
-                <button onClick={stopScanning} className="btn btn-secondary">
-                  <X className="w-4 h-4" />
-                  Detener Escaneo
                 </button>
               </div>
             </div>

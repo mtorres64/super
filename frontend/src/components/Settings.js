@@ -3,25 +3,80 @@ import axios from 'axios';
 import { API } from '../App';
 import { toast } from 'sonner';
 import LogoUploader from './LogoUploader';
-import { 
-  Settings as SettingsIcon, 
-  Save, 
-  Building2, 
-  Calculator, 
-  ShoppingCart, 
+import {
+  Settings as SettingsIcon,
+  Save,
+  Building2,
+  Calculator,
+  ShoppingCart,
   Archive,
   Globe,
   Receipt,
   Volume2,
   VolumeX,
-  Grid3X3
+  Grid3X3,
+  Palette,
+  Check
 } from 'lucide-react';
+
+/* ─── Color theme presets ─── */
+const COLOR_THEMES = [
+  { id: 'emerald',  name: 'Verde Esmeralda', primary: '#10b981', dark: '#059669', darker: '#047857', light: 'rgba(16,185,129,0.1)',  bg: '#ecfdf5' },
+  { id: 'blue',     name: 'Azul Océano',     primary: '#3b82f6', dark: '#2563eb', darker: '#1d4ed8', light: 'rgba(59,130,246,0.1)',  bg: '#eff6ff' },
+  { id: 'violet',   name: 'Violeta',          primary: '#8b5cf6', dark: '#7c3aed', darker: '#6d28d9', light: 'rgba(139,92,246,0.1)', bg: '#f5f3ff' },
+  { id: 'rose',     name: 'Rosa',             primary: '#f43f5e', dark: '#e11d48', darker: '#be123c', light: 'rgba(244,63,94,0.1)',  bg: '#fff1f2' },
+  { id: 'orange',   name: 'Naranja',          primary: '#f97316', dark: '#ea580c', darker: '#c2410c', light: 'rgba(249,115,22,0.1)', bg: '#fff7ed' },
+  { id: 'indigo',   name: 'Índigo',           primary: '#6366f1', dark: '#4f46e5', darker: '#4338ca', light: 'rgba(99,102,241,0.1)', bg: '#eef2ff' },
+  { id: 'cyan',     name: 'Cian',             primary: '#06b6d4', dark: '#0891b2', darker: '#0e7490', light: 'rgba(6,182,212,0.1)',  bg: '#ecfeff' },
+  { id: 'amber',    name: 'Ámbar',            primary: '#f59e0b', dark: '#d97706', darker: '#b45309', light: 'rgba(245,158,11,0.1)', bg: '#fffbeb' },
+];
+
+/* ─── Color helpers ─── */
+const hexToRgb = (hex) => {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) }
+    : null;
+};
+
+const darkenHex = (hex, amount) => {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return hex;
+  const clamp = (v) => Math.max(0, Math.min(255, v));
+  return `#${[clamp(rgb.r - amount), clamp(rgb.g - amount), clamp(rgb.b - amount)]
+    .map(v => v.toString(16).padStart(2, '0')).join('')}`;
+};
+
+const hexToRgba = (hex, alpha) => {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return `rgba(0,0,0,${alpha})`;
+  return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
+};
+
+const applyTheme = (theme) => {
+  const root = document.documentElement;
+  root.style.setProperty('--primary',        theme.primary);
+  root.style.setProperty('--primary-dark',   theme.dark);
+  root.style.setProperty('--primary-darker', theme.darker);
+  root.style.setProperty('--primary-light',  theme.light);
+  root.style.setProperty('--primary-bg',     theme.bg);
+  localStorage.setItem('app_theme', JSON.stringify(theme));
+};
+
+const buildCustomTheme = (color) => ({
+  primary:  color,
+  dark:     darkenHex(color, 25),
+  darker:   darkenHex(color, 45),
+  light:    hexToRgba(color, 0.1),
+  bg:       hexToRgba(color, 0.05),
+});
 
 const Settings = () => {
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('company');
+  const [taxInput, setTaxInput] = useState('');
 
   useEffect(() => {
     fetchConfiguration();
@@ -30,7 +85,17 @@ const Settings = () => {
   const fetchConfiguration = async () => {
     try {
       const response = await axios.get(`${API}/config`);
-      setConfig(response.data);
+      const data = response.data;
+      setConfig(data);
+      setTaxInput(data?.tax_rate != null ? String(data.tax_rate * 100) : '');
+      // Restore saved theme (localStorage takes precedence so it's instant on reload)
+      const saved = localStorage.getItem('app_theme');
+      if (saved) {
+        applyTheme(JSON.parse(saved));
+      } else if (data?.primary_color) {
+        const preset = COLOR_THEMES.find(t => t.primary === data.primary_color);
+        applyTheme(preset || buildCustomTheme(data.primary_color));
+      }
     } catch (error) {
       toast.error('Error al cargar configuración');
     } finally {
@@ -58,11 +123,24 @@ const Settings = () => {
   };
 
   const handleLogoUpdate = (logoUrl) => {
-    setConfig(prev => ({
-      ...prev,
-      company_logo: logoUrl
-    }));
+    setConfig(prev => ({ ...prev, company_logo: logoUrl }));
   };
+
+  const handleThemeSelect = (theme) => {
+    updateConfig('primary_color', theme.primary);
+    applyTheme(theme);
+  };
+
+  const handleCustomColor = (color) => {
+    updateConfig('primary_color', color);
+    applyTheme(buildCustomTheme(color));
+  };
+
+  const activeTheme = (() => {
+    const color = config?.primary_color;
+    const preset = COLOR_THEMES.find(t => t.primary === color);
+    return preset || buildCustomTheme(color || '#10b981');
+  })();
 
   const tabs = [
     { id: 'company', label: 'Empresa', icon: Building2 },
@@ -216,16 +294,24 @@ const Settings = () => {
                   <label className="form-label">Impuesto (%) *</label>
                   <div className="relative">
                     <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="100"
+                      type="text"
+                      inputMode="decimal"
                       className="form-input pr-8"
-                      value={config?.tax_rate ? (config.tax_rate * 100).toFixed(2) : ''}
-                      onChange={(e) => updateConfig('tax_rate', parseFloat(e.target.value) / 100)}
-                      placeholder="12.00"
+                      value={taxInput}
+                      onChange={(e) => setTaxInput(e.target.value)}
+                      onBlur={(e) => {
+                        const val = parseFloat(e.target.value.replace(',', '.'));
+                        if (!isNaN(val) && val >= 0 && val <= 100) {
+                          updateConfig('tax_rate', val / 100);
+                          setTaxInput(String(val));
+                        } else {
+                          // Revert to current config value
+                          setTaxInput(config?.tax_rate != null ? String(config.tax_rate * 100) : '');
+                        }
+                      }}
+                      placeholder="12"
                     />
-                    <span className="absolute right-3 top-3 text-gray-500">%</span>
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">%</span>
                   </div>
                   <p className="text-sm text-gray-500 mt-1">
                     Impuesto aplicado a todas las ventas
@@ -266,9 +352,9 @@ const Settings = () => {
                 <div className="text-lg">
                   Producto: <span className="font-semibold">{config?.currency_symbol}10.00</span>
                   <br />
-                  Impuesto ({(config?.tax_rate * 100 || 12).toFixed(2)}%): <span className="font-semibold">{config?.currency_symbol}{((10 * (config?.tax_rate || 0.12)) || 1.20).toFixed(2)}</span>
+                  Impuesto ({((config?.tax_rate ?? 0.12) * 100).toFixed(2)}%): <span className="font-semibold">{config?.currency_symbol}{(10 * (config?.tax_rate ?? 0.12)).toFixed(2)}</span>
                   <br />
-                  Total: <span className="font-semibold text-green-600">{config?.currency_symbol}{(10 * (1 + (config?.tax_rate || 0.12))).toFixed(2)}</span>
+                  Total: <span className="font-semibold text-green-600">{config?.currency_symbol}{(10 * (1 + (config?.tax_rate ?? 0.12))).toFixed(2)}</span>
                 </div>
               </div>
             </div>
@@ -399,8 +485,9 @@ const Settings = () => {
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
                 Configuración de Interfaz
               </h3>
-              
+
               <div className="space-y-6">
+
                 {/* Logo Upload */}
                 <div className="bg-gray-50 rounded-lg p-6">
                   <LogoUploader
@@ -409,10 +496,100 @@ const Settings = () => {
                   />
                 </div>
 
+                {/* ── Color Theme ── */}
+                <div className="bg-gray-50 rounded-lg p-6">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Palette className="w-5 h-5 text-gray-600" />
+                    <h4 className="font-medium text-gray-900">Color del Sistema</h4>
+                  </div>
+                  <p className="text-sm text-gray-500 mb-5">
+                    Elige el color principal para botones, selecciones y elementos destacados.
+                    El cambio se aplica de forma inmediata.
+                  </p>
+
+                  {/* Preset swatches */}
+                  <div className="grid grid-cols-4 gap-3 mb-5">
+                    {COLOR_THEMES.map(theme => {
+                      const isActive = config?.primary_color === theme.primary;
+                      return (
+                        <button
+                          key={theme.id}
+                          onClick={() => handleThemeSelect(theme)}
+                          title={theme.name}
+                          className={`relative flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                            isActive
+                              ? 'border-gray-700 shadow-md bg-white'
+                              : 'border-gray-200 hover:border-gray-400 bg-white'
+                          }`}
+                        >
+                          <div
+                            className="w-9 h-9 rounded-full shadow-sm flex items-center justify-center"
+                            style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.dark})` }}
+                          >
+                            {isActive && <Check className="w-4 h-4 text-white" strokeWidth={3} />}
+                          </div>
+                          <span className="text-xs text-gray-600 text-center leading-tight">
+                            {theme.name}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Custom color picker */}
+                  <div className="flex items-center gap-3 mb-5">
+                    <label className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                      Color personalizado:
+                    </label>
+                    <input
+                      type="color"
+                      value={config?.primary_color || '#10b981'}
+                      onChange={(e) => handleCustomColor(e.target.value)}
+                      className="w-10 h-10 rounded-lg cursor-pointer border border-gray-300 p-0.5"
+                      title="Seleccionar color personalizado"
+                    />
+                    <span className="text-sm text-gray-500 font-mono">
+                      {config?.primary_color || '#10b981'}
+                    </span>
+                  </div>
+
+                  {/* Live preview */}
+                  <div className="bg-white rounded-lg border border-gray-200 p-4">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">
+                      Vista previa
+                    </p>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        className="px-4 py-2 text-sm font-medium text-white rounded-lg shadow-sm"
+                        style={{ background: `linear-gradient(135deg, ${activeTheme.primary}, ${activeTheme.dark})` }}
+                      >
+                        Guardar cambios
+                      </button>
+                      <span
+                        className="px-3 py-1.5 text-sm font-medium rounded-lg border"
+                        style={{ background: activeTheme.bg, color: activeTheme.primary, borderColor: activeTheme.primary }}
+                      >
+                        Seleccionado
+                      </span>
+                      <span
+                        className="px-3 py-1.5 text-sm font-medium rounded-lg"
+                        style={{ background: activeTheme.light, color: activeTheme.primary }}
+                      >
+                        Badge
+                      </span>
+                      <div
+                        className="w-3 h-5 rounded-sm"
+                        style={{ background: activeTheme.primary }}
+                        title="Borde activo del menú"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 {/* Pagination Settings */}
                 <div className="bg-gray-50 rounded-lg p-6">
                   <h4 className="font-medium text-gray-900 mb-4">Configuración de Paginación</h4>
-                  
+
                   <div className="form-group">
                     <label className="form-label">Elementos por página</label>
                     <select
@@ -483,12 +660,14 @@ const Settings = () => {
                   <label className="form-label">Idioma</label>
                   <select
                     className="form-select"
-                    value={config?.language || ''}
-                    onChange={(e) => updateConfig('language', e.target.value)}
+                    value="es"
+                    disabled
                   >
                     <option value="es">Español</option>
-                    <option value="en">English</option>
                   </select>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Actualmente solo está disponible el español. Soporte multiidioma próximamente.
+                  </p>
                 </div>
               </div>
             </div>
@@ -563,8 +742,8 @@ const Settings = () => {
                   <div>Pan Integral       x2    {config?.currency_symbol}1.50</div>
                   <div className="border-t border-dashed my-2"></div>
                   <div>SUBTOTAL:                {config?.currency_symbol}2.75</div>
-                  <div>IMPUESTO ({(config?.tax_rate * 100 || 12).toFixed(1)}%):          {config?.currency_symbol}{(2.75 * (config?.tax_rate || 0.12)).toFixed(2)}</div>
-                  <div className="font-bold">TOTAL:                   {config?.currency_symbol}{(2.75 * (1 + (config?.tax_rate || 0.12))).toFixed(2)}</div>
+                  <div>IMPUESTO ({((config?.tax_rate ?? 0.12) * 100).toFixed(1)}%):          {config?.currency_symbol}{(2.75 * (config?.tax_rate ?? 0.12)).toFixed(2)}</div>
+                  <div className="font-bold">TOTAL:                   {config?.currency_symbol}{(2.75 * (1 + (config?.tax_rate ?? 0.12))).toFixed(2)}</div>
                   <div className="border-t border-dashed my-2"></div>
                   <div className="text-center">
                     {config?.receipt_footer_text || '¡Gracias por su compra!'}
@@ -616,11 +795,11 @@ const Settings = () => {
         }
 
         input:checked + .slider {
-          background-color: #10b981;
+          background-color: var(--primary);
         }
 
         input:focus + .slider {
-          box-shadow: 0 0 1px #10b981;
+          box-shadow: 0 0 1px var(--primary);
         }
 
         input:checked + .slider:before {

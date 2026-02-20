@@ -35,6 +35,7 @@ const POS = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [currentSession, setCurrentSession] = useState(null);
   const [sessionLoading, setSessionLoading] = useState(true);
+  const [mobileTab, setMobileTab] = useState('products');
   const { user } = useContext(AuthContext);
   const barcodeInputRef = useRef(null);
   const lastKeyTime = useRef(0);
@@ -278,7 +279,7 @@ const POS = () => {
   };
 
   const calculateTax = () => {
-    const taxRate = config?.tax_rate || 0.12; // Use dynamic tax rate or default 12%
+    const taxRate = config?.tax_rate ?? 0.12; // Use dynamic tax rate or default 12%
     return calculateSubtotal() * taxRate;
   };
 
@@ -381,19 +382,35 @@ const POS = () => {
         </div>
       )}
 
+      {/* Tabs móvil: Productos / Carrito */}
+      <div className="pos-mobile-tabs">
+        <button
+          className={`pos-tab-btn ${mobileTab === 'products' ? 'active' : ''}`}
+          onClick={() => setMobileTab('products')}
+        >
+          Productos
+        </button>
+        <button
+          className={`pos-tab-btn ${mobileTab === 'cart' ? 'active' : ''}`}
+          onClick={() => setMobileTab('cart')}
+        >
+          Carrito ({cart.length})
+        </button>
+      </div>
+
       <div className="pos-container"
-        style={{ 
+        style={{
           opacity: !sessionLoading && !currentSession ? 0.5 : 1,
           pointerEvents: !sessionLoading && !currentSession ? 'none' : 'auto'
         }}
       >
         {/* Left Section - Products */}
-        <div className="pos-left">
+        <div className={`pos-left ${mobileTab === 'products' ? 'pos-tab-active' : ''}`}>
           {/* Search Section */}
           <div className="pos-search">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
                   type="text"
                   placeholder="Buscar productos..."
@@ -405,7 +422,7 @@ const POS = () => {
               
               <div className="flex gap-2">
                 <div className="relative flex-1">
-                  <Scan className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Scan className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <input
                     ref={barcodeInputRef}
                     type="text"
@@ -417,7 +434,7 @@ const POS = () => {
                     autoComplete="off"
                   />
                   {isAutoScanning && (
-                    <div className="absolute right-3 top-3">
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
                       <Volume2 className="h-4 w-4 text-green-600 animate-pulse" />
                     </div>
                   )}
@@ -487,6 +504,8 @@ const POS = () => {
                 <Pagination
                   currentPage={currentPage}
                   totalPages={totalPages}
+                  totalItems={filteredProducts.length}
+                  itemsPerPage={itemsPerPage}
                   onPageChange={handlePageChange}
                 />
               </div>
@@ -495,7 +514,7 @@ const POS = () => {
         </div>
 
         {/* Right Section - Cart */}
-        <div className="pos-cart">
+        <div className={`pos-cart ${mobileTab === 'cart' ? 'pos-tab-active' : ''}`}>
           <div className="cart-header">
             <div className="flex items-center justify-between">
               <h2 className="cart-title">
@@ -579,7 +598,7 @@ const POS = () => {
                   <span className="total-value">{config?.currency_symbol || '$'}{calculateSubtotal().toFixed(2)}</span>
                 </div>
                 <div className="total-row">
-                  <span className="total-label">Impuestos ({((config?.tax_rate || 0.12) * 100).toFixed(1)}%):</span>
+                  <span className="total-label">Impuestos ({((config?.tax_rate ?? 0.12) * 100).toFixed(1)}%):</span>
                   <span className="total-value">{config?.currency_symbol || '$'}{calculateTax().toFixed(2)}</span>
                 </div>
                 <div className="total-row total-final">
