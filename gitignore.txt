@@ -31,9 +31,14 @@ dist/
 dist
 
 # Environment files (comprehensive coverage)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+.env.
 
-*token.json*
-*credentials.json*
 
 # Logs and debug files
 npm-debug.log*
@@ -47,8 +52,8 @@ dump.rdb
 *.pem
 
 # Python
-__pycache__/
-*pyc*
+_pycache_/
+pyc
 venv/
 .venv/
 
@@ -65,10 +70,10 @@ chainlit.md
 agenthub/agents/youtube/db
 
 # Archive files and large assets
-**/*.zip
-**/*.tar.gz
-**/*.tar
-**/*.tgz
+*/.zip
+*/.tar.gz
+*/.tar
+*/.tgz
 *.pack
 *.deb
 *.dylib
@@ -77,4 +82,4 @@ agenthub/agents/youtube/db
 .cache/
 
 # Mobile development
-android-sdk/ 
+android-sdk/
