@@ -1,0 +1,10 @@
+{
+  "name": "super",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently --names \"backend,frontend\" --prefix-colors \"cyan,magenta\" \"scripts\\start-backend.cmd\" \"scripts\\start-frontend.cmd\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
