@@ -25,6 +25,14 @@ const Sidebar = ({ isOpen, onClose }) => {
     fetchConfiguration();
   }, []);
 
+  useEffect(() => {
+    const handleLogoUpdate = (e) => {
+      setConfig(prev => prev ? { ...prev, company_logo: e.detail } : prev);
+    };
+    window.addEventListener('logo-updated', handleLogoUpdate);
+    return () => window.removeEventListener('logo-updated', handleLogoUpdate);
+  }, []);
+
   const fetchConfiguration = async () => {
     try {
       const response = await axios.get(`${API}/config`);

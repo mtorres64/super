@@ -52,6 +52,7 @@ const LogoUploader = ({ currentLogo, onLogoUpdate }) => {
       toast.success('Logo subido exitosamente');
       onLogoUpdate(response.data.logo_url);
       setPreview(response.data.logo_url);
+      window.dispatchEvent(new CustomEvent('logo-updated', { detail: response.data.logo_url }));
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error al subir el logo');
       setPreview(currentLogo); // Reset preview on error
@@ -66,6 +67,7 @@ const LogoUploader = ({ currentLogo, onLogoUpdate }) => {
       toast.success('Logo eliminado exitosamente');
       onLogoUpdate(null);
       setPreview(null);
+      window.dispatchEvent(new CustomEvent('logo-updated', { detail: null }));
     } catch (error) {
       toast.error('Error al eliminar el logo');
     }
