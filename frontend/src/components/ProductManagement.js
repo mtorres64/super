@@ -1,17 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { API } from '../App';
 import { toast } from 'sonner';
 import Pagination from './Pagination';
-import { 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Package, 
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Package,
   Search,
   AlertCircle,
   Save,
-  X
+  X,
+  Download,
+  Upload,
+  FileText,
+  ChevronDown
 } from 'lucide-react';
 
 const ProductManagement = () => {
@@ -25,6 +29,12 @@ const ProductManagement = () => {
   const [newCategory, setNewCategory] = useState({ nombre: '', descripcion: '' });
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const fileInputRef = useRef(null);
 
   const [formData, setFormData] = useState({
     nombre: '',
@@ -177,6 +187,59 @@ const ProductManagement = () => {
     setCurrentPage(1);
   }, [searchTerm]);
 
+  const handleExport = async (format) => {
+    setShowExportMenu(false);
+    try {
+      const response = await axios.get(`${API}/products/export`, {
+        params: { format },
+        responseType: 'blob',
+      });
+      const ext = format === 'xlsx' ? 'xlsx' : 'csv';
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `productos.${ext}`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success(`Productos exportados en ${ext.toUpperCase()}`);
+    } catch (error) {
+      toast.error('Error al exportar productos');
+    }
+  };
+
+  const handleImport = async (e) => {
+    e.preventDefault();
+    if (!importFile) {
+      toast.error('Selecciona un archivo');
+      return;
+    }
+    setImportLoading(true);
+    setImportResult(null);
+    try {
+      const formDataFile = new FormData();
+      formDataFile.append('file', importFile);
+      const response = await axios.post(`${API}/products/import`, formDataFile, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setImportResult(response.data);
+      fetchProducts();
+      toast.success(`Importación completada: ${response.data.created} creados, ${response.data.updated} actualizados`);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error al importar productos');
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const closeImportModal = () => {
+    setShowImportModal(false);
+    setImportFile(null);
+    setImportResult(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const getLowStockProducts = () => {
     return products.filter(product => product.stock <= product.stock_minimo);
   };
@@ -192,7 +255,7 @@ const ProductManagement = () => {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-6" onClick={() => setShowExportMenu(false)}>
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
@@ -202,7 +265,46 @@ const ProductManagement = () => {
             {products.length} productos registrados
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
+          {/* Export dropdown */}
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setShowExportMenu(prev => !prev)}
+              className="btn btn-secondary"
+            >
+              <Download className="w-4 h-4" />
+              Exportar
+              <ChevronDown className="w-3 h-3 ml-1" />
+            </button>
+            {showExportMenu && (
+              <div className="absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+                <button
+                  onClick={() => handleExport('csv')}
+                  className="flex items-center gap-2 w-full px-4 py-2 text-sm hover:bg-gray-50 rounded-t-lg"
+                >
+                  <FileText className="w-4 h-4 text-green-600" />
+                  CSV
+                </button>
+                <button
+                  onClick={() => handleExport('xlsx')}
+                  className="flex items-center gap-2 w-full px-4 py-2 text-sm hover:bg-gray-50 rounded-b-lg"
+                >
+                  <FileText className="w-4 h-4 text-blue-600" />
+                  Excel (XLSX)
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Import button */}
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="btn btn-secondary"
+          >
+            <Upload className="w-4 h-4" />
+            Importar
+          </button>
+
           <button
             onClick={() => setShowCategoryModal(true)}
             className="btn btn-secondary"
@@ -489,6 +591,97 @@ const ProductManagement = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Import Modal */}
+      {showImportModal && (
+        <div className="modal-overlay" onClick={() => setShowExportMenu(false)}>
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3 className="modal-title">Importar Productos</h3>
+              <button onClick={closeImportModal} className="modal-close">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {!importResult ? (
+              <form onSubmit={handleImport}>
+                <div className="space-y-4">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                    <p className="font-medium mb-1">Formato requerido (CSV o XLSX):</p>
+                    <p className="font-mono text-xs">nombre, codigo_barras, tipo, precio, precio_por_peso, categoria, stock, stock_minimo</p>
+                    <p className="mt-1 text-xs">• <strong>tipo</strong>: <code>codigo_barras</code> o <code>por_peso</code></p>
+                    <p className="text-xs">• <strong>categoria</strong>: debe coincidir con una categoría existente</p>
+                    <p className="text-xs">• Si el código de barras ya existe, el producto se actualizará</p>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Archivo (CSV o XLSX)</label>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".csv,.xlsx,.xls"
+                      className="form-input"
+                      onChange={(e) => setImportFile(e.target.files[0])}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button type="button" onClick={closeImportModal} className="btn btn-secondary">
+                    Cancelar
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={importLoading}>
+                    {importLoading ? (
+                      <span className="flex items-center gap-2">
+                        <div className="spinner w-4 h-4"></div>
+                        Importando...
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <Upload className="w-4 h-4" />
+                        Importar
+                      </span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="bg-green-50 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-green-700">{importResult.created}</div>
+                    <div className="text-xs text-green-600">Creados</div>
+                  </div>
+                  <div className="bg-blue-50 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-blue-700">{importResult.updated}</div>
+                    <div className="text-xs text-blue-600">Actualizados</div>
+                  </div>
+                  <div className="bg-red-50 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-red-700">{importResult.errors.length}</div>
+                    <div className="text-xs text-red-600">Errores</div>
+                  </div>
+                </div>
+
+                {importResult.errors.length > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 max-h-40 overflow-y-auto">
+                    <p className="font-medium text-red-800 text-sm mb-1">Errores:</p>
+                    {importResult.errors.map((err, i) => (
+                      <p key={i} className="text-xs text-red-700">{err}</p>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex justify-end">
+                  <button onClick={closeImportModal} className="btn btn-primary">
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

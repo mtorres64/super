@@ -14,7 +14,10 @@ import {
   Users,
   Package,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  Download,
+  FileText,
+  ChevronDown
 } from 'lucide-react';
 
 const BranchManagement = () => {
@@ -30,6 +33,7 @@ const BranchManagement = () => {
   const [editingBranch, setEditingBranch] = useState(null);
   const [pendingChanges, setPendingChanges] = useState({});
   const [savingChanges, setSavingChanges] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   const [formData, setFormData] = useState({
     nombre: '',
@@ -205,6 +209,29 @@ const BranchManagement = () => {
     }
   };
 
+  const handleExportBranch = async (format) => {
+    setShowExportMenu(false);
+    try {
+      const response = await axios.get(`${API}/branches/${selectedBranch.id}/products/export`, {
+        params: { format },
+        responseType: 'blob',
+      });
+      const ext = format === 'xlsx' ? 'xlsx' : 'csv';
+      const branchSlug = selectedBranch.nombre.replace(/\s+/g, '_');
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `productos_${branchSlug}.${ext}`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success(`Productos exportados en ${ext.toUpperCase()}`);
+    } catch (error) {
+      toast.error('Error al exportar productos de la sucursal');
+    }
+  };
+
   const getCategoryName = (categoryId) => {
     const cat = categories.find(c => c.id === categoryId);
     return cat ? cat.nombre : 'Sin categoría';
@@ -232,7 +259,7 @@ const BranchManagement = () => {
   // Branch detail view
   if (selectedBranch) {
     return (
-      <div className="p-6">
+      <div className="p-6" onClick={() => setShowExportMenu(false)}>
         <div className="flex items-center gap-4 mb-6">
           <button onClick={goBack} className="btn btn-secondary">
             <ArrowLeft className="w-4 h-4" />
@@ -245,24 +272,55 @@ const BranchManagement = () => {
             </h1>
             <p className="text-gray-500 text-sm">{selectedBranch.direccion}</p>
           </div>
-          {hasPendingChanges && (
-            <div className="ml-auto flex items-center gap-3">
-              <span className="text-sm text-amber-600 font-medium">
-                {Object.keys(pendingChanges).length} cambio(s) sin guardar
-              </span>
+          <div className="ml-auto flex items-center gap-3">
+            {hasPendingChanges && (
+              <>
+                <span className="text-sm text-amber-600 font-medium">
+                  {Object.keys(pendingChanges).length} cambio(s) sin guardar
+                </span>
+                <button
+                  onClick={saveProductChanges}
+                  disabled={savingChanges}
+                  className="btn btn-primary"
+                >
+                  {savingChanges ? (
+                    <><div className="spinner w-4 h-4" /> Guardando...</>
+                  ) : (
+                    <><Save className="w-4 h-4" /> Guardar Cambios</>
+                  )}
+                </button>
+              </>
+            )}
+            {/* Export branch products */}
+            <div className="relative" onClick={(e) => e.stopPropagation()}>
               <button
-                onClick={saveProductChanges}
-                disabled={savingChanges}
-                className="btn btn-primary"
+                onClick={() => setShowExportMenu(prev => !prev)}
+                className="btn btn-secondary"
               >
-                {savingChanges ? (
-                  <><div className="spinner w-4 h-4" /> Guardando...</>
-                ) : (
-                  <><Save className="w-4 h-4" /> Guardar Cambios</>
-                )}
+                <Download className="w-4 h-4" />
+                Exportar
+                <ChevronDown className="w-3 h-3 ml-1" />
               </button>
+              {showExportMenu && (
+                <div className="absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+                  <button
+                    onClick={() => handleExportBranch('csv')}
+                    className="flex items-center gap-2 w-full px-4 py-2 text-sm hover:bg-gray-50 rounded-t-lg"
+                  >
+                    <FileText className="w-4 h-4 text-green-600" />
+                    CSV
+                  </button>
+                  <button
+                    onClick={() => handleExportBranch('xlsx')}
+                    className="flex items-center gap-2 w-full px-4 py-2 text-sm hover:bg-gray-50 rounded-b-lg"
+                  >
+                    <FileText className="w-4 h-4 text-blue-600" />
+                    Excel (XLSX)
+                  </button>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
 
         <div className="mb-4">

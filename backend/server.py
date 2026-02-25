@@ -1,9 +1,11 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, UploadFile, File
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, UploadFile, File, Query
+from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import io
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field
@@ -14,6 +16,7 @@ import jwt
 from passlib.hash import bcrypt
 from enum import Enum
 import base64
+import pandas as pd
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -392,6 +395,65 @@ async def get_branches(user: User = Depends(get_current_user)):
     branches = await db.branches.find({"empresa_id": user.empresa_id}).to_list(1000)
     return [Branch(**branch) for branch in branches]
 
+@api_router.get("/branches/{branch_id}/products/export")
+async def export_branch_products(
+    branch_id: str,
+    format: str = Query("csv"),
+    user: User = Depends(require_role([UserRole.ADMIN]))
+):
+    if format not in ("csv", "xlsx"):
+        format = "csv"
+    branch = await db.branches.find_one({"id": branch_id, "empresa_id": user.empresa_id})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Branch not found")
+
+    products = await db.products.find({"empresa_id": user.empresa_id, "activo": True}).to_list(10000)
+    categories = await db.categories.find({"empresa_id": user.empresa_id}).to_list(1000)
+    cat_map = {c["id"]: c["nombre"] for c in categories}
+
+    rows = []
+    for product in products:
+        bp = await db.branch_products.find_one({
+            "product_id": product.get("id"),
+            "branch_id": branch_id,
+            "empresa_id": user.empresa_id
+        })
+        rows.append({
+            "nombre": product.get("nombre"),
+            "codigo_barras": product.get("codigo_barras", ""),
+            "tipo": product.get("tipo"),
+            "categoria": cat_map.get(product.get("categoria_id"), ""),
+            "precio_global": product.get("precio"),
+            "stock_global": product.get("stock", 0),
+            "precio_sucursal": bp.get("precio") if bp else "",
+            "precio_por_peso_sucursal": bp.get("precio_por_peso") if bp else "",
+            "stock_sucursal": bp.get("stock") if bp else "",
+            "stock_minimo_sucursal": bp.get("stock_minimo") if bp else "",
+        })
+
+    df = pd.DataFrame(rows)
+    branch_nombre = branch.get("nombre", branch_id).replace(" ", "_")
+
+    if format == "xlsx":
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False, sheet_name="Productos")
+        output.seek(0)
+        filename = f"productos_{branch_nombre}.xlsx"
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+    else:
+        csv_bytes = df.to_csv(index=False).encode("utf-8-sig")
+        filename = f"productos_{branch_nombre}.csv"
+        return StreamingResponse(
+            io.BytesIO(csv_bytes),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+
 @api_router.get("/branches/{branch_id}/products")
 async def get_branch_products_admin(branch_id: str, user: User = Depends(get_current_user)):
     if user.rol not in [UserRole.ADMIN]:
@@ -761,6 +823,156 @@ async def create_product(product_data: ProductCreate, user: User = Depends(requi
 async def get_products(user: User = Depends(get_current_user)):
     products = await db.products.find({"empresa_id": user.empresa_id, "activo": True}).to_list(1000)
     return [Product(**prod) for prod in products]
+
+@api_router.get("/products/export")
+async def export_products(
+    format: str = Query("csv"),
+    user: User = Depends(require_role([UserRole.ADMIN]))
+):
+    if format not in ("csv", "xlsx"):
+        format = "csv"
+    products = await db.products.find({"empresa_id": user.empresa_id, "activo": True}).to_list(10000)
+    categories = await db.categories.find({"empresa_id": user.empresa_id}).to_list(1000)
+    cat_map = {c["id"]: c["nombre"] for c in categories}
+
+    rows = []
+    for p in products:
+        rows.append({
+            "nombre": p.get("nombre"),
+            "codigo_barras": p.get("codigo_barras", ""),
+            "tipo": p.get("tipo"),
+            "precio": p.get("precio"),
+            "precio_por_peso": p.get("precio_por_peso", ""),
+            "categoria": cat_map.get(p.get("categoria_id"), ""),
+            "stock": p.get("stock"),
+            "stock_minimo": p.get("stock_minimo"),
+            "activo": p.get("activo"),
+        })
+
+    df = pd.DataFrame(rows)
+
+    if format == "xlsx":
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False, sheet_name="Productos")
+        output.seek(0)
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=productos.xlsx"},
+        )
+    else:
+        csv_bytes = df.to_csv(index=False).encode("utf-8-sig")
+        return StreamingResponse(
+            io.BytesIO(csv_bytes),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=productos.csv"},
+        )
+
+@api_router.post("/products/import")
+async def import_products(
+    file: UploadFile = File(...),
+    user: User = Depends(require_role([UserRole.ADMIN]))
+):
+    content = await file.read()
+    filename = file.filename or ""
+
+    try:
+        if filename.endswith(".xlsx") or filename.endswith(".xls"):
+            df = pd.read_excel(io.BytesIO(content))
+        elif filename.endswith(".csv"):
+            df = pd.read_csv(io.StringIO(content.decode("utf-8-sig")))
+        else:
+            raise HTTPException(status_code=400, detail="Formato no soportado. Use CSV o XLSX.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error al leer el archivo: {str(e)}")
+
+    required_cols = {"nombre", "tipo", "precio", "categoria"}
+    missing = required_cols - set(df.columns.str.strip().str.lower())
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Columnas faltantes: {', '.join(missing)}")
+
+    df.columns = df.columns.str.strip().str.lower()
+
+    categories = await db.categories.find({"empresa_id": user.empresa_id}).to_list(1000)
+    cat_map = {c["nombre"].strip().lower(): c["id"] for c in categories}
+    branches = await db.branches.find({"activo": True, "empresa_id": user.empresa_id}).to_list(1000)
+
+    created = 0
+    updated = 0
+    errors = []
+
+    for idx, row in df.iterrows():
+        try:
+            cat_nombre = str(row.get("categoria", "")).strip().lower()
+            categoria_id = cat_map.get(cat_nombre)
+            if not categoria_id:
+                errors.append(f"Fila {idx + 2}: Categoría '{row.get('categoria')}' no encontrada")
+                continue
+
+            raw_barcode = row.get("codigo_barras")
+            codigo_barras = str(raw_barcode).strip() if pd.notna(raw_barcode) and str(raw_barcode).strip() not in ("", "nan") else None
+
+            tipo = str(row.get("tipo", "codigo_barras")).strip()
+            if tipo not in ("codigo_barras", "por_peso"):
+                tipo = "codigo_barras"
+
+            raw_ppp = row.get("precio_por_peso")
+            precio_por_peso = float(raw_ppp) if pd.notna(raw_ppp) and str(raw_ppp).strip() not in ("", "nan") else None
+
+            raw_stock = row.get("stock")
+            stock = int(float(raw_stock)) if pd.notna(raw_stock) and str(raw_stock).strip() not in ("", "nan") else 0
+
+            raw_stock_min = row.get("stock_minimo")
+            stock_minimo = int(float(raw_stock_min)) if pd.notna(raw_stock_min) and str(raw_stock_min).strip() not in ("", "nan") else 10
+
+            product_data = {
+                "nombre": str(row["nombre"]).strip(),
+                "codigo_barras": codigo_barras,
+                "tipo": tipo,
+                "precio": float(row["precio"]),
+                "precio_por_peso": precio_por_peso,
+                "categoria_id": categoria_id,
+                "stock": stock,
+                "stock_minimo": stock_minimo,
+            }
+
+            existing = None
+            if codigo_barras:
+                existing = await db.products.find_one({"codigo_barras": codigo_barras, "empresa_id": user.empresa_id})
+
+            if existing:
+                await db.products.update_one(
+                    {"id": existing["id"], "empresa_id": user.empresa_id},
+                    {"$set": product_data}
+                )
+                updated += 1
+            else:
+                product = Product(**product_data, empresa_id=user.empresa_id)
+                await db.products.insert_one(product.dict())
+                for branch in branches:
+                    bp_exists = await db.branch_products.find_one({
+                        "product_id": product.id,
+                        "branch_id": branch["id"],
+                        "empresa_id": user.empresa_id
+                    })
+                    if not bp_exists:
+                        bp = BranchProduct(
+                            empresa_id=user.empresa_id,
+                            product_id=product.id,
+                            branch_id=branch["id"],
+                            precio=product.precio,
+                            precio_por_peso=product.precio_por_peso,
+                            stock=product.stock,
+                            stock_minimo=product.stock_minimo,
+                        )
+                        await db.branch_products.insert_one(bp.dict())
+                created += 1
+
+        except Exception as e:
+            errors.append(f"Fila {idx + 2}: {str(e)}")
+
+    return {"created": created, "updated": updated, "errors": errors, "total_procesado": created + updated + len(errors)}
 
 @api_router.get("/products/{product_id}", response_model=Product)
 async def get_product(product_id: str, user: User = Depends(get_current_user)):
