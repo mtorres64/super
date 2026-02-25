@@ -3,13 +3,15 @@ import axios from 'axios';
 import { Link, useLocation } from 'react-router-dom';
 import { API, AuthContext } from '../App';
 import { toast } from 'sonner';
-import { 
-  DollarSign, 
-  ShoppingBag, 
-  Package, 
+import {
+  DollarSign,
+  ShoppingBag,
+  Package,
   AlertTriangle,
   TrendingUp,
-  Users
+  Users,
+  Building2,
+  Truck
 } from 'lucide-react';
 
 const Dashboard = () => {
@@ -83,10 +85,30 @@ const Dashboard = () => {
     if (['admin', 'supervisor'].includes(user?.rol)) {
       actions.push({
         title: 'Ver Reportes',
-        description: 'Análisis de ventas',
-        href: '/sales',
+        description: 'Análisis de ventas y compras',
+        href: '/reports',
         icon: TrendingUp,
         color: 'bg-purple-500'
+      });
+    }
+
+    if (['admin', 'supervisor'].includes(user?.rol)) {
+      actions.push({
+        title: 'Compras',
+        description: 'Facturas y proveedores',
+        href: '/compras',
+        icon: Truck,
+        color: 'bg-yellow-500'
+      });
+    }
+
+    if (user?.rol === 'admin') {
+      actions.push({
+        title: 'Sucursales',
+        description: 'Gestionar sucursales',
+        href: '/branches',
+        icon: Building2,
+        color: 'bg-teal-500'
       });
     }
 

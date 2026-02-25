@@ -142,6 +142,8 @@ class BranchProduct(BaseModel):
     precio_por_peso: Optional[float] = None
     stock: int = 0
     stock_minimo: int = 10
+    margen: Optional[float] = None
+    costo: Optional[float] = None
     activo: bool = True
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -152,12 +154,15 @@ class BranchProductCreate(BaseModel):
     precio_por_peso: Optional[float] = None
     stock: int = 0
     stock_minimo: int = 10
+    margen: Optional[float] = None
 
 class BranchProductUpdate(BaseModel):
     precio: Optional[float] = None
     precio_por_peso: Optional[float] = None
     stock: Optional[int] = None
     stock_minimo: Optional[int] = None
+    margen: Optional[float] = None
+    costo: Optional[float] = None
     activo: Optional[bool] = None
 
 class Configuration(BaseModel):
@@ -363,10 +368,13 @@ class CompraItem(BaseModel):
     cantidad: float
     precio_unitario: float
     subtotal: float
+    product_id: Optional[str] = None
+    actualizar_precio: bool = False
 
 class Compra(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     empresa_id: str
+    sucursal_id: Optional[str] = None
     proveedor_id: Optional[str] = None
     proveedor_nombre: Optional[str] = None
     numero_factura: str
@@ -380,6 +388,7 @@ class Compra(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class CompraCreate(BaseModel):
+    sucursal_id: Optional[str] = None
     proveedor_id: Optional[str] = None
     numero_factura: str
     fecha: datetime
@@ -390,6 +399,7 @@ class CompraCreate(BaseModel):
     notas: Optional[str] = None
 
 class CompraUpdate(BaseModel):
+    sucursal_id: Optional[str] = None
     proveedor_id: Optional[str] = None
     numero_factura: Optional[str] = None
     fecha: Optional[datetime] = None
@@ -525,7 +535,7 @@ async def export_branch_products(
 
 @api_router.get("/branches/{branch_id}/products")
 async def get_branch_products_admin(branch_id: str, user: User = Depends(get_current_user)):
-    if user.rol not in [UserRole.ADMIN]:
+    if user.rol not in [UserRole.ADMIN, UserRole.SUPERVISOR]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     branch = await db.branches.find_one({"id": branch_id, "empresa_id": user.empresa_id})
     if not branch:
@@ -552,6 +562,8 @@ async def get_branch_products_admin(branch_id: str, user: User = Depends(get_cur
             "precio_por_peso_sucursal": bp.get("precio_por_peso") if bp else None,
             "stock_sucursal": bp.get("stock") if bp else None,
             "stock_minimo_sucursal": bp.get("stock_minimo") if bp else None,
+            "margen_sucursal": bp.get("margen") if bp else None,
+            "costo_sucursal": bp.get("costo") if bp else None,
             "activo_sucursal": bp.get("activo", True) if bp else True,
         })
     return result
@@ -1417,6 +1429,26 @@ async def create_compra(
         registrado_por=user.id
     )
     await db.compras.insert_one(compra.dict())
+
+    # Update product costs (and optionally sale prices) for linked items
+    if compra_data.sucursal_id:
+        for item in compra_data.items:
+            if item.product_id:
+                bp = await db.branch_products.find_one({
+                    "product_id": item.product_id,
+                    "branch_id": compra_data.sucursal_id,
+                    "empresa_id": user.empresa_id
+                })
+                if bp:
+                    bp_update: dict = {"costo": item.precio_unitario}
+                    if item.actualizar_precio:
+                        margen = bp.get("margen") or 0
+                        bp_update["precio"] = round(item.precio_unitario * (1 + margen / 100), 2)
+                    await db.branch_products.update_one(
+                        {"id": bp["id"]},
+                        {"$set": bp_update}
+                    )
+
     return compra
 
 @api_router.get("/compras", response_model=List[Compra])

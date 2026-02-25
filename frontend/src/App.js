@@ -9,7 +9,7 @@ import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import POS from './components/POS';
 import ProductManagement from './components/ProductManagement';
-import SalesReports from './components/SalesReports';
+import Reports from './components/Reports';
 import UserManagement from './components/UserManagement';
 import Settings from './components/Settings';
 import CashManager from './components/CashManager';
@@ -162,10 +162,10 @@ function App() {
               }
             />
             <Route
-              path="/sales"
+              path="/reports"
               element={
                 <ProtectedRoute allowedRoles={['admin', 'supervisor']}>
-                  <SalesReports />
+                  <Reports />
                 </ProtectedRoute>
               }
             />

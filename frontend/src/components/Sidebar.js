@@ -81,7 +81,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       roles: ['admin']
     },
     {
-      path: '/sales',
+      path: '/reports',
       label: 'Reportes',
       icon: BarChart3,
       roles: ['admin', 'supervisor']

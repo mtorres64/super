@@ -7,94 +7,98 @@ import {
   Download,
   DollarSign,
   ShoppingBag,
-  TrendingUp,
+  TrendingDown,
   Filter,
-  Building2
+  Building2,
+  Truck
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell, Legend
+  ResponsiveContainer, Legend
 } from 'recharts';
 
-const PAYMENT_COLORS = {
-  efectivo: '#16a34a',
-  tarjeta: '#2563eb',
-  transferencia: '#7c3aed'
-};
-
-const SalesReports = () => {
-  const [sales, setSales] = useState([]);
+const PurchasesReport = () => {
+  const [compras, setCompras] = useState([]);
   const [branches, setBranches] = useState([]);
+  const [proveedores, setProveedores] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [dateFilter, setDateFilter] = useState('today');
+  const [dateFilter, setDateFilter] = useState('month');
   const [branchFilter, setBranchFilter] = useState('all');
+  const [proveedorFilter, setProveedorFilter] = useState('all');
   const [customDateFrom, setCustomDateFrom] = useState('');
   const [customDateTo, setCustomDateTo] = useState('');
 
   useEffect(() => {
-    fetchSales();
-    fetchBranches();
+    fetchData();
   }, []);
 
-  const fetchSales = async () => {
+  const fetchData = async () => {
     try {
-      const response = await axios.get(`${API}/sales`);
-      setSales(response.data);
+      const [comprasRes, branchesRes, proveedoresRes] = await Promise.all([
+        axios.get(`${API}/compras`),
+        axios.get(`${API}/branches`),
+        axios.get(`${API}/proveedores`)
+      ]);
+      setCompras(comprasRes.data);
+      setBranches(branchesRes.data);
+      setProveedores(proveedoresRes.data);
     } catch (error) {
-      toast.error('Error al cargar las ventas');
+      toast.error('Error al cargar los datos');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchBranches = async () => {
-    try {
-      const response = await axios.get(`${API}/branches`);
-      setBranches(response.data);
-    } catch (error) {
-      console.error('Error al cargar sucursales');
-    }
-  };
-
   const getBranchName = (branchId) => {
-    if (!branchId || branchId === 'global') return 'Sin sucursal';
+    if (!branchId) return 'Sin sucursal';
     const branch = branches.find(b => b.id === branchId);
     return branch ? branch.nombre : branchId;
   };
 
-  const getFilteredSales = () => {
-    const now = new Date();
-    let filteredSales = [...sales];
+  const getProveedorName = (proveedorId) => {
+    if (!proveedorId) return 'Sin proveedor';
+    const prov = proveedores.find(p => p.id === proveedorId);
+    return prov ? prov.nombre : proveedorId;
+  };
 
-    // Filtro por sucursal
+  const getFilteredCompras = () => {
+    const now = new Date();
+    let filtered = [...compras];
+
     if (branchFilter !== 'all') {
-      filteredSales = filteredSales.filter(sale => sale.branch_id === branchFilter);
+      filtered = filtered.filter(c => c.sucursal_id === branchFilter);
     }
 
-    // Filtro por fecha
+    if (proveedorFilter !== 'all') {
+      filtered = filtered.filter(c => c.proveedor_id === proveedorFilter);
+    }
+
     switch (dateFilter) {
-      case 'today':
+      case 'today': {
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        filteredSales = filteredSales.filter(sale => new Date(sale.fecha) >= today);
+        filtered = filtered.filter(c => new Date(c.fecha) >= today);
         break;
-      case 'week':
+      }
+      case 'week': {
         const weekAgo = new Date(now);
         weekAgo.setDate(now.getDate() - 7);
-        filteredSales = filteredSales.filter(sale => new Date(sale.fecha) >= weekAgo);
+        filtered = filtered.filter(c => new Date(c.fecha) >= weekAgo);
         break;
-      case 'month':
+      }
+      case 'month': {
         const monthAgo = new Date(now);
         monthAgo.setMonth(now.getMonth() - 1);
-        filteredSales = filteredSales.filter(sale => new Date(sale.fecha) >= monthAgo);
+        filtered = filtered.filter(c => new Date(c.fecha) >= monthAgo);
         break;
+      }
       case 'custom':
         if (customDateFrom && customDateTo) {
           const fromDate = new Date(customDateFrom);
           const toDate = new Date(customDateTo);
           toDate.setHours(23, 59, 59, 999);
-          filteredSales = filteredSales.filter(sale => {
-            const saleDate = new Date(sale.fecha);
-            return saleDate >= fromDate && saleDate <= toDate;
+          filtered = filtered.filter(c => {
+            const d = new Date(c.fecha);
+            return d >= fromDate && d <= toDate;
           });
         }
         break;
@@ -102,39 +106,39 @@ const SalesReports = () => {
         break;
     }
 
-    return filteredSales.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+    return filtered.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
   };
 
-  const calculateStats = (salesData) => {
-    const totalSales = salesData.length;
-    const totalRevenue = salesData.reduce((sum, sale) => sum + sale.total, 0);
-    const averageSale = totalSales > 0 ? totalRevenue / totalSales : 0;
+  const calculateStats = (data) => {
+    const totalCompras = data.length;
+    const totalGastado = data.reduce((sum, c) => sum + c.total, 0);
+    const promedio = totalCompras > 0 ? totalGastado / totalCompras : 0;
 
-    const paymentMethods = {};
-    salesData.forEach(sale => {
-      if (paymentMethods[sale.metodo_pago]) {
-        paymentMethods[sale.metodo_pago].count++;
-        paymentMethods[sale.metodo_pago].total += sale.total;
+    const byProveedor = {};
+    data.forEach(c => {
+      const key = c.proveedor_id || 'sin_proveedor';
+      if (byProveedor[key]) {
+        byProveedor[key].count++;
+        byProveedor[key].total += c.total;
       } else {
-        paymentMethods[sale.metodo_pago] = { count: 1, total: sale.total };
+        byProveedor[key] = { count: 1, total: c.total, nombre: getProveedorName(key === 'sin_proveedor' ? null : key) };
       }
     });
 
-    // Desglose por sucursal (solo si no hay filtro de sucursal)
-    const branchStats = {};
+    const byBranch = {};
     if (branchFilter === 'all') {
-      salesData.forEach(sale => {
-        const key = sale.branch_id || 'global';
-        if (branchStats[key]) {
-          branchStats[key].count++;
-          branchStats[key].total += sale.total;
+      data.forEach(c => {
+        const key = c.sucursal_id || 'sin_sucursal';
+        if (byBranch[key]) {
+          byBranch[key].count++;
+          byBranch[key].total += c.total;
         } else {
-          branchStats[key] = { count: 1, total: sale.total, nombre: getBranchName(key) };
+          byBranch[key] = { count: 1, total: c.total, nombre: getBranchName(key === 'sin_sucursal' ? null : key) };
         }
       });
     }
 
-    return { totalSales, totalRevenue, averageSale, paymentMethods, branchStats };
+    return { totalCompras, totalGastado, promedio, byProveedor, byBranch };
   };
 
   const formatDate = (dateString) => {
@@ -148,21 +152,16 @@ const SalesReports = () => {
     });
   };
 
-  const getPaymentMethodLabel = (method) => {
-    const labels = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia' };
-    return labels[method] || method;
-  };
-
   const exportToCSV = () => {
-    const filteredSales = getFilteredSales();
-    const csvHeader = 'Factura,Fecha,Sucursal,Cajero,Total,Metodo Pago,Items\n';
-    const csvRows = filteredSales.map(sale =>
-      `${sale.numero_factura},${formatDate(sale.fecha)},${getBranchName(sale.branch_id)},${sale.cajero_id},${sale.total.toFixed(2)},${getPaymentMethodLabel(sale.metodo_pago)},${sale.items.length}`
+    const filtered = getFilteredCompras();
+    const header = 'Factura,Fecha,Sucursal,Proveedor,Items,Subtotal,Impuestos,Total\n';
+    const rows = filtered.map(c =>
+      `${c.numero_factura},${formatDate(c.fecha)},${getBranchName(c.sucursal_id)},${getProveedorName(c.proveedor_id)},${c.items.length},${c.subtotal.toFixed(2)},${c.impuestos.toFixed(2)},${c.total.toFixed(2)}`
     ).join('\n');
-    const blob = new Blob([csvHeader + csvRows], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.setAttribute('href', URL.createObjectURL(blob));
-    link.setAttribute('download', `ventas_${dateFilter}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `compras_${dateFilter}_${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -196,26 +195,38 @@ const SalesReports = () => {
     return Object.values(byDay).sort((a, b) => a.key.localeCompare(b.key));
   };
 
-  const filteredSales = getFilteredSales();
-  const stats = calculateStats(filteredSales);
-  const dailyData = getDailyData(filteredSales);
-  const paymentPieData = Object.entries(stats.paymentMethods).map(([method, data]) => ({
-    name: getPaymentMethodLabel(method),
-    value: parseFloat(data.total.toFixed(2)),
-    fill: PAYMENT_COLORS[method] || '#6b7280'
-  }));
+  const getTopProveedores = (data) => {
+    const byProv = {};
+    data.forEach(c => {
+      const nombre = getProveedorName(c.proveedor_id);
+      if (byProv[nombre]) {
+        byProv[nombre] += c.total;
+      } else {
+        byProv[nombre] = c.total;
+      }
+    });
+    return Object.entries(byProv)
+      .map(([nombre, total]) => ({ nombre, total: parseFloat(total.toFixed(2)) }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 6);
+  };
+
+  const filteredCompras = getFilteredCompras();
+  const stats = calculateStats(filteredCompras);
+  const dailyData = getDailyData(filteredCompras);
+  const topProveedores = getTopProveedores(filteredCompras);
 
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Reportes de Ventas</h1>
-          <p className="text-gray-600">Análisis y estadísticas de ventas</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Reporte de Compras</h1>
+          <p className="text-gray-600">Análisis y estadísticas de compras a proveedores</p>
         </div>
         <button
           onClick={exportToCSV}
           className="btn btn-secondary"
-          disabled={filteredSales.length === 0}
+          disabled={filteredCompras.length === 0}
         >
           <Download className="w-4 h-4" />
           Exportar CSV
@@ -239,9 +250,23 @@ const SalesReports = () => {
               onChange={(e) => setBranchFilter(e.target.value)}
             >
               <option value="all">Todas las sucursales</option>
-              <option value="global">Sin sucursal</option>
               {branches.map(branch => (
                 <option key={branch.id} value={branch.id}>{branch.nombre}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Filtro proveedor */}
+          <div className="flex items-center gap-2">
+            <Truck className="w-4 h-4 text-gray-400" />
+            <select
+              className="form-select"
+              value={proveedorFilter}
+              onChange={(e) => setProveedorFilter(e.target.value)}
+            >
+              <option value="all">Todos los proveedores</option>
+              {proveedores.map(prov => (
+                <option key={prov.id} value={prov.id}>{prov.nombre}</option>
               ))}
             </select>
           </div>
@@ -285,95 +310,88 @@ const SalesReports = () => {
       <div className="dashboard-grid mb-6">
         <div className="stat-card">
           <div className="stat-header">
-            <div className="stat-title">Total Ventas</div>
+            <div className="stat-title">Total Compras</div>
             <div className="stat-icon"><ShoppingBag className="w-6 h-6" /></div>
           </div>
-          <div className="stat-value">{stats.totalSales}</div>
-          <p className="text-sm text-gray-500 mt-2">Transacciones procesadas</p>
+          <div className="stat-value">{stats.totalCompras}</div>
+          <p className="text-sm text-gray-500 mt-2">Facturas registradas</p>
         </div>
 
         <div className="stat-card">
           <div className="stat-header">
-            <div className="stat-title">Ingresos Totales</div>
+            <div className="stat-title">Total Gastado</div>
             <div className="stat-icon"><DollarSign className="w-6 h-6" /></div>
           </div>
-          <div className="stat-value">${stats.totalRevenue.toFixed(2)}</div>
-          <p className="text-sm text-gray-500 mt-2">Revenue generado</p>
+          <div className="stat-value">${stats.totalGastado.toFixed(2)}</div>
+          <p className="text-sm text-gray-500 mt-2">Inversión en compras</p>
         </div>
 
         <div className="stat-card">
           <div className="stat-header">
-            <div className="stat-title">Venta Promedio</div>
-            <div className="stat-icon"><TrendingUp className="w-6 h-6" /></div>
+            <div className="stat-title">Compra Promedio</div>
+            <div className="stat-icon"><TrendingDown className="w-6 h-6" /></div>
           </div>
-          <div className="stat-value">${stats.averageSale.toFixed(2)}</div>
-          <p className="text-sm text-gray-500 mt-2">Por transacción</p>
+          <div className="stat-value">${stats.promedio.toFixed(2)}</div>
+          <p className="text-sm text-gray-500 mt-2">Por factura</p>
         </div>
       </div>
 
       {/* Gráficos */}
-      {filteredSales.length > 0 && (
+      {filteredCompras.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {/* Ventas por día */}
+          {/* Compras por día */}
           <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Ventas por Día</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Compras por Día</h3>
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={dailyData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="fecha" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} width={60} />
                 <Tooltip formatter={(value) => [`$${value.toFixed(2)}`, 'Total']} labelFormatter={(l) => `Fecha: ${l}`} />
-                <Bar dataKey="total" fill="#16a34a" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="total" fill="#ea580c" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
 
-          {/* Métodos de pago */}
-          {paymentPieData.length > 0 && (
+          {/* Top proveedores */}
+          {topProveedores.length > 0 && (
             <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Distribución por Método de Pago</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Proveedores</h3>
               <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie
-                    data={paymentPieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={85}
-                    dataKey="value"
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    labelLine={false}
-                  >
-                    {paymentPieData.map((entry, i) => (
-                      <Cell key={i} fill={entry.fill} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
-                  <Legend />
-                </PieChart>
+                <BarChart
+                  data={topProveedores}
+                  layout="vertical"
+                  margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
+                  <YAxis type="category" dataKey="nombre" tick={{ fontSize: 11 }} width={80} />
+                  <Tooltip formatter={(value) => [`$${value.toFixed(2)}`, 'Total']} />
+                  <Bar dataKey="total" fill="#f97316" radius={[0, 4, 4, 0]} />
+                </BarChart>
               </ResponsiveContainer>
             </div>
           )}
         </div>
       )}
 
-      {/* Desglose por sucursal (solo cuando no hay filtro de sucursal) */}
-      {branchFilter === 'all' && Object.keys(stats.branchStats).length > 1 && (
+      {/* Desglose por sucursal */}
+      {branchFilter === 'all' && Object.keys(stats.byBranch).length > 1 && (
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <Building2 className="w-5 h-5 text-gray-500" />
-            Ventas por Sucursal
+            Compras por Sucursal
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {Object.entries(stats.branchStats).map(([branchId, data]) => (
-              <div key={branchId} className="bg-gray-50 rounded-lg p-4">
+            {Object.entries(stats.byBranch).map(([key, data]) => (
+              <div key={key} className="bg-gray-50 rounded-lg p-4">
                 <div className="flex justify-between items-center mb-2">
                   <span className="font-medium text-gray-700">{data.nombre}</span>
-                  <span className="text-sm text-gray-500">{data.count} ventas</span>
+                  <span className="text-sm text-gray-500">{data.count} compras</span>
                 </div>
-                <div className="text-2xl font-bold text-green-600">${data.total.toFixed(2)}</div>
+                <div className="text-2xl font-bold text-orange-600">${data.total.toFixed(2)}</div>
                 <div className="text-sm text-gray-500">
-                  {stats.totalRevenue > 0 ? ((data.total / stats.totalRevenue) * 100).toFixed(1) : 0}% del total
+                  {stats.totalGastado > 0 ? ((data.total / stats.totalGastado) * 100).toFixed(1) : 0}% del total
                 </div>
               </div>
             ))}
@@ -381,20 +399,23 @@ const SalesReports = () => {
         </div>
       )}
 
-      {/* Métodos de pago */}
-      {Object.keys(stats.paymentMethods).length > 0 && (
+      {/* Desglose por proveedor */}
+      {proveedorFilter === 'all' && Object.keys(stats.byProveedor).length > 0 && (
         <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Métodos de Pago</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Truck className="w-5 h-5 text-gray-500" />
+            Compras por Proveedor
+          </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {Object.entries(stats.paymentMethods).map(([method, data]) => (
-              <div key={method} className="bg-gray-50 rounded-lg p-4">
+            {Object.entries(stats.byProveedor).map(([key, data]) => (
+              <div key={key} className="bg-gray-50 rounded-lg p-4">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="font-medium text-gray-700">{getPaymentMethodLabel(method)}</span>
-                  <span className="text-sm text-gray-500">{data.count} ventas</span>
+                  <span className="font-medium text-gray-700">{data.nombre}</span>
+                  <span className="text-sm text-gray-500">{data.count} facturas</span>
                 </div>
-                <div className="text-2xl font-bold text-green-600">${data.total.toFixed(2)}</div>
+                <div className="text-2xl font-bold text-orange-600">${data.total.toFixed(2)}</div>
                 <div className="text-sm text-gray-500">
-                  {stats.totalRevenue > 0 ? ((data.total / stats.totalRevenue) * 100).toFixed(1) : 0}% del total
+                  {stats.totalGastado > 0 ? ((data.total / stats.totalGastado) * 100).toFixed(1) : 0}% del total
                 </div>
               </div>
             ))}
@@ -402,23 +423,18 @@ const SalesReports = () => {
         </div>
       )}
 
-      {/* Tabla de ventas */}
+      {/* Tabla de compras */}
       <div className="table-container">
         <div className="flex justify-between items-center p-4 border-b border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900">
-            Historial de Ventas ({filteredSales.length})
-            {branchFilter !== 'all' && (
-              <span className="ml-2 text-sm font-normal text-gray-500">
-                — {getBranchName(branchFilter)}
-              </span>
-            )}
+            Historial de Compras ({filteredCompras.length})
           </h3>
         </div>
 
-        {filteredSales.length === 0 ? (
+        {filteredCompras.length === 0 ? (
           <div className="text-center py-12">
             <ShoppingBag className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500">No hay ventas en el periodo seleccionado</p>
+            <p className="text-gray-500">No hay compras en el periodo seleccionado</p>
           </div>
         ) : (
           <table className="table">
@@ -427,46 +443,41 @@ const SalesReports = () => {
                 <th>Factura</th>
                 <th>Fecha</th>
                 <th>Sucursal</th>
+                <th>Proveedor</th>
                 <th>Items</th>
                 <th>Subtotal</th>
                 <th>Impuestos</th>
                 <th>Total</th>
-                <th>Método de Pago</th>
               </tr>
             </thead>
             <tbody>
-              {filteredSales.slice(0, 50).map(sale => (
-                <tr key={sale.id}>
+              {filteredCompras.slice(0, 50).map(compra => (
+                <tr key={compra.id}>
                   <td>
-                    <span className="font-medium text-blue-600">{sale.numero_factura}</span>
+                    <span className="font-medium text-blue-600">{compra.numero_factura}</span>
                   </td>
-                  <td>{formatDate(sale.fecha)}</td>
+                  <td>{formatDate(compra.fecha)}</td>
                   <td>
                     <span className="flex items-center gap-1 text-sm text-gray-600">
                       <Building2 className="w-3 h-3" />
-                      {getBranchName(sale.branch_id)}
+                      {getBranchName(compra.sucursal_id)}
+                    </span>
+                  </td>
+                  <td>
+                    <span className="flex items-center gap-1 text-sm text-gray-600">
+                      <Truck className="w-3 h-3" />
+                      {getProveedorName(compra.proveedor_id)}
                     </span>
                   </td>
                   <td>
                     <span className="bg-gray-100 text-gray-800 px-2 py-1 rounded-full text-sm">
-                      {sale.items.length} productos
+                      {compra.items.length} productos
                     </span>
                   </td>
-                  <td>${sale.subtotal.toFixed(2)}</td>
-                  <td>${sale.impuestos.toFixed(2)}</td>
+                  <td>${compra.subtotal.toFixed(2)}</td>
+                  <td>${compra.impuestos.toFixed(2)}</td>
                   <td>
-                    <span className="font-semibold text-green-600">${sale.total.toFixed(2)}</span>
-                  </td>
-                  <td>
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                      sale.metodo_pago === 'efectivo'
-                        ? 'bg-green-100 text-green-800'
-                        : sale.metodo_pago === 'tarjeta'
-                        ? 'bg-blue-100 text-blue-800'
-                        : 'bg-purple-100 text-purple-800'
-                    }`}>
-                      {getPaymentMethodLabel(sale.metodo_pago)}
-                    </span>
+                    <span className="font-semibold text-orange-600">${compra.total.toFixed(2)}</span>
                   </td>
                 </tr>
               ))}
@@ -478,4 +489,4 @@ const SalesReports = () => {
   );
 };
 
-export default SalesReports;
+export default PurchasesReport;

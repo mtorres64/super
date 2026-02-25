@@ -17,7 +17,8 @@ import {
   ToggleRight,
   Download,
   FileText,
-  ChevronDown
+  ChevronDown,
+  Percent
 } from 'lucide-react';
 
 const BranchManagement = () => {
@@ -34,6 +35,10 @@ const BranchManagement = () => {
   const [pendingChanges, setPendingChanges] = useState({});
   const [savingChanges, setSavingChanges] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [selectedRows, setSelectedRows] = useState(new Set());
+  const [showBulkMargenModal, setShowBulkMargenModal] = useState(false);
+  const [bulkMargenTipo, setBulkMargenTipo] = useState('establecer');
+  const [bulkMargenValor, setBulkMargenValor] = useState('');
 
   const [formData, setFormData] = useState({
     nombre: '',
@@ -79,6 +84,7 @@ const BranchManagement = () => {
   const fetchBranchProducts = async (branchId) => {
     setLoadingProducts(true);
     setPendingChanges({});
+    setSelectedRows(new Set());
     try {
       const response = await axios.get(`${API}/branches/${branchId}/products`);
       setBranchProducts(response.data);
@@ -149,6 +155,7 @@ const BranchManagement = () => {
     setSelectedBranch(null);
     setBranchProducts([]);
     setPendingChanges({});
+    setSelectedRows(new Set());
   };
 
   const handleProductFieldChange = (productId, field, value) => {
@@ -159,6 +166,75 @@ const BranchManagement = () => {
         [field]: value
       }
     }));
+  };
+
+  const toggleSelectAll = () => {
+    if (filteredProducts.every(p => selectedRows.has(p.product_id))) {
+      setSelectedRows(prev => {
+        const next = new Set(prev);
+        filteredProducts.forEach(p => next.delete(p.product_id));
+        return next;
+      });
+    } else {
+      setSelectedRows(prev => {
+        const next = new Set(prev);
+        filteredProducts.forEach(p => next.add(p.product_id));
+        return next;
+      });
+    }
+  };
+
+  const toggleSelectRow = (productId) => {
+    setSelectedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
+    });
+  };
+
+  const getProductCurrentMargen = (product, pendingForProduct) => {
+    if (pendingForProduct?.margen !== undefined) return pendingForProduct.margen;
+    if (product.margen_sucursal !== null && product.margen_sucursal !== undefined) return product.margen_sucursal;
+    const precioRef = product.precio_sucursal ?? product.precio_global;
+    return product.precio_global > 0
+      ? parseFloat(((precioRef / product.precio_global - 1) * 100).toFixed(2))
+      : 0;
+  };
+
+  const applyBulkMargen = () => {
+    const valor = parseFloat(bulkMargenValor);
+    if (isNaN(valor)) {
+      toast.error('Ingresa un valor de margen válido');
+      return;
+    }
+    setPendingChanges(prev => {
+      const next = { ...prev };
+      for (const productId of selectedRows) {
+        const product = branchProducts.find(p => p.product_id === productId);
+        if (!product) continue;
+        const currentMargenForProduct = getProductCurrentMargen(product, prev[productId]);
+        let newMargen;
+        if (bulkMargenTipo === 'establecer') {
+          newMargen = valor;
+        } else if (bulkMargenTipo === 'incrementar') {
+          newMargen = parseFloat((currentMargenForProduct + valor).toFixed(2));
+        } else {
+          newMargen = parseFloat((currentMargenForProduct - valor).toFixed(2));
+        }
+        const newPrecio = product.precio_global > 0
+          ? parseFloat((product.precio_global * (1 + newMargen / 100)).toFixed(2))
+          : product.precio_global;
+        next[productId] = { ...next[productId], margen: newMargen, precio: newPrecio };
+      }
+      return next;
+    });
+    setShowBulkMargenModal(false);
+    setBulkMargenValor('');
+    toast.success(`Margen aplicado a ${selectedRows.size} producto(s). Recuerda guardar los cambios.`);
   };
 
   const saveProductChanges = async () => {
@@ -172,16 +248,15 @@ const BranchManagement = () => {
       if (!product) continue;
       try {
         if (product.branch_product_id) {
-          // Update existing branch product
           await axios.put(`${API}/branch-products/${product.branch_product_id}`, changes);
         } else {
-          // Create new branch product
           await axios.post(`${API}/branch-products`, {
             product_id: productId,
             branch_id: selectedBranch.id,
-            precio: changes.precio_sucursal ?? product.precio_global,
-            stock: changes.stock_sucursal ?? product.stock_global,
-            stock_minimo: changes.stock_minimo_sucursal ?? 10
+            precio: changes.precio ?? product.precio_global,
+            margen: changes.margen,
+            stock: changes.stock ?? product.stock_global,
+            stock_minimo: 10
           });
         }
         successCount++;
@@ -247,6 +322,8 @@ const BranchManagement = () => {
   );
 
   const hasPendingChanges = Object.keys(pendingChanges).length > 0;
+  const allFilteredSelected = filteredProducts.length > 0 && filteredProducts.every(p => selectedRows.has(p.product_id));
+  const someFilteredSelected = filteredProducts.some(p => selectedRows.has(p.product_id));
 
   if (loading) {
     return (
@@ -290,6 +367,28 @@ const BranchManagement = () => {
                   )}
                 </button>
               </>
+            )}
+            {/* Bulk actions - visible when rows are selected */}
+            {selectedRows.size > 0 && (
+              <div className="flex items-center gap-2 border-r border-gray-200 pr-3">
+                <span className="text-sm text-blue-600 font-medium">
+                  {selectedRows.size} seleccionado(s)
+                </span>
+                <button
+                  onClick={() => { setBulkMargenTipo('establecer'); setBulkMargenValor(''); setShowBulkMargenModal(true); }}
+                  className="btn btn-secondary btn-sm"
+                >
+                  <Percent className="w-4 h-4" />
+                  Margen
+                </button>
+                <button
+                  onClick={() => setSelectedRows(new Set())}
+                  className="text-gray-400 hover:text-gray-600"
+                  title="Deseleccionar todo"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             )}
             {/* Export branch products */}
             <div className="relative" onClick={(e) => e.stopPropagation()}>
@@ -345,9 +444,19 @@ const BranchManagement = () => {
             <table className="table">
               <thead>
                 <tr>
+                  <th className="w-10">
+                    <input
+                      type="checkbox"
+                      className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                      checked={allFilteredSelected}
+                      ref={el => { if (el) el.indeterminate = someFilteredSelected && !allFilteredSelected; }}
+                      onChange={toggleSelectAll}
+                    />
+                  </th>
                   <th>Producto</th>
                   <th>Categoría</th>
                   <th className="text-center">Precio Global</th>
+                  <th className="text-center">Margen %</th>
                   <th className="text-center">Precio Sucursal</th>
                   <th className="text-center">Stock Sucursal</th>
                   <th className="text-center">Activo</th>
@@ -362,10 +471,20 @@ const BranchManagement = () => {
                   const currentStock = changes.stock !== undefined
                     ? changes.stock
                     : (product.stock_sucursal ?? product.stock_global);
+                  const currentMargen = getProductCurrentMargen(product, changes);
                   const hasChange = pendingChanges[product.product_id] !== undefined;
+                  const isSelected = selectedRows.has(product.product_id);
 
                   return (
-                    <tr key={product.product_id} className={hasChange ? 'bg-amber-50' : ''}>
+                    <tr key={product.product_id} className={hasChange ? 'bg-amber-50' : isSelected ? 'bg-blue-50' : ''}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                          checked={isSelected}
+                          onChange={() => toggleSelectRow(product.product_id)}
+                        />
+                      </td>
                       <td>
                         <div className="font-medium text-gray-900">{product.nombre}</div>
                         {product.codigo_barras && (
@@ -384,13 +503,43 @@ const BranchManagement = () => {
                         <span className="text-gray-500">${product.precio_global?.toFixed(2)}</span>
                       </td>
                       <td className="text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <input
+                            type="number"
+                            step="0.01"
+                            className={`w-20 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.margen !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200'}`}
+                            value={currentMargen}
+                            onChange={(e) => {
+                              const margen = parseFloat(e.target.value) || 0;
+                              const newPrecio = product.precio_global > 0
+                                ? parseFloat((product.precio_global * (1 + margen / 100)).toFixed(2))
+                                : product.precio_global;
+                              setPendingChanges(prev => ({
+                                ...prev,
+                                [product.product_id]: { ...prev[product.product_id], margen, precio: newPrecio }
+                              }));
+                            }}
+                          />
+                          <span className="text-sm text-gray-500">%</span>
+                        </div>
+                      </td>
+                      <td className="text-center">
                         <input
                           type="number"
                           step="0.01"
                           min="0"
                           className={`w-28 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.precio !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200'}`}
                           value={currentPrice}
-                          onChange={(e) => handleProductFieldChange(product.product_id, 'precio', parseFloat(e.target.value) || 0)}
+                          onChange={(e) => {
+                            const precio = parseFloat(e.target.value) || 0;
+                            const impliedMargen = product.precio_global > 0
+                              ? parseFloat(((precio / product.precio_global - 1) * 100).toFixed(2))
+                              : 0;
+                            setPendingChanges(prev => ({
+                              ...prev,
+                              [product.product_id]: { ...prev[product.product_id], precio, margen: impliedMargen }
+                            }));
+                          }}
                           placeholder={product.precio_global?.toFixed(2)}
                         />
                         {product.tipo === 'por_peso' && (
@@ -440,6 +589,99 @@ const BranchManagement = () => {
                 <p>No se encontraron productos</p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Bulk Margen Modal */}
+        {showBulkMargenModal && (
+          <div className="modal-overlay">
+            <div className="modal-content max-w-md">
+              <div className="modal-header">
+                <h3 className="modal-title flex items-center gap-2">
+                  <Percent className="w-5 h-5 text-green-600" />
+                  Cambio masivo de Margen
+                </h3>
+                <button onClick={() => setShowBulkMargenModal(false)} className="modal-close">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                Aplicar a <strong>{selectedRows.size} producto(s)</strong> seleccionado(s)
+              </div>
+
+              <div className="space-y-4">
+                <div className="form-group">
+                  <label className="form-label">Tipo de cambio</label>
+                  <div className="flex gap-2 mt-1">
+                    {[
+                      { value: 'establecer', label: 'Establecer' },
+                      { value: 'incrementar', label: 'Incrementar' },
+                      { value: 'decrementar', label: 'Decrementar' },
+                    ].map(opt => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setBulkMargenTipo(opt.value)}
+                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-colors ${
+                          bulkMargenTipo === opt.value
+                            ? 'bg-green-600 text-white border-green-600'
+                            : 'bg-white text-gray-600 border-gray-200 hover:border-green-300'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">
+                    {bulkMargenTipo === 'establecer' ? 'Nuevo margen' : bulkMargenTipo === 'incrementar' ? 'Incremento' : 'Decremento'}
+                  </label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="form-input w-32 text-center"
+                      value={bulkMargenValor}
+                      onChange={(e) => setBulkMargenValor(e.target.value)}
+                      placeholder="0.00"
+                      autoFocus
+                    />
+                    <span className="text-gray-500 font-medium">%</span>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600">
+                  {bulkMargenTipo === 'establecer' && (
+                    <span>El margen se establecerá en <strong>{bulkMargenValor || '0'}%</strong> para todos los seleccionados. El precio sucursal se recalculará como <em>precio_global × (1 + margen/100)</em>.</span>
+                  )}
+                  {bulkMargenTipo === 'incrementar' && (
+                    <span>Al margen actual de cada producto se le sumará <strong>{bulkMargenValor || '0'}%</strong>. El precio sucursal se actualizará automáticamente.</span>
+                  )}
+                  {bulkMargenTipo === 'decrementar' && (
+                    <span>Al margen actual de cada producto se le restará <strong>{bulkMargenValor || '0'}%</strong>. El precio sucursal se actualizará automáticamente.</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 mt-6">
+                <button type="button" onClick={() => setShowBulkMargenModal(false)} className="btn btn-secondary">
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={applyBulkMargen}
+                  disabled={bulkMargenValor === ''}
+                  className="btn btn-primary disabled:opacity-50"
+                >
+                  <Percent className="w-4 h-4" />
+                  Aplicar
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
