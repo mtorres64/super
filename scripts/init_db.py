@@ -70,6 +70,13 @@ async def create_indexes(db):
     # configuration
     await db.configuration.create_index("empresa_id", unique=True)
 
+    # suscripciones
+    await db.suscripciones.create_index("empresa_id", unique=True)
+
+    # pagos_suscripcion
+    await db.pagos_suscripcion.create_index([("empresa_id", 1), ("fecha", -1)])
+    await db.pagos_suscripcion.create_index("mp_payment_id", sparse=True)
+
     print("✅ Indexes created successfully")
 
 
@@ -78,7 +85,7 @@ async def reset_database(db):
     collections = [
         "empresas", "users", "categories", "products", "branches",
         "branch_products", "sales", "cash_sessions",
-        "cash_movements", "configuration",
+        "cash_movements", "configuration", "suscripciones", "pagos_suscripcion",
     ]
     for col in collections:
         await db[col].delete_many({})

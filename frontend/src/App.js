@@ -17,6 +17,8 @@ import CashReport from './components/CashReport';
 import Sidebar from './components/Sidebar';
 import BranchManagement from './components/BranchManagement';
 import Compras from './components/Compras';
+import Cuenta from './components/Cuenta';
+import Landing from './components/Landing';
 import { Toaster } from './components/ui/sonner';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -137,8 +139,9 @@ function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/" element={<Landing />} />
             <Route
-              path="/"
+              path="/dashboard"
               element={
                 <ProtectedRoute>
                   <Dashboard />
@@ -214,6 +217,14 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['admin', 'cajero', 'supervisor']}>
                   <CashReport />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/cuenta"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <Cuenta />
                 </ProtectedRoute>
               }
             />

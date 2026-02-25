@@ -1,12 +1,14 @@
 import React, { useState, useContext } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { AuthContext, API } from '../App';
 import { toast } from 'sonner';
 import { Store, User, Lock, Building2, LogIn, UserPlus } from 'lucide-react';
 
 const Login = () => {
-  const [mode, setMode] = useState('login'); // 'login' | 'register'
+  const location = useLocation();
+  const initialMode = location.state?.mode === 'register' ? 'register' : 'login';
+  const [mode, setMode] = useState(initialMode); // 'login' | 'register'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [empresaNombre, setEmpresaNombre] = useState('');
@@ -15,7 +17,7 @@ const Login = () => {
   const { user, login } = useContext(AuthContext);
 
   if (user) {
-    return <Navigate to="/" />;
+    return <Navigate to="/dashboard" />;
   }
 
   const handleLogin = async (e) => {

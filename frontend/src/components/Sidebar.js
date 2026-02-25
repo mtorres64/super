@@ -14,6 +14,7 @@ import {
   LogOut,
   Building2,
   ShoppingBag,
+  Wallet,
   X
 } from 'lucide-react';
 
@@ -50,11 +51,11 @@ const Sidebar = ({ isOpen, onClose }) => {
   };
 
   const menuItems = [
-    { 
-      path: '/', 
-      label: 'Dashboard', 
-      icon: LayoutDashboard, 
-      roles: ['admin', 'supervisor', 'cajero'] 
+    {
+      path: '/dashboard',
+      label: 'Dashboard',
+      icon: LayoutDashboard,
+      roles: ['admin', 'supervisor', 'cajero']
     },
     { 
       path: '/cash', 
@@ -98,11 +99,17 @@ const Sidebar = ({ isOpen, onClose }) => {
       icon: Users, 
       roles: ['admin'] 
     },
-    { 
-      path: '/settings', 
-      label: 'Configuración', 
-      icon: Settings, 
-      roles: ['admin'] 
+    {
+      path: '/settings',
+      label: 'Configuración',
+      icon: Settings,
+      roles: ['admin']
+    },
+    {
+      path: '/cuenta',
+      label: 'Cuenta',
+      icon: Wallet,
+      roles: ['admin']
     }
   ];
 
