@@ -13,6 +13,7 @@ import {
   CreditCard,
   LogOut,
   Building2,
+  ShoppingBag,
   X
 } from 'lucide-react';
 
@@ -79,11 +80,17 @@ const Sidebar = ({ isOpen, onClose }) => {
       icon: Building2,
       roles: ['admin']
     },
-    { 
-      path: '/sales', 
-      label: 'Reportes', 
-      icon: BarChart3, 
-      roles: ['admin', 'supervisor'] 
+    {
+      path: '/sales',
+      label: 'Reportes',
+      icon: BarChart3,
+      roles: ['admin', 'supervisor']
+    },
+    {
+      path: '/compras',
+      label: 'Compras',
+      icon: ShoppingBag,
+      roles: ['admin', 'supervisor']
     },
     { 
       path: '/users', 

@@ -330,6 +330,75 @@ class SaleCreate(BaseModel):
     items: List[SaleItem]
     metodo_pago: PaymentMethod
 
+# --- Proveedor models ---
+class Proveedor(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    empresa_id: str
+    nombre: str
+    ruc_cuit: Optional[str] = None
+    email: Optional[str] = None
+    telefono: Optional[str] = None
+    direccion: Optional[str] = None
+    activo: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class ProveedorCreate(BaseModel):
+    nombre: str
+    ruc_cuit: Optional[str] = None
+    email: Optional[str] = None
+    telefono: Optional[str] = None
+    direccion: Optional[str] = None
+
+class ProveedorUpdate(BaseModel):
+    nombre: Optional[str] = None
+    ruc_cuit: Optional[str] = None
+    email: Optional[str] = None
+    telefono: Optional[str] = None
+    direccion: Optional[str] = None
+    activo: Optional[bool] = None
+
+# --- Compra models ---
+class CompraItem(BaseModel):
+    descripcion: str
+    cantidad: float
+    precio_unitario: float
+    subtotal: float
+
+class Compra(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    empresa_id: str
+    proveedor_id: Optional[str] = None
+    proveedor_nombre: Optional[str] = None
+    numero_factura: str
+    fecha: datetime
+    items: List[CompraItem] = []
+    subtotal: float
+    impuestos: float = 0.0
+    total: float
+    notas: Optional[str] = None
+    registrado_por: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class CompraCreate(BaseModel):
+    proveedor_id: Optional[str] = None
+    numero_factura: str
+    fecha: datetime
+    items: List[CompraItem] = []
+    subtotal: float
+    impuestos: float = 0.0
+    total: float
+    notas: Optional[str] = None
+
+class CompraUpdate(BaseModel):
+    proveedor_id: Optional[str] = None
+    numero_factura: Optional[str] = None
+    fecha: Optional[datetime] = None
+    items: Optional[List[CompraItem]] = None
+    subtotal: Optional[float] = None
+    impuestos: Optional[float] = None
+    total: Optional[float] = None
+    notas: Optional[str] = None
+
 # Utility functions
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -1284,6 +1353,129 @@ async def get_dashboard_stats(user: User = Depends(require_role([UserRole.ADMIN,
         },
         "productos_bajo_stock": [Product(**prod) for prod in productos_bajo_stock]
     }
+
+# Proveedores routes
+@api_router.post("/proveedores", response_model=Proveedor)
+async def create_proveedor(
+    proveedor_data: ProveedorCreate,
+    user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR]))
+):
+    proveedor = Proveedor(**proveedor_data.dict(), empresa_id=user.empresa_id)
+    await db.proveedores.insert_one(proveedor.dict())
+    return proveedor
+
+@api_router.get("/proveedores", response_model=List[Proveedor])
+async def get_proveedores(
+    user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR]))
+):
+    proveedores = await db.proveedores.find(
+        {"empresa_id": user.empresa_id}
+    ).sort("nombre", 1).to_list(1000)
+    return [Proveedor(**p) for p in proveedores]
+
+@api_router.put("/proveedores/{proveedor_id}", response_model=Proveedor)
+async def update_proveedor(
+    proveedor_id: str,
+    proveedor_data: ProveedorUpdate,
+    user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR]))
+):
+    proveedor = await db.proveedores.find_one({"id": proveedor_id, "empresa_id": user.empresa_id})
+    if not proveedor:
+        raise HTTPException(status_code=404, detail="Proveedor not found")
+    update_data = {k: v for k, v in proveedor_data.dict().items() if v is not None}
+    if update_data:
+        await db.proveedores.update_one({"id": proveedor_id}, {"$set": update_data})
+    updated = await db.proveedores.find_one({"id": proveedor_id})
+    return Proveedor(**updated)
+
+@api_router.delete("/proveedores/{proveedor_id}")
+async def delete_proveedor(
+    proveedor_id: str,
+    user: User = Depends(require_role([UserRole.ADMIN]))
+):
+    proveedor = await db.proveedores.find_one({"id": proveedor_id, "empresa_id": user.empresa_id})
+    if not proveedor:
+        raise HTTPException(status_code=404, detail="Proveedor not found")
+    await db.proveedores.update_one({"id": proveedor_id}, {"$set": {"activo": False}})
+    return {"message": "Proveedor deactivated"}
+
+# Compras routes
+@api_router.post("/compras", response_model=Compra)
+async def create_compra(
+    compra_data: CompraCreate,
+    user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR]))
+):
+    proveedor_nombre = None
+    if compra_data.proveedor_id:
+        prov = await db.proveedores.find_one({"id": compra_data.proveedor_id, "empresa_id": user.empresa_id})
+        if prov:
+            proveedor_nombre = prov["nombre"]
+    compra = Compra(
+        **compra_data.dict(),
+        empresa_id=user.empresa_id,
+        proveedor_nombre=proveedor_nombre,
+        registrado_por=user.id
+    )
+    await db.compras.insert_one(compra.dict())
+    return compra
+
+@api_router.get("/compras", response_model=List[Compra])
+async def get_compras(
+    proveedor_id: Optional[str] = None,
+    fecha_desde: Optional[datetime] = None,
+    fecha_hasta: Optional[datetime] = None,
+    user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR]))
+):
+    query = {"empresa_id": user.empresa_id}
+    if proveedor_id:
+        query["proveedor_id"] = proveedor_id
+    if fecha_desde or fecha_hasta:
+        query["fecha"] = {}
+        if fecha_desde:
+            query["fecha"]["$gte"] = fecha_desde
+        if fecha_hasta:
+            query["fecha"]["$lte"] = fecha_hasta
+    compras = await db.compras.find(query).sort("fecha", -1).to_list(1000)
+    return [Compra(**c) for c in compras]
+
+@api_router.get("/compras/{compra_id}", response_model=Compra)
+async def get_compra(
+    compra_id: str,
+    user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR]))
+):
+    compra = await db.compras.find_one({"id": compra_id, "empresa_id": user.empresa_id})
+    if not compra:
+        raise HTTPException(status_code=404, detail="Compra not found")
+    return Compra(**compra)
+
+@api_router.put("/compras/{compra_id}", response_model=Compra)
+async def update_compra(
+    compra_id: str,
+    compra_data: CompraUpdate,
+    user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR]))
+):
+    compra = await db.compras.find_one({"id": compra_id, "empresa_id": user.empresa_id})
+    if not compra:
+        raise HTTPException(status_code=404, detail="Compra not found")
+    update_data = {k: v for k, v in compra_data.dict().items() if v is not None}
+    if "proveedor_id" in update_data:
+        prov = await db.proveedores.find_one({"id": update_data["proveedor_id"], "empresa_id": user.empresa_id})
+        update_data["proveedor_nombre"] = prov["nombre"] if prov else None
+    if update_data:
+        await db.compras.update_one({"id": compra_id}, {"$set": update_data})
+    updated = await db.compras.find_one({"id": compra_id})
+    return Compra(**updated)
+
+@api_router.delete("/compras/{compra_id}")
+async def delete_compra(
+    compra_id: str,
+    user: User = Depends(require_role([UserRole.ADMIN]))
+):
+    compra = await db.compras.find_one({"id": compra_id, "empresa_id": user.empresa_id})
+    if not compra:
+        raise HTTPException(status_code=404, detail="Compra not found")
+    await db.compras.delete_one({"id": compra_id})
+    return {"message": "Compra deleted"}
 
 # Include the router in the main app
 app.include_router(api_router)

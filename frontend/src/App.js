@@ -16,6 +16,7 @@ import CashManager from './components/CashManager';
 import CashReport from './components/CashReport';
 import Sidebar from './components/Sidebar';
 import BranchManagement from './components/BranchManagement';
+import Compras from './components/Compras';
 import { Toaster } from './components/ui/sonner';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -197,6 +198,14 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['admin', 'cajero', 'supervisor']}>
                   <CashManager />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/compras"
+              element={
+                <ProtectedRoute allowedRoles={['admin', 'supervisor']}>
+                  <Compras />
                 </ProtectedRoute>
               }
             />
