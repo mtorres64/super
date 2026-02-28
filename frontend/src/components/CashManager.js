@@ -161,39 +161,39 @@ const CashManager = () => {
 
             {/* Session Summary */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-              <div className="bg-white p-4 rounded-lg shadow">
-                <div className="flex items-center">
-                  <DollarSign className="w-6 h-6 text-green-600 mr-3" />
-                  <div>
-                    <p className="text-sm text-gray-600">Ventas del día</p>
-                    <p className="text-xl font-bold text-green-600">
-                      ${currentSession.monto_ventas.toFixed(2)}
-                    </p>
+              <div className="stat-card">
+                <div className="stat-header">
+                  <div className="stat-title">Ventas del día</div>
+                  <div className="stat-icon">
+                    <DollarSign className="w-6 h-6" />
                   </div>
+                </div>
+                <div className="stat-value">
+                  ${currentSession.monto_ventas.toFixed(2)}
                 </div>
               </div>
 
-              <div className="bg-white p-4 rounded-lg shadow">
-                <div className="flex items-center">
-                  <Calculator className="w-6 h-6 text-blue-600 mr-3" />
-                  <div>
-                    <p className="text-sm text-gray-600">Total esperado</p>
-                    <p className="text-xl font-bold text-blue-600">
-                      ${(currentSession.monto_inicial + currentSession.monto_ventas - currentSession.monto_retiros).toFixed(2)}
-                    </p>
+              <div className="stat-card">
+                <div className="stat-header">
+                  <div className="stat-title">Total esperado</div>
+                  <div className="stat-icon">
+                    <Calculator className="w-6 h-6" />
                   </div>
+                </div>
+                <div className="stat-value">
+                  ${(currentSession.monto_inicial + currentSession.monto_ventas - currentSession.monto_retiros).toFixed(2)}
                 </div>
               </div>
 
-              <div className="bg-white p-4 rounded-lg shadow">
-                <div className="flex items-center">
-                  <Clock className="w-6 h-6 text-purple-600 mr-3" />
-                  <div>
-                    <p className="text-sm text-gray-600">Tiempo abierta</p>
-                    <p className="text-xl font-bold text-purple-600">
-                      {Math.floor((new Date() - new Date(currentSession.fecha_apertura)) / (1000 * 60 * 60))}h
-                    </p>
+              <div className="stat-card">
+                <div className="stat-header">
+                  <div className="stat-title">Tiempo abierta</div>
+                  <div className="stat-icon">
+                    <Clock className="w-6 h-6" />
                   </div>
+                </div>
+                <div className="stat-value">
+                  {Math.floor((new Date() - new Date(currentSession.fecha_apertura)) / (1000 * 60 * 60))}h
                 </div>
               </div>
             </div>

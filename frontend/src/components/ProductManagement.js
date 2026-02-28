@@ -340,7 +340,7 @@ const ProductManagement = () => {
       )}
 
       {/* Search Bar */}
-      <div className="mb-6">
+      <div className="bg-white rounded-lg shadow p-4 mb-6">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input

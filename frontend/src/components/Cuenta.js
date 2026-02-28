@@ -120,20 +120,20 @@ const Cuenta = () => {
   );
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-6">
       {/* Encabezado */}
-      <div className="flex items-center gap-3 mb-6">
-        <Wallet className="w-7 h-7 text-primary" />
+      <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Mi Cuenta</h1>
-          <p className="text-sm text-gray-500">Gestión de suscripción y pagos</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Mi Cuenta</h1>
+          <p className="text-gray-600">Gestión de suscripción y pagos</p>
         </div>
         <button
           onClick={() => { fetchStatus(); fetchPagos(); }}
-          className="ml-auto btn btn-secondary btn-sm"
+          className="btn btn-secondary"
           title="Actualizar"
         >
           <RefreshCw className="w-4 h-4" />
+          Actualizar
         </button>
       </div>
 

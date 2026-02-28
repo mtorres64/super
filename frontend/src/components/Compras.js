@@ -460,49 +460,53 @@ const Compras = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b border-gray-200">
-        <button
-          onClick={() => setActiveTab('facturas')}
-          className={`px-5 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-            activeTab === 'facturas'
-              ? 'bg-white border border-b-white border-gray-200 text-green-700 -mb-px'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <FileText className="w-4 h-4 inline mr-1" />
-          Facturas
-        </button>
-        <button
-          onClick={() => setActiveTab('proveedores')}
-          className={`px-5 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-            activeTab === 'proveedores'
-              ? 'bg-white border border-b-white border-gray-200 text-green-700 -mb-px'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <Building2 className="w-4 h-4 inline mr-1" />
-          Proveedores
-        </button>
+      <div className="bg-white border-b border-gray-200 px-0 mb-6 rounded-t-lg">
+        <div className="flex gap-0">
+          <button
+            onClick={() => setActiveTab('facturas')}
+            className={`flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'facturas'
+                ? 'border-green-500 text-green-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            Facturas
+          </button>
+          <button
+            onClick={() => setActiveTab('proveedores')}
+            className={`flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'proveedores'
+                ? 'border-green-500 text-green-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <Building2 className="w-4 h-4" />
+            Proveedores
+          </button>
+        </div>
       </div>
 
       {/* ── TAB: FACTURAS ── */}
       {activeTab === 'facturas' && (
         <>
-          <div className="flex justify-between items-center mb-4 gap-3 flex-wrap">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar por N° factura o proveedor..."
-                className="form-input pl-10"
-                value={searchCompra}
-                onChange={e => setSearchCompra(e.target.value)}
-              />
+          <div className="bg-white rounded-lg shadow p-4 mb-6">
+            <div className="flex justify-between items-center gap-3 flex-wrap">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar por N° factura o proveedor..."
+                  className="form-input pl-10"
+                  value={searchCompra}
+                  onChange={e => setSearchCompra(e.target.value)}
+                />
+              </div>
+              <button onClick={() => openCompraModal()} className="btn btn-primary">
+                <Plus className="w-4 h-4" />
+                Nueva Factura
+              </button>
             </div>
-            <button onClick={() => openCompraModal()} className="btn btn-primary">
-              <Plus className="w-4 h-4" />
-              Nueva Factura
-            </button>
           </div>
 
           {loadingCompras ? (
@@ -573,21 +577,23 @@ const Compras = () => {
       {/* ── TAB: PROVEEDORES ── */}
       {activeTab === 'proveedores' && (
         <>
-          <div className="flex justify-between items-center mb-4 gap-3 flex-wrap">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar proveedor o RUC/CUIT..."
-                className="form-input pl-10"
-                value={searchProveedor}
-                onChange={e => setSearchProveedor(e.target.value)}
-              />
+          <div className="bg-white rounded-lg shadow p-4 mb-6">
+            <div className="flex justify-between items-center gap-3 flex-wrap">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar proveedor o RUC/CUIT..."
+                  className="form-input pl-10"
+                  value={searchProveedor}
+                  onChange={e => setSearchProveedor(e.target.value)}
+                />
+              </div>
+              <button onClick={() => openProveedorModal()} className="btn btn-primary">
+                <Plus className="w-4 h-4" />
+                Nuevo Proveedor
+              </button>
             </div>
-            <button onClick={() => openProveedorModal()} className="btn btn-primary">
-              <Plus className="w-4 h-4" />
-              Nuevo Proveedor
-            </button>
           </div>
 
           {loadingProveedores ? (
