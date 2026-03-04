@@ -20,6 +20,7 @@ import base64
 import pandas as pd
 import mercadopago
 import httpx
+from afip import AfipService, encrypt_private_key, decrypt_private_key, extract_p12
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -411,10 +412,50 @@ class Sale(BaseModel):
     fecha: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     numero_factura: str
     estado: str = "activo"
+    # Campos AFIP/ARCA
+    cae: Optional[str] = None
+    cae_vencimiento: Optional[str] = None       # formato "AAAAMMDD"
+    afip_estado: str = "no_configurado"          # no_configurado | autorizado | contingencia | error
+    afip_error: Optional[str] = None
+    tipo_comprobante: int = 6                    # 1=Factura A, 6=Factura B, 11=Factura C
+    nro_comprobante_afip: Optional[int] = None
+    cuit_receptor: Optional[str] = None
 
 class SaleCreate(BaseModel):
     items: List[SaleItem]
     metodo_pago: PaymentMethod
+    tipo_comprobante: Optional[int] = None      # si None → usa default de AfipConfig
+    cuit_receptor: Optional[str] = None         # requerido si tipo_comprobante = 1
+
+# ─── Modelos AFIP/ARCA ────────────────────────────────────────────────────────
+
+class AfipConfig(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    empresa_id: str
+    cuit: str
+    punto_venta: int = 1
+    ambiente: str = "homologacion"              # "homologacion" | "produccion"
+    tipo_comprobante_default: int = 6           # 1=A, 6=B, 11=C
+    razon_social: str = ""
+    cert_pem: Optional[str] = None              # Certificado X.509 en PEM codificado en base64
+    key_pem_encrypted: Optional[str] = None     # Private key cifrada con Fernet
+    activo: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class AfipConfigCreate(BaseModel):
+    cuit: str
+    punto_venta: int = 1
+    ambiente: str = "homologacion"
+    tipo_comprobante_default: int = 6
+    razon_social: Optional[str] = ""
+
+class AfipConfigUpdate(BaseModel):
+    cuit: Optional[str] = None
+    punto_venta: Optional[int] = None
+    ambiente: Optional[str] = None
+    tipo_comprobante_default: Optional[int] = None
+    razon_social: Optional[str] = None
 
 class ReturnItemCreate(BaseModel):
     producto_id: str
@@ -1400,6 +1441,38 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
         venta_id=sale.id
     )
     await db.cash_movements.insert_one(movement.dict())
+
+    # ── Solicitar CAE a ARCA/AFIP (modo contingencia si falla) ────────────────
+    afip_cfg = await db.afip_config.find_one({"empresa_id": user.empresa_id, "activo": True})
+    if afip_cfg and afip_cfg.get("cert_pem") and afip_cfg.get("key_pem_encrypted"):
+        try:
+            tipo_cbte = sale_data.tipo_comprobante or afip_cfg.get("tipo_comprobante_default", 6)
+            token, sign = await _afip_service.get_token_sign(afip_cfg, db, SECRET_KEY)
+            cae_result = await _afip_service.solicitar_cae(
+                sale.dict(), afip_cfg, token, sign, tipo_cbte,
+                cuit_receptor=sale_data.cuit_receptor
+            )
+            afip_update = {
+                "cae": cae_result["cae"],
+                "cae_vencimiento": cae_result["cae_vencimiento"],
+                "afip_estado": "autorizado",
+                "tipo_comprobante": tipo_cbte,
+                "nro_comprobante_afip": cae_result["nro_comprobante"],
+            }
+            await db.sales.update_one({"id": sale.id}, {"$set": afip_update})
+            sale.cae = cae_result["cae"]
+            sale.cae_vencimiento = cae_result["cae_vencimiento"]
+            sale.afip_estado = "autorizado"
+            sale.tipo_comprobante = tipo_cbte
+            sale.nro_comprobante_afip = cae_result["nro_comprobante"]
+        except Exception as afip_err:
+            logger.warning(f"AFIP contingencia para venta {sale.id}: {afip_err}")
+            await db.sales.update_one(
+                {"id": sale.id},
+                {"$set": {"afip_estado": "contingencia", "afip_error": str(afip_err)}}
+            )
+            sale.afip_estado = "contingencia"
+            sale.afip_error = str(afip_err)
 
     return sale
 
@@ -2394,9 +2467,154 @@ async def owner_update_config(data: OwnerConfigUpdate, _=Depends(verify_owner_to
         )
     return {"ok": True}
 
+# ─── Router AFIP/ARCA ─────────────────────────────────────────────────────────
+
+afip_router = APIRouter(prefix="/api/afip")
+_afip_service = AfipService()
+
+@afip_router.get("/config")
+async def get_afip_config(user: User = Depends(require_role([UserRole.ADMIN]))):
+    """Retorna la configuración AFIP de la empresa (sin exponer la clave privada)."""
+    cfg = await db.afip_config.find_one({"empresa_id": user.empresa_id, "activo": True})
+    if not cfg:
+        return {"configurado": False}
+    return {
+        "configurado": True,
+        "cuit": cfg.get("cuit"),
+        "punto_venta": cfg.get("punto_venta"),
+        "ambiente": cfg.get("ambiente"),
+        "tipo_comprobante_default": cfg.get("tipo_comprobante_default"),
+        "razon_social": cfg.get("razon_social"),
+        "tiene_certificado": bool(cfg.get("cert_pem")),
+        "tiene_clave": bool(cfg.get("key_pem_encrypted")),
+    }
+
+@afip_router.post("/config")
+async def save_afip_config(data: AfipConfigCreate, user: User = Depends(require_role([UserRole.ADMIN]))):
+    """Crea o actualiza la configuración AFIP (sin tocar cert/key)."""
+    now = datetime.now(timezone.utc)
+    existing = await db.afip_config.find_one({"empresa_id": user.empresa_id})
+    if existing:
+        await db.afip_config.update_one(
+            {"empresa_id": user.empresa_id},
+            {"$set": {
+                "cuit": data.cuit,
+                "punto_venta": data.punto_venta,
+                "ambiente": data.ambiente,
+                "tipo_comprobante_default": data.tipo_comprobante_default,
+                "razon_social": data.razon_social or "",
+                "activo": True,
+                "updated_at": now,
+            }}
+        )
+    else:
+        cfg = AfipConfig(**data.dict(), empresa_id=user.empresa_id)
+        await db.afip_config.insert_one(cfg.dict())
+    return {"ok": True, "mensaje": "Configuración AFIP guardada"}
+
+@afip_router.post("/config/upload-cert")
+async def upload_afip_cert(
+    cert_file: Optional[UploadFile] = File(None),
+    key_file: Optional[UploadFile] = File(None),
+    p12_file: Optional[UploadFile] = File(None),
+    p12_password: Optional[str] = None,
+    user: User = Depends(require_role([UserRole.ADMIN]))
+):
+    """
+    Sube el certificado y/o clave privada de AFIP.
+    Acepta:
+      - p12_file: archivo .p12 (extrae cert + key automáticamente)
+      - cert_file + key_file: archivos .pem separados
+    """
+    cfg = await db.afip_config.find_one({"empresa_id": user.empresa_id})
+    if not cfg:
+        raise HTTPException(status_code=400, detail="Primero configure los datos básicos de AFIP (CUIT, punto de venta).")
+
+    update = {"updated_at": datetime.now(timezone.utc)}
+
+    if p12_file:
+        p12_bytes = await p12_file.read()
+        pwd = p12_password.encode() if p12_password else None
+        try:
+            cert_pem, key_pem = extract_p12(p12_bytes, pwd)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error al leer el archivo .p12: {e}")
+        update["cert_pem"] = base64.b64encode(cert_pem).decode()
+        update["key_pem_encrypted"] = encrypt_private_key(key_pem, SECRET_KEY)
+
+    if cert_file:
+        cert_bytes = await cert_file.read()
+        update["cert_pem"] = base64.b64encode(cert_bytes).decode()
+
+    if key_file:
+        key_bytes = await key_file.read()
+        update["key_pem_encrypted"] = encrypt_private_key(key_bytes, SECRET_KEY)
+
+    await db.afip_config.update_one({"empresa_id": user.empresa_id}, {"$set": update})
+    return {"ok": True, "mensaje": "Certificado cargado correctamente"}
+
+@afip_router.post("/test")
+async def test_afip_conexion(user: User = Depends(require_role([UserRole.ADMIN]))):
+    """Llama FEDummy para verificar conectividad con los servidores de ARCA."""
+    cfg = await db.afip_config.find_one({"empresa_id": user.empresa_id, "activo": True})
+    if not cfg:
+        raise HTTPException(status_code=400, detail="AFIP no está configurado para esta empresa.")
+    result = await _afip_service.test_conexion(cfg, SECRET_KEY, db)
+    if not result["ok"]:
+        raise HTTPException(status_code=503, detail=f"Error de conexión con ARCA: {result.get('error')}")
+    return result
+
+@afip_router.post("/reintentar/{sale_id}")
+async def reintentar_cae(sale_id: str, user: User = Depends(require_role([UserRole.ADMIN]))):
+    """Reintenta obtener el CAE para una venta en estado contingencia o error."""
+    sale_doc = await db.sales.find_one({"id": sale_id, "empresa_id": user.empresa_id})
+    if not sale_doc:
+        raise HTTPException(status_code=404, detail="Venta no encontrada.")
+    if sale_doc.get("afip_estado") == "autorizado":
+        return {"ok": True, "mensaje": "La venta ya tiene CAE autorizado.", "cae": sale_doc.get("cae")}
+
+    cfg = await db.afip_config.find_one({"empresa_id": user.empresa_id, "activo": True})
+    if not cfg or not cfg.get("cert_pem") or not cfg.get("key_pem_encrypted"):
+        raise HTTPException(status_code=400, detail="AFIP no está configurado o falta el certificado.")
+
+    try:
+        token, sign = await _afip_service.get_token_sign(cfg, db, SECRET_KEY)
+        tipo_cbte = sale_doc.get("tipo_comprobante") or cfg.get("tipo_comprobante_default", 6)
+        result = await _afip_service.solicitar_cae(
+            sale_doc, cfg, token, sign, tipo_cbte,
+            cuit_receptor=sale_doc.get("cuit_receptor")
+        )
+        await db.sales.update_one(
+            {"id": sale_id},
+            {"$set": {
+                "cae": result["cae"],
+                "cae_vencimiento": result["cae_vencimiento"],
+                "afip_estado": "autorizado",
+                "afip_error": None,
+                "nro_comprobante_afip": result["nro_comprobante"],
+            }}
+        )
+        return {"ok": True, "cae": result["cae"], "cae_vencimiento": result["cae_vencimiento"]}
+    except Exception as e:
+        await db.sales.update_one(
+            {"id": sale_id},
+            {"$set": {"afip_estado": "error", "afip_error": str(e)}}
+        )
+        raise HTTPException(status_code=503, detail=f"Error al obtener CAE: {e}")
+
+@afip_router.get("/ventas-pendientes")
+async def get_ventas_pendientes(user: User = Depends(require_role([UserRole.ADMIN]))):
+    """Lista ventas con CAE pendiente (contingencia o error)."""
+    ventas = await db.sales.find({
+        "empresa_id": user.empresa_id,
+        "afip_estado": {"$in": ["contingencia", "error"]}
+    }).to_list(200)
+    return [Sale(**v) for v in ventas]
+
 # Include the router in the main app
 app.include_router(api_router)
 app.include_router(owner_router)
+app.include_router(afip_router)
 
 origins = os.environ.get("CORS_ORIGINS", "")
 allow_origins = [o.strip() for o in origins.split(",") if o.strip()]

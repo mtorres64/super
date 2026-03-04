@@ -39,6 +39,7 @@ const POS = () => {
   const [sessionLoading, setSessionLoading] = useState(true);
   const [mobileTab, setMobileTab] = useState('products');
   const [saleReceipt, setSaleReceipt] = useState(null);
+  const [afipConfig, setAfipConfig] = useState(null);
   const { user } = useContext(AuthContext);
   const barcodeInputRef = useRef(null);
   const lastKeyTime = useRef(0);
@@ -48,6 +49,7 @@ const POS = () => {
     fetchProducts();
     fetchCategories();
     fetchConfiguration();
+    fetchAfipConfig();
     fetchCurrentSession();
     
     // Focus barcode input on component mount
@@ -77,6 +79,17 @@ const POS = () => {
       console.error('Error loading configuration');
     }
   };
+
+  const fetchAfipConfig = async () => {
+    try {
+      const response = await axios.get(`${API}/afip/config`);
+      setAfipConfig(response.data);
+    } catch (error) {
+      // AFIP not configured — not critical
+    }
+  };
+
+  const TIPO_CBTE_NOMBRES = { 1: 'FACTURA A', 6: 'FACTURA B', 11: 'FACTURA C' };
 
   const fetchProducts = async () => {
     try {
@@ -727,10 +740,23 @@ const POS = () => {
 
               <div className="ticket-separator">{'- '.repeat(16)}</div>
 
-              <div className="ticket-info-row">
-                <span>Comprobante:</span>
-                <span>{saleReceipt.numero_factura}</span>
-              </div>
+              {/* Encabezado tipo comprobante */}
+              {saleReceipt.afip_estado === 'autorizado' && saleReceipt.tipo_comprobante ? (
+                <>
+                  <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '13px', letterSpacing: '1px', margin: '4px 0 2px' }}>
+                    {TIPO_CBTE_NOMBRES[saleReceipt.tipo_comprobante] || 'FACTURA'}
+                  </div>
+                  <div style={{ textAlign: 'center', fontSize: '11px', marginBottom: '2px' }}>
+                    Pto.Vta: {String(afipConfig?.punto_venta || 1).padStart(4, '0')} &nbsp;|&nbsp; N°: {String(saleReceipt.nro_comprobante_afip || 0).padStart(8, '0')}
+                  </div>
+                </>
+              ) : (
+                <div className="ticket-info-row">
+                  <span>Comprobante:</span>
+                  <span>{saleReceipt.numero_factura}</span>
+                </div>
+              )}
+
               <div className="ticket-info-row">
                 <span>Fecha:</span>
                 <span>{new Date(saleReceipt.fecha).toLocaleString('es-AR')}</span>
@@ -780,6 +806,32 @@ const POS = () => {
                 <span>TOTAL:</span>
                 <span>{config?.currency_symbol || '$'}{saleReceipt.total.toFixed(2)}</span>
               </div>
+
+              {/* CAE / AFIP */}
+              {saleReceipt.cae && (
+                <>
+                  <div className="ticket-separator">{'- '.repeat(16)}</div>
+                  <div className="ticket-info-row">
+                    <span>CAE:</span>
+                    <span style={{ fontSize: '10px', letterSpacing: '0.5px' }}>{saleReceipt.cae}</span>
+                  </div>
+                  <div className="ticket-info-row">
+                    <span>Venc. CAE:</span>
+                    <span>{saleReceipt.cae_vencimiento
+                      ? `${saleReceipt.cae_vencimiento.slice(0,4)}-${saleReceipt.cae_vencimiento.slice(4,6)}-${saleReceipt.cae_vencimiento.slice(6,8)}`
+                      : ''}</span>
+                  </div>
+                  <div className="ticket-info-row">
+                    <span>Comp. N°:</span>
+                    <span>{String(saleReceipt.nro_comprobante_afip || '').padStart(8, '0')}</span>
+                  </div>
+                </>
+              )}
+              {saleReceipt.afip_estado === 'contingencia' && (
+                <div style={{ textAlign: 'center', color: '#b45309', fontWeight: 'bold', fontSize: '10px', margin: '6px 0', border: '1px dashed #b45309', padding: '3px' }}>
+                  COMPROBANTE EN CONTINGENCIA
+                </div>
+              )}
 
               <div className="ticket-separator">{'- '.repeat(16)}</div>
               <div className="ticket-footer">

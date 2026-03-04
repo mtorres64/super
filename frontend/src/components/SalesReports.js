@@ -36,6 +36,7 @@ const SalesReports = () => {
   const [branches, setBranches] = useState([]);
   const [users, setUsers] = useState([]);
   const [config, setConfig] = useState(null);
+  const [afipConfig, setAfipConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [dateFilter, setDateFilter] = useState('today');
@@ -50,11 +51,13 @@ const SalesReports = () => {
   const [returnReason, setReturnReason] = useState('');
   const [submittingReturn, setSubmittingReturn] = useState(false);
   const [reprintSale, setReprintSale] = useState(null);
+  const [retryingAfip, setRetryingAfip] = useState(null); // sale_id being retried
 
   useEffect(() => {
     fetchSales();
     fetchBranches();
     fetchConfiguration();
+    fetchAfipConfig();
     if (canFilterByUser) fetchUsers();
   }, []);
 
@@ -86,6 +89,17 @@ const SalesReports = () => {
       console.error('Error loading configuration');
     }
   };
+
+  const fetchAfipConfig = async () => {
+    try {
+      const response = await axios.get(`${API}/afip/config`);
+      setAfipConfig(response.data);
+    } catch (error) {
+      // AFIP not configured — not critical
+    }
+  };
+
+  const TIPO_CBTE_NOMBRES = { 1: 'FACTURA A', 6: 'FACTURA B', 11: 'FACTURA C' };
 
   const fetchUsers = async () => {
     try {
@@ -205,6 +219,19 @@ const SalesReports = () => {
   const getPaymentMethodLabel = (method) => {
     const labels = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia' };
     return labels[method] || method;
+  };
+
+  const handleRetryAfip = async (saleId) => {
+    setRetryingAfip(saleId);
+    try {
+      const response = await axios.post(`${API}/afip/reintentar/${saleId}`);
+      toast.success(`CAE obtenido: ${response.data.cae}`);
+      fetchSales();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error al reintentar con AFIP');
+    } finally {
+      setRetryingAfip(null);
+    }
   };
 
   const openReturnModal = async (sale) => {
@@ -752,6 +779,7 @@ const SalesReports = () => {
                 <th>Total</th>
                 <th>Método de Pago</th>
                 <th>Estado</th>
+                <th>AFIP</th>
                 <th></th>
               </tr>
             </thead>
@@ -796,6 +824,25 @@ const SalesReports = () => {
                       <span className="px-2 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-800">Dev. parcial</span>
                     ) : (
                       <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Activa</span>
+                    )}
+                  </td>
+                  <td>
+                    {sale.afip_estado === 'autorizado' ? (
+                      <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800" title={`CAE: ${sale.cae}`}>CAE ✓</span>
+                    ) : sale.afip_estado === 'contingencia' || sale.afip_estado === 'error' ? (
+                      <div className="flex flex-col gap-1">
+                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">Contingencia</span>
+                        <button
+                          onClick={() => handleRetryAfip(sale.id)}
+                          disabled={retryingAfip === sale.id}
+                          className="btn btn-secondary btn-sm"
+                          style={{ fontSize: '10px', padding: '2px 6px' }}
+                        >
+                          {retryingAfip === sale.id ? '...' : 'Reintentar'}
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-500">N/A</span>
                     )}
                   </td>
                   <td>
@@ -865,10 +912,23 @@ const SalesReports = () => {
 
               <div className="ticket-separator">{'- '.repeat(16)}</div>
 
-              <div className="ticket-info-row">
-                <span>Comprobante:</span>
-                <span>{reprintSale.numero_factura}</span>
-              </div>
+              {/* Encabezado tipo comprobante */}
+              {reprintSale.afip_estado === 'autorizado' && reprintSale.tipo_comprobante ? (
+                <>
+                  <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '13px', letterSpacing: '1px', margin: '4px 0 2px' }}>
+                    {TIPO_CBTE_NOMBRES[reprintSale.tipo_comprobante] || 'FACTURA'}
+                  </div>
+                  <div style={{ textAlign: 'center', fontSize: '11px', marginBottom: '2px' }}>
+                    Pto.Vta: {String(afipConfig?.punto_venta || 1).padStart(4, '0')} &nbsp;|&nbsp; N°: {String(reprintSale.nro_comprobante_afip || 0).padStart(8, '0')}
+                  </div>
+                </>
+              ) : (
+                <div className="ticket-info-row">
+                  <span>Comprobante:</span>
+                  <span>{reprintSale.numero_factura}</span>
+                </div>
+              )}
+
               <div className="ticket-info-row">
                 <span>Fecha:</span>
                 <span>{new Date(reprintSale.fecha).toLocaleString('es-AR')}</span>
@@ -916,6 +976,32 @@ const SalesReports = () => {
                 <span>TOTAL:</span>
                 <span>{config?.currency_symbol || '$'}{reprintSale.total.toFixed(2)}</span>
               </div>
+
+              {/* CAE / AFIP */}
+              {reprintSale.cae && (
+                <>
+                  <div className="ticket-separator">{'- '.repeat(16)}</div>
+                  <div className="ticket-info-row">
+                    <span>CAE:</span>
+                    <span style={{ fontSize: '10px', letterSpacing: '0.5px' }}>{reprintSale.cae}</span>
+                  </div>
+                  <div className="ticket-info-row">
+                    <span>Venc. CAE:</span>
+                    <span>{reprintSale.cae_vencimiento
+                      ? `${reprintSale.cae_vencimiento.slice(0,4)}-${reprintSale.cae_vencimiento.slice(4,6)}-${reprintSale.cae_vencimiento.slice(6,8)}`
+                      : ''}</span>
+                  </div>
+                  <div className="ticket-info-row">
+                    <span>Comp. N°:</span>
+                    <span>{String(reprintSale.nro_comprobante_afip || '').padStart(8, '0')}</span>
+                  </div>
+                </>
+              )}
+              {reprintSale.afip_estado === 'contingencia' && (
+                <div style={{ textAlign: 'center', color: '#b45309', fontWeight: 'bold', fontSize: '10px', margin: '6px 0', border: '1px dashed #b45309', padding: '3px' }}>
+                  COMPROBANTE EN CONTINGENCIA
+                </div>
+              )}
 
               <div className="ticket-separator">{'- '.repeat(16)}</div>
               <div className="ticket-footer">

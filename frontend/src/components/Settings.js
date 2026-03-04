@@ -16,7 +16,11 @@ import {
   VolumeX,
   Grid3X3,
   Palette,
-  Check
+  Check,
+  FileText,
+  Upload,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 
 /* ─── Color theme presets ─── */
@@ -78,8 +82,20 @@ const Settings = () => {
   const [activeTab, setActiveTab] = useState('company');
   const [taxInput, setTaxInput] = useState('');
 
+  // Estado AFIP
+  const [afipConfig, setAfipConfig] = useState({ cuit: '', punto_venta: 1, ambiente: 'homologacion', tipo_comprobante_default: 6, razon_social: '' });
+  const [afipStatus, setAfipStatus] = useState(null); // { configurado, tiene_certificado, tiene_clave, ... }
+  const [afipSaving, setAfipSaving] = useState(false);
+  const [afipTesting, setAfipTesting] = useState(false);
+  const [afipTestResult, setAfipTestResult] = useState(null);
+  const [certFile, setCertFile] = useState(null);
+  const [keyFile, setKeyFile] = useState(null);
+  const [p12File, setP12File] = useState(null);
+  const [p12Password, setP12Password] = useState('');
+
   useEffect(() => {
     fetchConfiguration();
+    fetchAfipConfig();
   }, []);
 
   const fetchConfiguration = async () => {
@@ -142,6 +158,64 @@ const Settings = () => {
     return preset || buildCustomTheme(color || '#10b981');
   })();
 
+  // ── Funciones AFIP ──────────────────────────────────────────────────────────
+
+  const fetchAfipConfig = async () => {
+    try {
+      const res = await axios.get(`${API}/afip/config`);
+      setAfipStatus(res.data);
+      if (res.data.configurado) {
+        setAfipConfig({
+          cuit: res.data.cuit || '',
+          punto_venta: res.data.punto_venta || 1,
+          ambiente: res.data.ambiente || 'homologacion',
+          tipo_comprobante_default: res.data.tipo_comprobante_default || 6,
+          razon_social: res.data.razon_social || '',
+        });
+      }
+    } catch {
+      // No hay config AFIP todavía — es normal
+    }
+  };
+
+  const handleSaveAfip = async () => {
+    if (!afipConfig.cuit.trim()) { toast.error('Ingresá el CUIT del comercio'); return; }
+    setAfipSaving(true);
+    try {
+      await axios.post(`${API}/afip/config`, afipConfig);
+
+      // Si hay archivos de certificado, subirlos
+      if (p12File || certFile || keyFile) {
+        const formData = new FormData();
+        if (p12File) { formData.append('p12_file', p12File); if (p12Password) formData.append('p12_password', p12Password); }
+        if (certFile) formData.append('cert_file', certFile);
+        if (keyFile) formData.append('key_file', keyFile);
+        await axios.post(`${API}/afip/config/upload-cert`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      }
+
+      toast.success('Configuración AFIP guardada correctamente');
+      await fetchAfipConfig();
+      setCertFile(null); setKeyFile(null); setP12File(null); setP12Password('');
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al guardar configuración AFIP');
+    } finally {
+      setAfipSaving(false);
+    }
+  };
+
+  const handleTestAfip = async () => {
+    setAfipTesting(true);
+    setAfipTestResult(null);
+    try {
+      const res = await axios.post(`${API}/afip/test`);
+      setAfipTestResult({ ok: true, data: res.data });
+    } catch (err) {
+      setAfipTestResult({ ok: false, error: err.response?.data?.detail || 'Error de conexión' });
+    } finally {
+      setAfipTesting(false);
+    }
+  };
+
   const tabs = [
     { id: 'company', label: 'Empresa', icon: Building2 },
     { id: 'financial', label: 'Finanzas', icon: Calculator },
@@ -149,7 +223,8 @@ const Settings = () => {
     { id: 'inventory', label: 'Inventario', icon: Archive },
     { id: 'interface', label: 'Interfaz', icon: Grid3X3 },
     { id: 'system', label: 'Sistema', icon: Globe },
-    { id: 'receipt', label: 'Recibos', icon: Receipt }
+    { id: 'receipt', label: 'Recibos', icon: Receipt },
+    { id: 'afip', label: 'ARCA / AFIP', icon: FileText },
   ];
 
   if (loading) {
@@ -752,6 +827,140 @@ const Settings = () => {
               </div>
             </div>
           )}
+          {/* ARCA / AFIP */}
+          {activeTab === 'afip' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-lg font-semibold text-gray-900">Factura Electrónica — ARCA / AFIP</h3>
+                {afipStatus?.configurado && (
+                  <span className={`px-3 py-1 text-xs font-medium rounded-full ${afipStatus.ambiente === 'produccion' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                    {afipStatus.ambiente === 'produccion' ? 'Producción' : 'Homologación'}
+                  </span>
+                )}
+              </div>
+
+              {/* Estado actual */}
+              {afipStatus?.configurado && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800 space-y-1">
+                  <div className="font-medium mb-1">Estado actual</div>
+                  <div>CUIT: <strong>{afipStatus.cuit}</strong> — Punto de Venta: <strong>{afipStatus.punto_venta}</strong></div>
+                  <div>Certificado: {afipStatus.tiene_certificado ? '✅ Cargado' : '⚠️ No cargado'} — Clave privada: {afipStatus.tiene_clave ? '✅ Cargada' : '⚠️ No cargada'}</div>
+                </div>
+              )}
+
+              {/* Datos básicos */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="form-group">
+                  <label className="form-label">CUIT del comercio (sin guiones)</label>
+                  <input type="text" className="form-input" placeholder="20123456789" maxLength={11}
+                    value={afipConfig.cuit} onChange={e => setAfipConfig(p => ({ ...p, cuit: e.target.value.replace(/\D/g, '') }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Número de Punto de Venta</label>
+                  <input type="number" min={1} className="form-input"
+                    value={afipConfig.punto_venta} onChange={e => setAfipConfig(p => ({ ...p, punto_venta: parseInt(e.target.value) || 1 }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Razón Social</label>
+                  <input type="text" className="form-input" placeholder="Mi Empresa S.A."
+                    value={afipConfig.razon_social} onChange={e => setAfipConfig(p => ({ ...p, razon_social: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Ambiente</label>
+                  <select className="form-select" value={afipConfig.ambiente}
+                    onChange={e => setAfipConfig(p => ({ ...p, ambiente: e.target.value }))}>
+                    <option value="homologacion">Homologación (pruebas)</option>
+                    <option value="produccion">Producción</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Tipo de comprobante por defecto</label>
+                  <select className="form-select" value={afipConfig.tipo_comprobante_default}
+                    onChange={e => setAfipConfig(p => ({ ...p, tipo_comprobante_default: parseInt(e.target.value) }))}>
+                    <option value={6}>Factura B — Responsable Inscripto a Consumidor Final</option>
+                    <option value={11}>Factura C — Monotributista</option>
+                    <option value={1}>Factura A — Entre Responsables Inscriptos (requiere CUIT comprador)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Certificados */}
+              <div className="border-t pt-4">
+                <h4 className="font-medium text-gray-900 mb-3">Certificado Digital</h4>
+                <p className="text-sm text-gray-500 mb-4">
+                  Subí el archivo <strong>.p12</strong> (recomendado) o bien el certificado <strong>.pem</strong> y la clave privada <strong>.pem</strong> por separado.
+                </p>
+
+                <div className="space-y-3">
+                  <div className="form-group">
+                    <label className="form-label">Archivo .p12 (certificado + clave)</label>
+                    <input type="file" accept=".p12,.pfx" className="form-input"
+                      onChange={e => { setP12File(e.target.files[0]); setCertFile(null); setKeyFile(null); }} />
+                  </div>
+                  {p12File && (
+                    <div className="form-group">
+                      <label className="form-label">Contraseña del .p12 (si tiene)</label>
+                      <input type="password" className="form-input" placeholder="Dejar vacío si no tiene contraseña"
+                        value={p12Password} onChange={e => setP12Password(e.target.value)} />
+                    </div>
+                  )}
+                  {!p12File && (
+                    <>
+                      <div className="form-group">
+                        <label className="form-label">Certificado .pem (alternativa)</label>
+                        <input type="file" accept=".pem,.crt,.cer" className="form-input"
+                          onChange={e => setCertFile(e.target.files[0])} />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Clave privada .pem (alternativa)</label>
+                        <input type="file" accept=".pem,.key" className="form-input"
+                          onChange={e => setKeyFile(e.target.files[0])} />
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Botones */}
+              <div className="flex flex-wrap gap-3 pt-2">
+                <button onClick={handleSaveAfip} disabled={afipSaving} className="btn btn-primary">
+                  {afipSaving ? <><div className="spinner w-4 h-4" /> Guardando...</> : <><Save className="w-4 h-4" /> Guardar config AFIP</>}
+                </button>
+                {afipStatus?.configurado && afipStatus?.tiene_certificado && afipStatus?.tiene_clave && (
+                  <button onClick={handleTestAfip} disabled={afipTesting} className="btn btn-secondary">
+                    {afipTesting ? <><div className="spinner w-4 h-4" /> Probando...</> : <><Wifi className="w-4 h-4" /> Probar conexión con ARCA</>}
+                  </button>
+                )}
+              </div>
+
+              {/* Resultado del test */}
+              {afipTestResult && (
+                <div className={`rounded-lg p-4 text-sm ${afipTestResult.ok ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-800'}`}>
+                  {afipTestResult.ok ? (
+                    <>
+                      <div className="font-medium mb-1">✅ Conexión exitosa con ARCA</div>
+                      <div>AppServer: {afipTestResult.data?.AppServer} | DbServer: {afipTestResult.data?.DbServer}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="font-medium mb-1">❌ Error de conexión</div>
+                      <div>{afipTestResult.error}</div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Ayuda */}
+              <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-600 space-y-1">
+                <div className="font-medium text-gray-700 mb-2">Para obtener tu certificado de homologación:</div>
+                <div>1. Ingresar a ARCA con CUIT y clave fiscal</div>
+                <div>2. Administrador de Relaciones → Gestión de Claves → Nuevo Certificado</div>
+                <div>3. Seleccionar "wsfe" como servicio</div>
+                <div>4. Descargar el .p12 generado y subirlo aquí</div>
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
 
