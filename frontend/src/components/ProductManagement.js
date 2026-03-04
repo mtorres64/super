@@ -35,6 +35,9 @@ const ProductManagement = () => {
   const [importLoading, setImportLoading] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const fileInputRef = useRef(null);
+  const [selectedRows, setSelectedRows] = useState(new Set());
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const [formData, setFormData] = useState({
     nombre: '',
@@ -240,6 +243,51 @@ const ProductManagement = () => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const toggleSelectRow = (productId) => {
+    setSelectedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (paginatedProducts.every(p => selectedRows.has(p.id))) {
+      setSelectedRows(prev => {
+        const next = new Set(prev);
+        paginatedProducts.forEach(p => next.delete(p.id));
+        return next;
+      });
+    } else {
+      setSelectedRows(prev => {
+        const next = new Set(prev);
+        paginatedProducts.forEach(p => next.add(p.id));
+        return next;
+      });
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    setBulkDeleting(true);
+    let successCount = 0;
+    let errorCount = 0;
+    for (const productId of selectedRows) {
+      try {
+        await axios.delete(`${API}/products/${productId}`);
+        successCount++;
+      } catch {
+        errorCount++;
+      }
+    }
+    if (successCount > 0) toast.success(`${successCount} producto(s) eliminado(s)`);
+    if (errorCount > 0) toast.error(`${errorCount} producto(s) con error al eliminar`);
+    setShowBulkDeleteModal(false);
+    setSelectedRows(new Set());
+    await fetchProducts();
+    setBulkDeleting(false);
+  };
+
   const getLowStockProducts = () => {
     return products.filter(product => product.stock <= product.stock_minimo);
   };
@@ -353,11 +401,43 @@ const ProductManagement = () => {
         </div>
       </div>
 
+      {/* Bulk Actions Bar */}
+      {selectedRows.size > 0 && (
+        <div className="flex items-center gap-3 mb-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+          <span className="text-sm text-blue-700 font-medium">{selectedRows.size} seleccionado(s)</span>
+          <button
+            onClick={() => setShowBulkDeleteModal(true)}
+            className="btn btn-sm bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
+          >
+            <Trash2 className="w-4 h-4" />
+            Eliminar seleccionados
+          </button>
+          <button
+            onClick={() => setSelectedRows(new Set())}
+            className="text-gray-400 hover:text-gray-600 ml-auto"
+            title="Deseleccionar todo"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Products Table */}
       <div className="table-container">
         <table className="table">
           <thead>
             <tr>
+              <th className="w-10">
+                <input
+                  type="checkbox"
+                  className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                  checked={paginatedProducts.length > 0 && paginatedProducts.every(p => selectedRows.has(p.id))}
+                  ref={el => {
+                    if (el) el.indeterminate = paginatedProducts.some(p => selectedRows.has(p.id)) && !paginatedProducts.every(p => selectedRows.has(p.id));
+                  }}
+                  onChange={toggleSelectAll}
+                />
+              </th>
               <th>Producto</th>
               <th>Código</th>
               <th>Categoría</th>
@@ -369,7 +449,15 @@ const ProductManagement = () => {
           </thead>
           <tbody>
             {paginatedProducts.map(product => (
-              <tr key={product.id}>
+              <tr key={product.id} className={selectedRows.has(product.id) ? 'bg-blue-50' : ''}>
+                <td>
+                  <input
+                    type="checkbox"
+                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                    checked={selectedRows.has(product.id)}
+                    onChange={() => toggleSelectRow(product.id)}
+                  />
+                </td>
                 <td>
                   <div>
                     <div className="font-medium text-gray-900">
@@ -741,6 +829,51 @@ const ProductManagement = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showBulkDeleteModal && (
+        <div className="modal-overlay">
+          <div className="modal-content max-w-md">
+            <div className="modal-header">
+              <h3 className="modal-title flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-red-600" />
+                Eliminar productos
+              </h3>
+              <button onClick={() => setShowBulkDeleteModal(false)} className="modal-close">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
+              Estás por eliminar <strong>{selectedRows.size} producto(s)</strong> de forma permanente.
+              <br />Esta acción no se puede deshacer.
+            </div>
+
+            <div className="flex justify-end space-x-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setShowBulkDeleteModal(false)}
+                disabled={bulkDeleting}
+                className="btn btn-secondary"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting}
+                className="btn bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {bulkDeleting ? (
+                  <><div className="spinner w-4 h-4" /> Eliminando...</>
+                ) : (
+                  <><Trash2 className="w-4 h-4" /> Eliminar</>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

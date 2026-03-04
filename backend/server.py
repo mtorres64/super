@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
 from datetime import datetime, timezone, timedelta
+import calendar
 import jwt
 from passlib.hash import bcrypt
 from enum import Enum
@@ -31,7 +32,7 @@ db = client[os.environ['DB_NAME']]
 # JWT settings
 SECRET_KEY = os.environ.get('JWT_SECRET', 'your-secret-key-here')
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 horas — duración de un turno de trabajo
 
 # MercadoPago settings
 MP_ACCESS_TOKEN = os.environ.get('MP_ACCESS_TOKEN', '')
@@ -39,6 +40,40 @@ APP_URL = os.environ.get('APP_URL', 'http://localhost:8000')
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 SUSCRIPCION_PRECIO = float(os.environ.get('SUSCRIPCION_PRECIO', '5000'))
 SUSCRIPCION_PLAN_NOMBRE = os.environ.get('SUSCRIPCION_PLAN_NOMBRE', 'Plan Mensual')
+
+async def get_precio_suscripcion() -> float:
+    doc = await db.system_config.find_one({"key": "suscripcion_precio"})
+    return float(doc["value"]) if doc else SUSCRIPCION_PRECIO
+
+async def get_plan_nombre_suscripcion() -> str:
+    doc = await db.system_config.find_one({"key": "suscripcion_plan_nombre"})
+    return doc["value"] if doc else SUSCRIPCION_PLAN_NOMBRE
+
+def calcular_siguiente_vencimiento(dia_facturacion: int, meses: int, desde: datetime) -> datetime:
+    """Mismo día del mes, n meses hacia adelante. Clamped al último día del mes si es necesario."""
+    mes = desde.month + meses
+    anio = desde.year + (mes - 1) // 12
+    mes = ((mes - 1) % 12) + 1
+    ultimo_dia = calendar.monthrange(anio, mes)[1]
+    dia = min(dia_facturacion, ultimo_dia)
+    tz = desde.tzinfo or timezone.utc
+    return datetime(anio, mes, dia, 0, 0, 0, tzinfo=tz)
+
+def _aplicar_renovacion(suscripcion: dict, meses: int, now: datetime):
+    """Calcula (base, nueva_fecha) respetando día de facturación fijo. No acumulativo."""
+    vencimiento = suscripcion["fecha_vencimiento"]
+    if isinstance(vencimiento, str):
+        vencimiento = datetime.fromisoformat(vencimiento)
+    if not vencimiento.tzinfo:
+        vencimiento = vencimiento.replace(tzinfo=timezone.utc)
+    base = vencimiento if vencimiento > now else now
+    dia = suscripcion.get("dia_facturacion") or min(base.day, 28)
+    nueva_fecha = calcular_siguiente_vencimiento(dia, meses, base)
+    return base, nueva_fecha
+
+# Owner (system admin) credentials
+OWNER_USERNAME = os.environ.get('OWNER_USERNAME', 'owner')
+OWNER_PASSWORD = os.environ.get('OWNER_PASSWORD', 'owner1234')
 
 # Security
 security = HTTPBearer()
@@ -73,6 +108,7 @@ class MovementType(str, Enum):
     VENTA = "venta"
     RETIRO = "retiro"
     CIERRE = "cierre"
+    DEVOLUCION = "devolucion"
 
 class SuscripcionStatus(str, Enum):
     TRIAL = "trial"
@@ -98,11 +134,13 @@ class Suscripcion(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     empresa_id: str
     plan_nombre: str = "Plan Mensual"
-    precio: float = 5000.0
+    precio: float = 0.0
     moneda: str = "ARS"
     status: SuscripcionStatus = SuscripcionStatus.TRIAL
     fecha_inicio: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     fecha_vencimiento: datetime
+    dia_facturacion: Optional[int] = None
+    plan_tipo: str = "mensual"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class PagoSuscripcion(BaseModel):
@@ -114,6 +152,7 @@ class PagoSuscripcion(BaseModel):
     concepto: str
     mp_payment_id: Optional[str] = None
     mp_preference_id: Optional[str] = None
+    plan_tipo: str = "mensual"
     fecha: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     periodo_inicio: Optional[datetime] = None
     periodo_fin: Optional[datetime] = None
@@ -353,6 +392,7 @@ class ProductUpdate(BaseModel):
 
 class SaleItem(BaseModel):
     producto_id: str
+    nombre: Optional[str] = None
     cantidad: float
     precio_unitario: float
     subtotal: float
@@ -370,10 +410,30 @@ class Sale(BaseModel):
     metodo_pago: PaymentMethod
     fecha: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     numero_factura: str
+    estado: str = "activo"
 
 class SaleCreate(BaseModel):
     items: List[SaleItem]
     metodo_pago: PaymentMethod
+
+class ReturnItemCreate(BaseModel):
+    producto_id: str
+    cantidad: float
+
+class ReturnCreate(BaseModel):
+    items: List[ReturnItemCreate]
+    motivo: Optional[str] = None
+
+class SaleReturn(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    empresa_id: str
+    sale_id: str
+    cajero_id: str
+    items: List[SaleItem]
+    total: float
+    motivo: Optional[str] = None
+    fecha: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    numero_devolucion: str
 
 # --- Proveedor models ---
 class Proveedor(BaseModel):
@@ -751,16 +811,19 @@ async def register_empresa(data: EmpresaRegister):
     config = Configuration(empresa_id=empresa.id, company_name=data.empresa_nombre)
     await db.configuration.insert_one(config.dict())
 
-    # Create 30-day trial subscription
+    # Create trial subscription — vence el mismo día del mes siguiente
     trial_inicio = datetime.now(timezone.utc)
-    trial_fin = trial_inicio + timedelta(days=30)
+    dia_facturacion = min(trial_inicio.day, 28)
+    trial_fin = calcular_siguiente_vencimiento(dia_facturacion, 1, trial_inicio)
     suscripcion = Suscripcion(
         empresa_id=empresa.id,
-        plan_nombre=SUSCRIPCION_PLAN_NOMBRE,
-        precio=SUSCRIPCION_PRECIO,
+        plan_nombre=await get_plan_nombre_suscripcion(),
+        precio=await get_precio_suscripcion(),
         status=SuscripcionStatus.TRIAL,
         fecha_inicio=trial_inicio,
         fecha_vencimiento=trial_fin,
+        dia_facturacion=dia_facturacion,
+        plan_tipo="mensual",
     )
     await db.suscripciones.insert_one(suscripcion.dict())
 
@@ -813,6 +876,10 @@ async def login(user_data: UserLogin):
 
     user = User(**user_doc)
     return Token(access_token=access_token, token_type="bearer", user=user)
+
+@api_router.get("/auth/me", response_model=User)
+async def get_me(user: User = Depends(get_current_user)):
+    return user
 
 # Category routes
 @api_router.post("/categories", response_model=Category)
@@ -1140,7 +1207,7 @@ async def update_product(product_id: str, product_data: ProductUpdate, user: Use
 
 # User management routes
 @api_router.get("/users", response_model=List[User])
-async def get_users(user: User = Depends(require_role([UserRole.ADMIN]))):
+async def get_users(user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR]))):
     users = await db.users.find({"empresa_id": user.empresa_id}).to_list(1000)
     return [User(**u) for u in users]
 
@@ -1235,6 +1302,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
     for item in sale_data.items:
         # Try branch-specific product first (if user has branch assigned)
         precio_unitario = None
+        product_nombre = None
         if user.branch_id:
             branch_product = await db.branch_products.find_one({
                 "product_id": item.producto_id,
@@ -1253,6 +1321,8 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
                     {"product_id": item.producto_id, "branch_id": user.branch_id, "empresa_id": user.empresa_id},
                     {"$inc": {"stock": -int(item.cantidad)}}
                 )
+                gp = await db.products.find_one({"id": item.producto_id, "empresa_id": user.empresa_id})
+                product_nombre = gp['nombre'] if gp else None
 
         # Fall back to global product
         if precio_unitario is None:
@@ -1262,6 +1332,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
             if product['stock'] < item.cantidad:
                 raise HTTPException(status_code=400, detail=f"Stock insuficiente para {product['nombre']}")
             precio_unitario = product['precio']
+            product_nombre = product['nombre']
             if product.get('precio_por_peso') and item.cantidad != int(item.cantidad):
                 precio_unitario = product['precio_por_peso']
             await db.products.update_one(
@@ -1273,6 +1344,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
         subtotal = item.cantidad * precio_unitario
         validated_items.append(SaleItem(
             producto_id=item.producto_id,
+            nombre=product_nombre,
             cantidad=item.cantidad,
             precio_unitario=precio_unitario,
             subtotal=subtotal
@@ -1339,6 +1411,110 @@ async def get_sales(user: User = Depends(get_current_user)):
         sales = await db.sales.find({"empresa_id": user.empresa_id}).sort("fecha", -1).to_list(1000)
 
     return [Sale(**sale) for sale in sales]
+
+@api_router.get("/sales/{sale_id}/returns", response_model=List[SaleReturn])
+async def get_sale_returns(sale_id: str, user: User = Depends(get_current_user)):
+    returns = await db.sale_returns.find({"sale_id": sale_id, "empresa_id": user.empresa_id}).sort("fecha", -1).to_list(100)
+    return [SaleReturn(**r) for r in returns]
+
+@api_router.post("/sales/{sale_id}/return")
+async def create_sale_return(sale_id: str, return_data: ReturnCreate, user: User = Depends(get_current_user)):
+    sale = await db.sales.find_one({"id": sale_id, "empresa_id": user.empresa_id})
+    if not sale:
+        raise HTTPException(status_code=404, detail="Venta no encontrada")
+    sale_obj = Sale(**sale)
+
+    if sale_obj.estado == "cancelado":
+        raise HTTPException(status_code=400, detail="Esta venta ya fue cancelada completamente")
+
+    # Quantities already returned for this sale
+    existing_returns = await db.sale_returns.find({"sale_id": sale_id}).to_list(100)
+    returned_qty = {}
+    for ret in existing_returns:
+        for item in ret["items"]:
+            pid = item["producto_id"]
+            returned_qty[pid] = returned_qty.get(pid, 0) + item["cantidad"]
+
+    sale_items_map = {item.producto_id: item for item in sale_obj.items}
+    return_items = []
+    total_return = 0.0
+
+    for ri in return_data.items:
+        if ri.cantidad <= 0:
+            continue
+        original = sale_items_map.get(ri.producto_id)
+        if not original:
+            raise HTTPException(status_code=400, detail=f"Producto no encontrado en la venta")
+        available = original.cantidad - returned_qty.get(ri.producto_id, 0)
+        if ri.cantidad > available:
+            prod = await db.products.find_one({"id": ri.producto_id})
+            name = prod["nombre"] if prod else ri.producto_id
+            raise HTTPException(status_code=400, detail=f"Solo quedan {available} unidades disponibles para devolver de '{name}'")
+        subtotal = ri.cantidad * original.precio_unitario
+        total_return += subtotal
+        return_items.append(SaleItem(
+            producto_id=ri.producto_id,
+            cantidad=ri.cantidad,
+            precio_unitario=original.precio_unitario,
+            subtotal=subtotal
+        ))
+
+    if not return_items:
+        raise HTTPException(status_code=400, detail="Debe seleccionar al menos un producto para devolver")
+
+    # Restore stock
+    for item in return_items:
+        await db.products.update_one(
+            {"id": item.producto_id, "empresa_id": user.empresa_id},
+            {"$inc": {"stock": int(item.cantidad)}}
+        )
+        if sale_obj.branch_id and sale_obj.branch_id != "global":
+            await db.branch_products.update_one(
+                {"product_id": item.producto_id, "branch_id": sale_obj.branch_id, "empresa_id": user.empresa_id},
+                {"$inc": {"stock": int(item.cantidad)}}
+            )
+
+    # Generate return number
+    count = await db.sale_returns.count_documents({"empresa_id": user.empresa_id})
+    numero_devolucion = f"DEV-{str(count + 1).zfill(6)}"
+
+    sale_return = SaleReturn(
+        empresa_id=user.empresa_id,
+        sale_id=sale_id,
+        cajero_id=user.id,
+        items=return_items,
+        total=total_return,
+        motivo=return_data.motivo,
+        numero_devolucion=numero_devolucion
+    )
+    await db.sale_returns.insert_one(sale_return.dict())
+
+    # Update sale estado
+    new_returned = dict(returned_qty)
+    for item in return_items:
+        new_returned[item.producto_id] = new_returned.get(item.producto_id, 0) + item.cantidad
+    fully_returned = all(new_returned.get(si.producto_id, 0) >= si.cantidad for si in sale_obj.items)
+    new_estado = "cancelado" if fully_returned else "devolucion_parcial"
+    await db.sales.update_one({"id": sale_id}, {"$set": {"estado": new_estado}})
+
+    # Reduce cash session monto_ventas
+    await db.cash_sessions.update_one(
+        {"id": sale_obj.session_id},
+        {"$inc": {"monto_ventas": -total_return}}
+    )
+
+    # Cash movement
+    movement = CashMovement(
+        empresa_id=user.empresa_id,
+        session_id=sale_obj.session_id,
+        tipo=MovementType.DEVOLUCION,
+        monto=-total_return,
+        descripcion=f"Devolución {numero_devolucion} - Factura {sale_obj.numero_factura}",
+        venta_id=sale_id
+    )
+    await db.cash_movements.insert_one(movement.dict())
+
+    return {"message": "Devolución procesada exitosamente", "numero_devolucion": numero_devolucion, "total": total_return}
 
 # Cash Reports routes
 @api_router.get("/cash-sessions/{session_id}/movements", response_model=List[CashMovement])
@@ -1571,13 +1747,16 @@ async def _get_or_create_suscripcion(empresa_id: str) -> dict:
     doc = await db.suscripciones.find_one({"empresa_id": empresa_id})
     if not doc:
         now = datetime.now(timezone.utc)
+        dia_facturacion = min(now.day, 28)
         suscripcion = Suscripcion(
             empresa_id=empresa_id,
-            plan_nombre=SUSCRIPCION_PLAN_NOMBRE,
-            precio=SUSCRIPCION_PRECIO,
+            plan_nombre=await get_plan_nombre_suscripcion(),
+            precio=await get_precio_suscripcion(),
             status=SuscripcionStatus.TRIAL,
             fecha_inicio=now,
-            fecha_vencimiento=now + timedelta(days=30),
+            fecha_vencimiento=calcular_siguiente_vencimiento(dia_facturacion, 1, now),
+            dia_facturacion=dia_facturacion,
+            plan_tipo="mensual",
         )
         await db.suscripciones.insert_one(suscripcion.dict())
         doc = suscripcion.dict()
@@ -1625,23 +1804,81 @@ async def get_cuenta_pagos(user: User = Depends(require_role([UserRole.ADMIN])))
     return [PagoSuscripcion(**p) for p in pagos]
 
 
+@api_router.get("/cuenta/planes")
+async def get_planes(user: User = Depends(require_role([UserRole.ADMIN]))):
+    precio_mensual = await get_precio_suscripcion()
+    nombre_base = await get_plan_nombre_suscripcion()
+    return {
+        "mensual": {"plan_tipo": "mensual", "nombre": nombre_base, "precio": precio_mensual, "meses": 1},
+        "anual":   {"plan_tipo": "anual",   "nombre": f"{nombre_base} Anual", "precio": precio_mensual * 11, "meses": 12},
+    }
+
+
+class PagoCreate(BaseModel):
+    plan_tipo: str = "mensual"  # "mensual" | "anual"
+
+
 @api_router.post("/cuenta/pago/crear")
-async def crear_pago_suscripcion(user: User = Depends(require_role([UserRole.ADMIN]))):
+async def crear_pago_suscripcion(data: PagoCreate = PagoCreate(), user: User = Depends(require_role([UserRole.ADMIN]))):
     if not MP_ACCESS_TOKEN or MP_ACCESS_TOKEN.startswith("APP_USR-your"):
         raise HTTPException(status_code=503, detail="MercadoPago no configurado. Configure MP_ACCESS_TOKEN en .env")
+
+    # Cancelar preferencias abandonadas (pending sin mp_payment_id = nunca se pagaron)
+    await db.pagos_suscripcion.update_many(
+        {"empresa_id": user.empresa_id, "estado": "pending", "mp_payment_id": {"$in": [None, ""]}},
+        {"$set": {"estado": "cancelled"}},
+    )
+
+    # Bloquear solo si hay un pago pendiente con mp_payment_id (pagó con método lento, esperando acreditación)
+    pago_pendiente = await db.pagos_suscripcion.find_one({
+        "empresa_id": user.empresa_id,
+        "estado": "pending",
+        "mp_payment_id": {"$nin": [None, ""]},
+    })
+    if pago_pendiente:
+        raise HTTPException(status_code=409, detail="Ya tenés un pago en proceso de acreditación. Puede tardar unas horas. Esperá la confirmación antes de iniciar uno nuevo.")
+
+    # Plan tipo y precio
+    plan_tipo = data.plan_tipo if data.plan_tipo in ("mensual", "anual") else "mensual"
+    precio_mensual = await get_precio_suscripcion()
+    nombre_base = await get_plan_nombre_suscripcion()
+    if plan_tipo == "anual":
+        precio = precio_mensual * 11
+        plan_nombre = f"{nombre_base} Anual"
+        ventana_dias = 60
+        meses = 12
+    else:
+        precio = precio_mensual
+        plan_nombre = nombre_base
+        ventana_dias = 30
+        meses = 1
+
+    # Verificar que la suscripción esté próxima a vencer o ya vencida
+    suscripcion = await db.suscripciones.find_one({"empresa_id": user.empresa_id})
+    if suscripcion:
+        vencimiento = suscripcion.get("fecha_vencimiento")
+        if isinstance(vencimiento, str):
+            vencimiento = datetime.fromisoformat(vencimiento)
+        if vencimiento and not vencimiento.tzinfo:
+            vencimiento = vencimiento.replace(tzinfo=timezone.utc)
+        if vencimiento:
+            dias_restantes = (vencimiento - datetime.now(timezone.utc)).days
+            if dias_restantes > ventana_dias:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Tu suscripción vence en {dias_restantes} días. Podrás renovar cuando queden {ventana_dias} días o menos."
+                )
 
     # Obtener empresa
     empresa = await db.empresas.find_one({"id": user.empresa_id})
     empresa_nombre = empresa["nombre"] if empresa else user.empresa_id
-
-    # Crear preferencia en MercadoPago
     sdk = mercadopago.SDK(MP_ACCESS_TOKEN)
     preference_data = {
         "items": [
             {
-                "title": f"{SUSCRIPCION_PLAN_NOMBRE} - {empresa_nombre}",
+                "title": f"{plan_nombre} - {empresa_nombre}",
                 "quantity": 1,
-                "unit_price": SUSCRIPCION_PRECIO,
+                "unit_price": precio,
                 "currency_id": "ARS",
             }
         ],
@@ -1650,25 +1887,29 @@ async def crear_pago_suscripcion(user: User = Depends(require_role([UserRole.ADM
             "failure": f"{FRONTEND_URL}/cuenta?pago=failure",
             "pending": f"{FRONTEND_URL}/cuenta?pago=pending",
         },
-        "auto_return": "approved",
+        **({"auto_return": "approved"} if not FRONTEND_URL.startswith("http://localhost") else {}),
         "notification_url": f"{APP_URL}/api/mercadopago/webhook",
         "external_reference": user.empresa_id,
         "statement_descriptor": "SuperMarket POS",
     }
     response = sdk.preference().create(preference_data)
     if response["status"] not in (200, 201):
-        raise HTTPException(status_code=502, detail="Error al crear preferencia en MercadoPago")
+        import logging
+        logging.error(f"MercadoPago error: status={response['status']}, response={response.get('response')}")
+        detail = response.get("response", {}).get("message", "Error al crear preferencia en MercadoPago")
+        raise HTTPException(status_code=502, detail=f"Error MP ({response['status']}): {detail}")
 
     preference = response["response"]
 
     # Registrar pago pendiente
     pago = PagoSuscripcion(
         empresa_id=user.empresa_id,
-        monto=SUSCRIPCION_PRECIO,
+        monto=precio,
         moneda="ARS",
         estado="pending",
-        concepto=f"{SUSCRIPCION_PLAN_NOMBRE} - {empresa_nombre}",
+        concepto=f"{plan_nombre} - {empresa_nombre}",
         mp_preference_id=preference["id"],
+        plan_tipo=plan_tipo,
     )
     await db.pagos_suscripcion.insert_one(pago.dict())
 
@@ -1677,6 +1918,77 @@ async def crear_pago_suscripcion(user: User = Depends(require_role([UserRole.ADM
         "sandbox_init_point": preference.get("sandbox_init_point"),
         "preference_id": preference["id"],
     }
+
+
+@api_router.post("/cuenta/pago/simular-aprobado")
+async def simular_pago_aprobado(
+    plan_tipo: str = "mensual",
+    user: User = Depends(require_role([UserRole.ADMIN]))
+):
+    """Solo para desarrollo/testing: simula un pago aprobado y renueva la suscripción."""
+    if not APP_URL.startswith("http://localhost"):
+        raise HTTPException(status_code=403, detail="Solo disponible en entorno de desarrollo")
+
+    plan_tipo = plan_tipo if plan_tipo in ("mensual", "anual") else "mensual"
+    meses = 1 if plan_tipo == "mensual" else 12
+
+    now = datetime.now(timezone.utc)
+    fake_payment_id = f"TEST-{int(now.timestamp())}"
+    precio_mensual = await get_precio_suscripcion()
+    nombre_base = await get_plan_nombre_suscripcion()
+    precio = precio_mensual if plan_tipo == "mensual" else precio_mensual * 11
+    plan_nombre = nombre_base if plan_tipo == "mensual" else f"{nombre_base} Anual"
+
+    empresa = await db.empresas.find_one({"id": user.empresa_id})
+    empresa_nombre = empresa["nombre"] if empresa else user.empresa_id
+
+    # Cancelar pendientes abandonados
+    await db.pagos_suscripcion.update_many(
+        {"empresa_id": user.empresa_id, "estado": "pending", "mp_payment_id": {"$in": [None, ""]}},
+        {"$set": {"estado": "cancelled"}},
+    )
+
+    suscripcion = await db.suscripciones.find_one({"empresa_id": user.empresa_id})
+    if suscripcion:
+        base, nueva_fecha = _aplicar_renovacion(suscripcion, meses, now)
+        await db.suscripciones.update_one(
+            {"empresa_id": user.empresa_id},
+            {"$set": {
+                "status": SuscripcionStatus.ACTIVA,
+                "fecha_vencimiento": nueva_fecha,
+                "plan_tipo": plan_tipo,
+            }},
+        )
+    else:
+        dia_facturacion = min(now.day, 28)
+        base = now
+        nueva_fecha = calcular_siguiente_vencimiento(dia_facturacion, meses, now)
+        await db.suscripciones.insert_one(Suscripcion(
+            empresa_id=user.empresa_id,
+            plan_nombre=plan_nombre,
+            precio=precio,
+            status=SuscripcionStatus.ACTIVA,
+            fecha_inicio=now,
+            fecha_vencimiento=nueva_fecha,
+            dia_facturacion=dia_facturacion,
+            plan_tipo=plan_tipo,
+        ).dict())
+
+    # Registrar el pago simulado
+    pago = PagoSuscripcion(
+        empresa_id=user.empresa_id,
+        monto=precio,
+        moneda="ARS",
+        estado="approved",
+        concepto=f"[TEST] {plan_nombre} - {empresa_nombre}",
+        mp_payment_id=fake_payment_id,
+        periodo_inicio=base,
+        periodo_fin=nueva_fecha,
+        plan_tipo=plan_tipo,
+    )
+    await db.pagos_suscripcion.insert_one(pago.dict())
+
+    return {"ok": True, "nueva_fecha_vencimiento": nueva_fecha.isoformat()}
 
 
 # Webhook de MercadoPago (sin autenticación JWT)
@@ -1756,24 +2068,25 @@ async def mp_webhook(request: Request):
             {"$set": {"estado": estado}}
         )
 
-    # Si el pago fue aprobado → extender suscripción 30 días
+    # Si el pago fue aprobado → extender suscripción
     if estado == "approved":
+        # Recuperar plan_tipo del pago registrado
+        pago_reg = await db.pagos_suscripcion.find_one({"empresa_id": empresa_id, "mp_payment_id": payment_id})
+        if not pago_reg:
+            pago_reg = await db.pagos_suscripcion.find_one({"empresa_id": empresa_id, "mp_preference_id": {"$exists": True}, "estado": "approved"})
+        plan_tipo_pago = (pago_reg or {}).get("plan_tipo", "mensual") if pago_reg else "mensual"
+        meses = 1 if plan_tipo_pago == "mensual" else 12
+
         suscripcion = await db.suscripciones.find_one({"empresa_id": empresa_id})
         now = datetime.now(timezone.utc)
         if suscripcion:
-            vencimiento_actual = suscripcion["fecha_vencimiento"]
-            if isinstance(vencimiento_actual, str):
-                vencimiento_actual = datetime.fromisoformat(vencimiento_actual)
-            if not vencimiento_actual.tzinfo:
-                vencimiento_actual = vencimiento_actual.replace(tzinfo=timezone.utc)
-            # Si ya vencida o en trial, la nueva base es hoy
-            base = vencimiento_actual if vencimiento_actual > now else now
-            nueva_fecha = base + timedelta(days=30)
+            base, nueva_fecha = _aplicar_renovacion(suscripcion, meses, now)
             await db.suscripciones.update_one(
                 {"empresa_id": empresa_id},
                 {"$set": {
                     "status": SuscripcionStatus.ACTIVA,
                     "fecha_vencimiento": nueva_fecha,
+                    "plan_tipo": plan_tipo_pago,
                 }}
             )
             # Actualizar periodo del pago registrado
@@ -1782,7 +2095,8 @@ async def mp_webhook(request: Request):
                 {"$set": {"periodo_inicio": base, "periodo_fin": nueva_fecha}}
             )
         else:
-            nueva_fecha = now + timedelta(days=30)
+            dia_facturacion = min(now.day, 28)
+            nueva_fecha = calcular_siguiente_vencimiento(dia_facturacion, meses, now)
             suscripcion_nueva = Suscripcion(
                 empresa_id=empresa_id,
                 plan_nombre=SUSCRIPCION_PLAN_NOMBRE,
@@ -1790,13 +2104,299 @@ async def mp_webhook(request: Request):
                 status=SuscripcionStatus.ACTIVA,
                 fecha_inicio=now,
                 fecha_vencimiento=nueva_fecha,
+                dia_facturacion=dia_facturacion,
+                plan_tipo=plan_tipo_pago,
             )
             await db.suscripciones.insert_one(suscripcion_nueva.dict())
 
     return {"status": "ok"}
 
+# ─────────────────────────────────────────────
+# OWNER (System Admin) routes
+# ─────────────────────────────────────────────
+
+class OwnerLoginData(BaseModel):
+    username: str
+    password: str
+
+class SuscripcionUpdate(BaseModel):
+    status: Optional[SuscripcionStatus] = None
+    fecha_vencimiento: Optional[datetime] = None
+    plan_nombre: Optional[str] = None
+    precio: Optional[float] = None
+    dias_extra: Optional[int] = None
+
+class PagoManual(BaseModel):
+    monto: float
+    concepto: str
+    dias_extension: int = 30
+
+owner_router = APIRouter(prefix="/owner")
+
+def create_owner_token():
+    payload = {
+        "sub": "owner",
+        "role": "owner",
+        "exp": datetime.now(timezone.utc) + timedelta(hours=24),
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+def verify_owner_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("role") != "owner":
+            raise HTTPException(status_code=403, detail="Acceso denegado")
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expirado")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+@owner_router.post("/login")
+async def owner_login(data: OwnerLoginData):
+    if data.username != OWNER_USERNAME or data.password != OWNER_PASSWORD:
+        raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+    token = create_owner_token()
+    return {"access_token": token, "token_type": "bearer"}
+
+@owner_router.get("/stats")
+async def owner_stats(_=Depends(verify_owner_token)):
+    total = await db.empresas.count_documents({})
+    activas = await db.suscripciones.count_documents({"status": SuscripcionStatus.ACTIVA})
+    trial = await db.suscripciones.count_documents({"status": SuscripcionStatus.TRIAL})
+    vencidas = await db.suscripciones.count_documents({"status": SuscripcionStatus.VENCIDA})
+    suspendidas = await db.suscripciones.count_documents({"status": SuscripcionStatus.SUSPENDIDA})
+    pagos = await db.pagos_suscripcion.find({"estado": "approved"}).to_list(10000)
+    total_recaudado = sum(p.get("monto", 0) for p in pagos)
+    return {
+        "total_clientes": total,
+        "activas": activas,
+        "trial": trial,
+        "vencidas": vencidas,
+        "suspendidas": suspendidas,
+        "total_recaudado": total_recaudado,
+    }
+
+def _calc_dias_restantes(suscripcion: dict) -> int:
+    if not suscripcion:
+        return 0
+    vencimiento = suscripcion.get("fecha_vencimiento")
+    if isinstance(vencimiento, str):
+        vencimiento = datetime.fromisoformat(vencimiento)
+    if vencimiento and not vencimiento.tzinfo:
+        vencimiento = vencimiento.replace(tzinfo=timezone.utc)
+    if not vencimiento:
+        return 0
+    return max(0, (vencimiento - datetime.now(timezone.utc)).days)
+
+@owner_router.get("/clientes")
+async def owner_get_clientes(_=Depends(verify_owner_token)):
+    empresas = await db.empresas.find({}).sort("created_at", -1).to_list(1000)
+    result = []
+    for emp in empresas:
+        suscripcion = await db.suscripciones.find_one({"empresa_id": emp["id"]})
+        admin = await db.users.find_one({"empresa_id": emp["id"], "rol": "admin"})
+        pagos_count = await db.pagos_suscripcion.count_documents(
+            {"empresa_id": emp["id"], "estado": "approved"}
+        )
+        dias_restantes = _calc_dias_restantes(suscripcion)
+        # Convert ObjectId and datetime for JSON serialization
+        sus_data = None
+        if suscripcion:
+            sus_data = {k: v for k, v in suscripcion.items() if k != "_id"}
+        result.append({
+            "id": emp["id"],
+            "nombre": emp["nombre"],
+            "activo": emp.get("activo", True),
+            "created_at": emp.get("created_at"),
+            "admin_email": admin["email"] if admin else None,
+            "admin_nombre": admin["nombre"] if admin else None,
+            "suscripcion": sus_data,
+            "dias_restantes": dias_restantes,
+            "pagos_aprobados": pagos_count,
+        })
+    return result
+
+@owner_router.get("/clientes/{empresa_id}")
+async def owner_get_cliente(empresa_id: str, _=Depends(verify_owner_token)):
+    emp = await db.empresas.find_one({"id": empresa_id})
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    suscripcion = await db.suscripciones.find_one({"empresa_id": empresa_id})
+    admin = await db.users.find_one({"empresa_id": empresa_id, "rol": "admin"})
+    pagos = await db.pagos_suscripcion.find(
+        {"empresa_id": empresa_id}
+    ).sort("fecha", -1).to_list(100)
+    dias_restantes = _calc_dias_restantes(suscripcion)
+    sus_data = {k: v for k, v in suscripcion.items() if k != "_id"} if suscripcion else None
+    pagos_data = [{k: v for k, v in p.items() if k != "_id"} for p in pagos]
+    return {
+        "id": emp["id"],
+        "nombre": emp["nombre"],
+        "activo": emp.get("activo", True),
+        "created_at": emp.get("created_at"),
+        "admin_email": admin["email"] if admin else None,
+        "admin_nombre": admin["nombre"] if admin else None,
+        "suscripcion": sus_data,
+        "dias_restantes": dias_restantes,
+        "pagos": pagos_data,
+    }
+
+@owner_router.put("/clientes/{empresa_id}/suscripcion")
+async def owner_update_suscripcion(
+    empresa_id: str, data: SuscripcionUpdate, _=Depends(verify_owner_token)
+):
+    emp = await db.empresas.find_one({"id": empresa_id})
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    suscripcion = await db.suscripciones.find_one({"empresa_id": empresa_id})
+    update = {}
+    if data.status is not None:
+        update["status"] = data.status
+    if data.plan_nombre is not None:
+        update["plan_nombre"] = data.plan_nombre
+    if data.precio is not None:
+        update["precio"] = data.precio
+    if data.dias_extra and data.dias_extra > 0:
+        if suscripcion:
+            vencimiento = suscripcion.get("fecha_vencimiento")
+            if isinstance(vencimiento, str):
+                vencimiento = datetime.fromisoformat(vencimiento)
+            if vencimiento and not vencimiento.tzinfo:
+                vencimiento = vencimiento.replace(tzinfo=timezone.utc)
+        else:
+            vencimiento = None
+        now = datetime.now(timezone.utc)
+        base = vencimiento if vencimiento and vencimiento > now else now
+        update["fecha_vencimiento"] = base + timedelta(days=data.dias_extra)
+        if not data.status:
+            update["status"] = SuscripcionStatus.ACTIVA
+    elif data.fecha_vencimiento is not None:
+        update["fecha_vencimiento"] = data.fecha_vencimiento
+    if update:
+        if suscripcion:
+            await db.suscripciones.update_one({"empresa_id": empresa_id}, {"$set": update})
+        else:
+            now = datetime.now(timezone.utc)
+            nueva = Suscripcion(
+                empresa_id=empresa_id,
+                plan_nombre=update.get("plan_nombre", SUSCRIPCION_PLAN_NOMBRE),
+                precio=update.get("precio", SUSCRIPCION_PRECIO),
+                status=update.get("status", SuscripcionStatus.ACTIVA),
+                fecha_inicio=now,
+                fecha_vencimiento=update.get("fecha_vencimiento", now + timedelta(days=30)),
+            )
+            await db.suscripciones.insert_one(nueva.dict())
+    return {"message": "Suscripción actualizada"}
+
+@owner_router.post("/clientes/{empresa_id}/pago")
+async def owner_registrar_pago(
+    empresa_id: str, data: PagoManual, _=Depends(verify_owner_token)
+):
+    emp = await db.empresas.find_one({"id": empresa_id})
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    pago = PagoSuscripcion(
+        empresa_id=empresa_id,
+        monto=data.monto,
+        moneda="ARS",
+        estado="approved",
+        concepto=data.concepto,
+    )
+    await db.pagos_suscripcion.insert_one(pago.dict())
+    suscripcion = await db.suscripciones.find_one({"empresa_id": empresa_id})
+    now = datetime.now(timezone.utc)
+    if suscripcion:
+        vencimiento = suscripcion.get("fecha_vencimiento")
+        if isinstance(vencimiento, str):
+            vencimiento = datetime.fromisoformat(vencimiento)
+        if vencimiento and not vencimiento.tzinfo:
+            vencimiento = vencimiento.replace(tzinfo=timezone.utc)
+        base = vencimiento if vencimiento and vencimiento > now else now
+        nueva_fecha = base + timedelta(days=data.dias_extension)
+        await db.suscripciones.update_one(
+            {"empresa_id": empresa_id},
+            {"$set": {
+                "status": SuscripcionStatus.ACTIVA,
+                "fecha_vencimiento": nueva_fecha,
+            }}
+        )
+        await db.pagos_suscripcion.update_one(
+            {"id": pago.id},
+            {"$set": {"periodo_inicio": base, "periodo_fin": nueva_fecha}}
+        )
+    else:
+        nueva_fecha = now + timedelta(days=data.dias_extension)
+        nueva_sus = Suscripcion(
+            empresa_id=empresa_id,
+            plan_nombre=SUSCRIPCION_PLAN_NOMBRE,
+            precio=data.monto,
+            status=SuscripcionStatus.ACTIVA,
+            fecha_inicio=now,
+            fecha_vencimiento=nueva_fecha,
+        )
+        await db.suscripciones.insert_one(nueva_sus.dict())
+    return {"message": "Pago registrado y suscripción extendida"}
+
+@owner_router.put("/clientes/{empresa_id}/activo")
+async def owner_toggle_empresa(empresa_id: str, _=Depends(verify_owner_token)):
+    emp = await db.empresas.find_one({"id": empresa_id})
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    new_status = not emp.get("activo", True)
+    await db.empresas.update_one({"id": empresa_id}, {"$set": {"activo": new_status}})
+    if not new_status:
+        await db.suscripciones.update_one(
+            {"empresa_id": empresa_id},
+            {"$set": {"status": SuscripcionStatus.SUSPENDIDA}}
+        )
+    else:
+        # Al re-activar: restaurar según la fecha de vencimiento
+        sus = await db.suscripciones.find_one({"empresa_id": empresa_id})
+        if sus and sus.get("status") == SuscripcionStatus.SUSPENDIDA:
+            vencimiento = sus.get("fecha_vencimiento")
+            if isinstance(vencimiento, str):
+                vencimiento = datetime.fromisoformat(vencimiento)
+            if vencimiento and not vencimiento.tzinfo:
+                vencimiento = vencimiento.replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            nuevo_status = SuscripcionStatus.ACTIVA if vencimiento and vencimiento > now else SuscripcionStatus.VENCIDA
+            await db.suscripciones.update_one(
+                {"empresa_id": empresa_id},
+                {"$set": {"status": nuevo_status}}
+            )
+    return {"activo": new_status, "message": f"Empresa {'activada' if new_status else 'suspendida'}"}
+
+@owner_router.get("/config")
+async def owner_get_config(_=Depends(verify_owner_token)):
+    return {
+        "suscripcion_precio": await get_precio_suscripcion(),
+        "suscripcion_plan_nombre": await get_plan_nombre_suscripcion(),
+    }
+
+class OwnerConfigUpdate(BaseModel):
+    suscripcion_precio: Optional[float] = None
+    suscripcion_plan_nombre: Optional[str] = None
+
+@owner_router.put("/config")
+async def owner_update_config(data: OwnerConfigUpdate, _=Depends(verify_owner_token)):
+    if data.suscripcion_precio is not None:
+        await db.system_config.update_one(
+            {"key": "suscripcion_precio"},
+            {"$set": {"value": data.suscripcion_precio}},
+            upsert=True,
+        )
+    if data.suscripcion_plan_nombre is not None:
+        await db.system_config.update_one(
+            {"key": "suscripcion_plan_nombre"},
+            {"$set": {"value": data.suscripcion_plan_nombre}},
+            upsert=True,
+        )
+    return {"ok": True}
+
 # Include the router in the main app
 app.include_router(api_router)
+app.include_router(owner_router)
 
 origins = os.environ.get("CORS_ORIGINS", "")
 allow_origins = [o.strip() for o in origins.split(",") if o.strip()]

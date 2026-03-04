@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '../App';
 import { toast } from 'sonner';
+import jsPDF from 'jspdf';
 import {
   Calendar,
   Download,
@@ -10,7 +11,8 @@ import {
   TrendingDown,
   Filter,
   Building2,
-  Truck
+  Truck,
+  Printer
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -22,6 +24,7 @@ const PurchasesReport = () => {
   const [branches, setBranches] = useState([]);
   const [proveedores, setProveedores] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
   const [dateFilter, setDateFilter] = useState('month');
   const [branchFilter, setBranchFilter] = useState('all');
   const [proveedorFilter, setProveedorFilter] = useState('all');
@@ -152,6 +155,130 @@ const PurchasesReport = () => {
     });
   };
 
+  const handleExportPDF = () => {
+    const filtered = getFilteredCompras();
+    if (filtered.length === 0) return;
+    setGeneratingPdf(true);
+    try {
+      const stats = calculateStats(filtered);
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const W = 210;
+      const margin = 20;
+      const colRight = W - margin;
+      let y = 0;
+
+      const line = (y1) => { pdf.setDrawColor(180); pdf.line(margin, y1, colRight, y1); };
+      const sectionTitle = (text, yPos) => {
+        pdf.setFillColor(40, 40, 40);
+        pdf.rect(margin, yPos, colRight - margin, 7, 'F');
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text(text, margin + 3, yPos + 5);
+        pdf.setTextColor(0, 0, 0);
+        return yPos + 10;
+      };
+      const row = (label, value, yPos, bold = false) => {
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', bold ? 'bold' : 'normal');
+        pdf.text(label, margin + 2, yPos);
+        pdf.text(value, colRight - 2, yPos, { align: 'right' });
+        return yPos + 6;
+      };
+
+      // Encabezado
+      pdf.setFillColor(20, 20, 20);
+      pdf.rect(0, 0, W, 28, 'F');
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFontSize(16);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('REPORTE DE COMPRAS', W / 2, 13, { align: 'center' });
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'normal');
+      const periodoLabel = { today: 'Hoy', week: 'Última semana', month: 'Último mes', all: 'Todas', custom: 'Rango personalizado' }[dateFilter] || dateFilter;
+      const sucursalLabel = branchFilter === 'all' ? 'Todas las sucursales' : getBranchName(branchFilter);
+      pdf.text(`Período: ${periodoLabel}   |   Sucursal: ${sucursalLabel}   |   Generado: ${new Date().toLocaleDateString('es-ES')}`, W / 2, 22, { align: 'center' });
+      pdf.setTextColor(0, 0, 0);
+      y = 34;
+
+      // Resumen
+      y = sectionTitle('RESUMEN', y);
+      y = row('Total de compras', stats.totalCompras.toString(), y);
+      y = row('Total gastado', `$${stats.totalGastado.toFixed(2)}`, y, true);
+      y = row('Compra promedio', `$${stats.promedio.toFixed(2)}`, y);
+      y += 4;
+
+      // Por proveedor
+      if (Object.keys(stats.byProveedor).length > 0) {
+        y = sectionTitle('DESGLOSE POR PROVEEDOR', y);
+        Object.entries(stats.byProveedor).forEach(([, data]) => {
+          y = row(`${data.nombre} (${data.count} facturas)`, `$${data.total.toFixed(2)}`, y);
+          if (y > 270) { pdf.addPage(); y = 20; }
+        });
+        y += 4;
+      }
+
+      // Por sucursal
+      if (branchFilter === 'all' && Object.keys(stats.byBranch).length > 1) {
+        y = sectionTitle('COMPRAS POR SUCURSAL', y);
+        Object.entries(stats.byBranch).forEach(([, data]) => {
+          y = row(`${data.nombre} (${data.count} compras)`, `$${data.total.toFixed(2)}`, y);
+        });
+        y += 4;
+      }
+
+      // Tabla
+      y = sectionTitle('HISTORIAL DE COMPRAS', y);
+      pdf.setFillColor(230, 230, 230);
+      pdf.rect(margin, y, colRight - margin, 6, 'F');
+      pdf.setFontSize(8);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Factura', margin + 2, y + 4);
+      pdf.text('Fecha', margin + 35, y + 4);
+      pdf.text('Sucursal', margin + 72, y + 4);
+      pdf.text('Proveedor', margin + 105, y + 4);
+      pdf.text('Items', margin + 138, y + 4);
+      pdf.text('Total', colRight - 2, y + 4, { align: 'right' });
+      y += 7;
+
+      pdf.setFont('helvetica', 'normal');
+      filtered.forEach((compra, i) => {
+        if (y > 270) { pdf.addPage(); y = 20; }
+        if (i % 2 === 0) {
+          pdf.setFillColor(248, 248, 248);
+          pdf.rect(margin, y - 1, colRight - margin, 6, 'F');
+        }
+        pdf.setFontSize(8);
+        pdf.text(compra.numero_factura || '-', margin + 2, y + 3);
+        pdf.text(formatDate(compra.fecha), margin + 35, y + 3);
+        pdf.text(getBranchName(compra.sucursal_id), margin + 72, y + 3);
+        pdf.text(getProveedorName(compra.proveedor_id), margin + 105, y + 3);
+        pdf.text(`${compra.items.length} prod.`, margin + 138, y + 3);
+        pdf.text(`$${compra.total.toFixed(2)}`, colRight - 2, y + 3, { align: 'right' });
+        y += 6;
+      });
+
+      // Pie de página
+      const totalPages = pdf.internal.pages.length - 1;
+      for (let p = 1; p <= totalPages; p++) {
+        pdf.setPage(p);
+        line(285);
+        pdf.setFontSize(8);
+        pdf.setTextColor(120);
+        pdf.text(`Generado el ${new Date().toLocaleString('es-ES')}`, margin, 290);
+        pdf.text(`Página ${p} de ${totalPages}`, colRight, 290, { align: 'right' });
+      }
+
+      pdf.save(`reporte-compras-${new Date().toISOString().split('T')[0]}.pdf`);
+      toast.success('PDF generado correctamente');
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al generar el PDF');
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
   const exportToCSV = () => {
     const filtered = getFilteredCompras();
     const header = 'Factura,Fecha,Sucursal,Proveedor,Items,Subtotal,Impuestos,Total\n';
@@ -223,14 +350,24 @@ const PurchasesReport = () => {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Reporte de Compras</h1>
           <p className="text-gray-600">Análisis y estadísticas de compras a proveedores</p>
         </div>
-        <button
-          onClick={exportToCSV}
-          className="btn btn-secondary"
-          disabled={filteredCompras.length === 0}
-        >
-          <Download className="w-4 h-4" />
-          Exportar CSV
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleExportPDF}
+            className="btn btn-secondary flex items-center gap-2"
+            disabled={filteredCompras.length === 0 || generatingPdf}
+          >
+            <Printer className="w-4 h-4" />
+            {generatingPdf ? 'Generando PDF...' : 'Descargar PDF'}
+          </button>
+          <button
+            onClick={exportToCSV}
+            className="btn btn-secondary"
+            disabled={filteredCompras.length === 0}
+          >
+            <Download className="w-4 h-4" />
+            Exportar CSV
+          </button>
+        </div>
       </div>
 
       {/* Filtros */}

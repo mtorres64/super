@@ -19,6 +19,8 @@ import BranchManagement from './components/BranchManagement';
 import Compras from './components/Compras';
 import Cuenta from './components/Cuenta';
 import Landing from './components/Landing';
+import OwnerPanel from './components/OwnerPanel';
+import SalesReports from './components/SalesReports';
 import { Toaster } from './components/ui/sonner';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -35,12 +37,21 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     if (token) {
-      // Set axios default authorization header
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      // Restaurar usuario tras recarga de página
+      axios.get(`${API}/auth/me`)
+        .then(res => setUser(res.data))
+        .catch(() => {
+          // Token inválido o expirado
+          localStorage.removeItem('token');
+          setToken(null);
+          delete axios.defaults.headers.common['Authorization'];
+        })
+        .finally(() => setLoading(false));
     } else {
       delete axios.defaults.headers.common['Authorization'];
+      setLoading(false);
     }
-    setLoading(false);
   }, [token]);
 
   const login = (userData, accessToken) => {
@@ -228,6 +239,15 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/sales"
+              element={
+                <ProtectedRoute allowedRoles={['admin', 'cajero', 'supervisor']}>
+                  <SalesReports />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/owner" element={<OwnerPanel />} />
           </Routes>
         </BrowserRouter>
         <Toaster />

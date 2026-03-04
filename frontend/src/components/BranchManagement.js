@@ -18,7 +18,8 @@ import {
   Download,
   FileText,
   ChevronDown,
-  Percent
+  Percent,
+  Trash2
 } from 'lucide-react';
 
 const BranchManagement = () => {
@@ -39,6 +40,8 @@ const BranchManagement = () => {
   const [showBulkMargenModal, setShowBulkMargenModal] = useState(false);
   const [bulkMargenTipo, setBulkMargenTipo] = useState('establecer');
   const [bulkMargenValor, setBulkMargenValor] = useState('');
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const [formData, setFormData] = useState({
     nombre: '',
@@ -237,6 +240,28 @@ const BranchManagement = () => {
     toast.success(`Margen aplicado a ${selectedRows.size} producto(s). Recuerda guardar los cambios.`);
   };
 
+  const handleBulkDelete = async () => {
+    setBulkDeleting(true);
+    let successCount = 0;
+    let errorCount = 0;
+    for (const productId of selectedRows) {
+      const product = branchProducts.find(p => p.product_id === productId);
+      if (!product?.branch_product_id) { errorCount++; continue; }
+      try {
+        await axios.delete(`${API}/branch-products/${product.branch_product_id}`);
+        successCount++;
+      } catch {
+        errorCount++;
+      }
+    }
+    if (successCount > 0) toast.success(`${successCount} producto(s) eliminado(s) de la sucursal`);
+    if (errorCount > 0) toast.error(`${errorCount} producto(s) con error al eliminar`);
+    setShowBulkDeleteModal(false);
+    setSelectedRows(new Set());
+    await fetchBranchProducts(selectedBranch.id);
+    setBulkDeleting(false);
+  };
+
   const saveProductChanges = async () => {
     const entries = Object.entries(pendingChanges);
     if (entries.length === 0) return;
@@ -368,28 +393,6 @@ const BranchManagement = () => {
                 </button>
               </>
             )}
-            {/* Bulk actions - visible when rows are selected */}
-            {selectedRows.size > 0 && (
-              <div className="flex items-center gap-2 border-r border-gray-200 pr-3">
-                <span className="text-sm text-blue-600 font-medium">
-                  {selectedRows.size} seleccionado(s)
-                </span>
-                <button
-                  onClick={() => { setBulkMargenTipo('establecer'); setBulkMargenValor(''); setShowBulkMargenModal(true); }}
-                  className="btn btn-secondary btn-sm"
-                >
-                  <Percent className="w-4 h-4" />
-                  Margen
-                </button>
-                <button
-                  onClick={() => setSelectedRows(new Set())}
-                  className="text-gray-400 hover:text-gray-600"
-                  title="Deseleccionar todo"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            )}
             {/* Export branch products */}
             <div className="relative" onClick={(e) => e.stopPropagation()}>
               <button
@@ -434,6 +437,34 @@ const BranchManagement = () => {
             />
           </div>
         </div>
+
+        {/* Bulk Actions Bar */}
+        {selectedRows.size > 0 && (
+          <div className="flex items-center gap-3 mb-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+            <span className="text-sm text-blue-700 font-medium">{selectedRows.size} seleccionado(s)</span>
+            <button
+              onClick={() => { setBulkMargenTipo('establecer'); setBulkMargenValor(''); setShowBulkMargenModal(true); }}
+              className="btn btn-secondary btn-sm"
+            >
+              <Percent className="w-4 h-4" />
+              Margen
+            </button>
+            <button
+              onClick={() => setShowBulkDeleteModal(true)}
+              className="btn btn-sm bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
+            >
+              <Trash2 className="w-4 h-4" />
+              Eliminar seleccionados
+            </button>
+            <button
+              onClick={() => setSelectedRows(new Set())}
+              className="text-gray-400 hover:text-gray-600 ml-auto"
+              title="Deseleccionar todo"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {loadingProducts ? (
           <div className="flex items-center justify-center h-48">
@@ -589,6 +620,51 @@ const BranchManagement = () => {
                 <p>No se encontraron productos</p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Bulk Delete Confirmation Modal */}
+        {showBulkDeleteModal && (
+          <div className="modal-overlay">
+            <div className="modal-content max-w-md">
+              <div className="modal-header">
+                <h3 className="modal-title flex items-center gap-2">
+                  <Trash2 className="w-5 h-5 text-red-600" />
+                  Eliminar productos de la sucursal
+                </h3>
+                <button onClick={() => setShowBulkDeleteModal(false)} className="modal-close">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
+                Estás por eliminar <strong>{selectedRows.size} producto(s)</strong> de la sucursal <strong>{selectedBranch.nombre}</strong>.
+                <br />Esta acción no se puede deshacer.
+              </div>
+
+              <div className="flex justify-end space-x-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowBulkDeleteModal(false)}
+                  disabled={bulkDeleting}
+                  className="btn btn-secondary"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBulkDelete}
+                  disabled={bulkDeleting}
+                  className="btn bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {bulkDeleting ? (
+                    <><div className="spinner w-4 h-4" /> Eliminando...</>
+                  ) : (
+                    <><Trash2 className="w-4 h-4" /> Eliminar</>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

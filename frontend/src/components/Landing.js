@@ -1,6 +1,5 @@
-import React, { useContext } from 'react';
-import { Link, Navigate } from 'react-router-dom';
-import { AuthContext } from '../App';
+import React from 'react';
+import { Link } from 'react-router-dom';
 import {
   Store,
   ShoppingCart,
@@ -65,8 +64,6 @@ const S = {
 };
 
 export default function Landing() {
-  const { user } = useContext(AuthContext);
-  if (user) return <Navigate to="/dashboard" replace />;
 
   return (
     <div style={{ minHeight: '100vh', background: 'white', fontFamily: 'Inter, sans-serif' }}>

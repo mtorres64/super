@@ -4,7 +4,6 @@ import { API, AuthContext } from '../App';
 import { toast } from 'sonner';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Wallet,
   CheckCircle,
   AlertCircle,
   Clock,
@@ -39,17 +38,19 @@ const formatCurrency = (amount, currency = 'ARS') =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency }).format(amount);
 
 const Cuenta = () => {
-  const { user } = useContext(AuthContext);
+  useContext(AuthContext);
   const [searchParams, setSearchParams] = useSearchParams();
   const [suscripcion, setSuscripcion] = useState(null);
   const [pagos, setPagos] = useState([]);
+  const [planes, setPlanes] = useState(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [loadingPagos, setLoadingPagos] = useState(true);
-  const [creandoPago, setCreandoPago] = useState(false);
+  const [creandoPago, setCreandoPago] = useState(null); // null | 'mensual' | 'anual'
 
   useEffect(() => {
     fetchStatus();
     fetchPagos();
+    axios.get(`${API}/cuenta/planes`).then(r => setPlanes(r.data)).catch(() => {});
   }, []);
 
   // Manejar retorno desde MercadoPago
@@ -93,10 +94,22 @@ const Cuenta = () => {
     }
   };
 
-  const handlePagar = async () => {
+  const handleSimularPago = async (planTipo = 'mensual') => {
     try {
-      setCreandoPago(true);
-      const resp = await axios.post(`${API}/cuenta/pago/crear`);
+      await axios.post(`${API}/cuenta/pago/simular-aprobado?plan_tipo=${planTipo}`);
+      const label = planTipo === 'anual' ? 'anual (12 meses)' : 'mensual (1 mes)';
+      toast.success(`[TEST] Pago ${label} simulado. Suscripción renovada.`);
+      fetchStatus();
+      fetchPagos();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al simular pago');
+    }
+  };
+
+  const handlePagar = async (planTipo = 'mensual') => {
+    try {
+      setCreandoPago(planTipo);
+      const resp = await axios.post(`${API}/cuenta/pago/crear`, { plan_tipo: planTipo });
       const url = resp.data.init_point || resp.data.sandbox_init_point;
       if (url) {
         window.location.href = url;
@@ -107,7 +120,7 @@ const Cuenta = () => {
       const msg = err.response?.data?.detail || 'Error al iniciar el pago';
       toast.error(msg);
     } finally {
-      setCreandoPago(false);
+      setCreandoPago(null);
     }
   };
 
@@ -118,6 +131,8 @@ const Cuenta = () => {
     suscripcion.status === 'vencida' ||
     (suscripcion.status !== 'suspendida' && suscripcion.dias_restantes <= 7)
   );
+
+  const accionLabel = suscripcion?.status === 'vencida' ? 'Reactivar' : 'Renovar';
 
   return (
     <div className="p-6">
@@ -214,31 +229,95 @@ const Cuenta = () => {
           )}
         </div>
 
-        {/* Botón de pago */}
+        {/* Selección de plan y botones de pago */}
         {suscripcion && suscripcion.status !== 'suspendida' && (
-          <div className="px-6 pb-6 pt-2 border-t border-gray-100">
-            <div className="flex items-center gap-4 flex-wrap">
-              <button
-                onClick={handlePagar}
-                disabled={creandoPago}
-                className="btn btn-primary flex items-center gap-2"
-              >
-                {creandoPago ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    Redirigiendo...
-                  </>
-                ) : (
-                  <>
-                    <ExternalLink className="w-4 h-4" />
-                    {suscripcion.status === 'vencida' ? 'Reactivar suscripción' : 'Renovar suscripción'}
-                  </>
-                )}
-              </button>
-              <p className="text-xs text-gray-500">
-                Serás redirigido a MercadoPago para completar el pago de forma segura.
-              </p>
+          <div className="px-6 pb-6 pt-4 border-t border-gray-100">
+            <p className="text-sm font-medium text-gray-700 mb-3">Elegí tu plan:</p>
+            <div className="flex flex-wrap gap-4">
+              {/* Plan mensual */}
+              <div className="flex-1 min-w-[200px] border border-gray-200 rounded-lg p-4 flex flex-col gap-3">
+                <div>
+                  <p className="font-semibold text-gray-900">
+                    {planes?.mensual?.nombre ?? 'Plan Mensual'}
+                  </p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">
+                    {planes ? formatCurrency(planes.mensual.precio) : '—'}
+                  </p>
+                  <p className="text-xs text-gray-500">por mes</p>
+                </div>
+                <button
+                  onClick={() => handlePagar('mensual')}
+                  disabled={creandoPago !== null}
+                  className="btn btn-primary flex items-center justify-center gap-2 w-full"
+                >
+                  {creandoPago === 'mensual' ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Redirigiendo...
+                    </>
+                  ) : (
+                    <>
+                      <ExternalLink className="w-4 h-4" />
+                      {accionLabel} mensual
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Plan anual */}
+              <div className="flex-1 min-w-[200px] border-2 border-primary rounded-lg p-4 flex flex-col gap-3 relative">
+                <span className="absolute -top-3 left-4 bg-green-600 text-white text-xs font-semibold px-2 py-0.5 rounded-full">
+                  1 mes gratis
+                </span>
+                <div>
+                  <p className="font-semibold text-gray-900">
+                    {planes?.anual?.nombre ?? 'Plan Anual'}
+                  </p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">
+                    {planes ? formatCurrency(planes.anual.precio) : '—'}
+                  </p>
+                  <p className="text-xs text-gray-500">por año (12 meses al precio de 11)</p>
+                </div>
+                <button
+                  onClick={() => handlePagar('anual')}
+                  disabled={creandoPago !== null}
+                  className="btn btn-primary flex items-center justify-center gap-2 w-full"
+                >
+                  {creandoPago === 'anual' ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Redirigiendo...
+                    </>
+                  ) : (
+                    <>
+                      <ExternalLink className="w-4 h-4" />
+                      {accionLabel} anual
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
+
+            <p className="text-xs text-gray-400 mt-3">
+              Serás redirigido a MercadoPago para completar el pago de forma segura.
+            </p>
+
+            {process.env.NODE_ENV === 'development' && (
+              <div className="flex gap-2 mt-3 flex-wrap">
+                <button
+                  onClick={() => handleSimularPago('mensual')}
+                  className="btn btn-secondary text-xs border-dashed"
+                >
+                  [TEST] Simular mensual
+                </button>
+                <button
+                  onClick={() => handleSimularPago('anual')}
+                  className="btn btn-secondary text-xs border-dashed"
+                >
+                  [TEST] Simular anual
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

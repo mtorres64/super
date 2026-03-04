@@ -5,19 +5,21 @@ import { API, AuthContext } from '../App';
 import { toast } from 'sonner';
 import BarcodeScanner from './BarcodeScanner';
 import Pagination from './Pagination';
-import { 
-  Search, 
-  Plus, 
-  Minus, 
-  Trash2, 
-  CreditCard, 
+import {
+  Search,
+  Plus,
+  Minus,
+  Trash2,
+  CreditCard,
   DollarSign,
   Smartphone,
   ShoppingCart,
   Scan,
   Camera,
   Keyboard,
-  Volume2
+  Volume2,
+  Printer,
+  X
 } from 'lucide-react';
 
 const POS = () => {
@@ -36,9 +38,11 @@ const POS = () => {
   const [currentSession, setCurrentSession] = useState(null);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [mobileTab, setMobileTab] = useState('products');
+  const [saleReceipt, setSaleReceipt] = useState(null);
   const { user } = useContext(AuthContext);
   const barcodeInputRef = useRef(null);
   const lastKeyTime = useRef(0);
+  const cartItemsRef = useRef(null);
 
   useEffect(() => {
     fetchProducts();
@@ -231,6 +235,13 @@ const POS = () => {
     setCurrentPage(1);
   }, [searchTerm]);
 
+  // Auto-scroll cart to bottom when items are added
+  useEffect(() => {
+    if (cartItemsRef.current) {
+      cartItemsRef.current.scrollTop = cartItemsRef.current.scrollHeight;
+    }
+  }, [cart.length]);
+
   const addToCart = (product, quantity = 1) => {
     const existingItem = cart.find(item => item.id === product.id);
     
@@ -306,13 +317,14 @@ const POS = () => {
       };
 
       const response = await axios.post(`${API}/sales`, saleData);
-      
-      // Play success sound
+
       playSuccessSound();
-      
-      toast.success(`Venta procesada exitosamente. Factura: ${response.data.numero_factura}`);
       clearCart();
-      fetchProducts(); // Refresh products to update stock
+      fetchProducts();
+      setSaleReceipt(response.data);
+      if (config?.print_receipt_auto) {
+        setTimeout(() => window.print(), 300);
+      }
     } catch (error) {
       playErrorSound();
       toast.error(error.response?.data?.detail || 'Error al procesar la venta');
@@ -321,67 +333,22 @@ const POS = () => {
     }
   };
 
+  const printTicket = () => {
+    window.print();
+  };
+
   const getCategoryName = (categoryId) => {
     const category = categories.find(cat => cat.id === categoryId);
     return category ? category.nombre : 'Sin categoría';
   };
 
+  const sessionDisabledStyle = {
+    opacity: !sessionLoading && !currentSession ? 0.5 : 1,
+    pointerEvents: !sessionLoading && !currentSession ? 'none' : 'auto',
+  };
+
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Punto de Venta
-        </h1>
-        <p className="text-gray-600">
-          Cajero: {user?.nombre}
-          {user?.branch_id && (
-            <span className="ml-3 px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 rounded-full">
-              Sucursal asignada — precios diferenciados
-            </span>
-          )}
-        </p>
-      </div>
-
-      {/* Cash Session Alert */}
-      {sessionLoading ? (
-        <div className="mb-6 bg-gray-50 border border-gray-200 p-4 rounded-lg">
-          <div className="flex items-center">
-            <div className="spinner w-5 h-5 mr-3"></div>
-            <p className="text-gray-600">Verificando estado de caja...</p>
-          </div>
-        </div>
-      ) : !currentSession ? (
-        <div className="mb-6 bg-red-50 border-l-4 border-red-400 p-4 rounded-lg">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <div className="text-red-600 mr-3">⚠️</div>
-              <div>
-                <h3 className="font-medium text-red-800">Caja Cerrada</h3>
-                <p className="text-red-700">Debe abrir una caja antes de realizar ventas</p>
-              </div>
-            </div>
-            <Link
-              to="/cash"
-              className="btn btn-primary"
-            >
-              Ir a Gestión de Caja
-            </Link>
-          </div>
-        </div>
-      ) : (
-        <div className="mb-6 bg-green-50 border-l-4 border-green-400 p-4 rounded-lg">
-          <div className="flex items-center">
-            <div className="text-green-600 mr-3">✅</div>
-            <div>
-              <h3 className="font-medium text-green-800">Caja Abierta</h3>
-              <p className="text-green-700">
-                Sesión activa - Monto inicial: ${currentSession.monto_inicial.toFixed(2)}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
+    <div className="pos-page">
       {/* Tabs móvil: Productos / Carrito */}
       <div className="pos-mobile-tabs">
         <button
@@ -398,14 +365,79 @@ const POS = () => {
         </button>
       </div>
 
-      <div className="pos-container"
-        style={{
-          opacity: !sessionLoading && !currentSession ? 0.5 : 1,
-          pointerEvents: !sessionLoading && !currentSession ? 'none' : 'auto'
-        }}
-      >
-        {/* Left Section - Products */}
-        <div className={`pos-left ${mobileTab === 'products' ? 'pos-tab-active' : ''}`}>
+      {/* Left Section */}
+      <div className={`pos-left ${mobileTab === 'products' ? 'pos-tab-active' : ''}`}>
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Punto de Venta
+          </h1>
+          <p className="text-gray-600">
+            Cajero: {user?.nombre}
+            {user?.branch_id && (
+              <span className="ml-3 px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                Sucursal asignada — precios diferenciados
+              </span>
+            )}
+          </p>
+        </div>
+
+        {/* Cash Session Alert + Scanner Info */}
+        <div className="mb-6 flex flex-col md:flex-row gap-4">
+        {sessionLoading ? (
+          <div className="flex-1 bg-gray-50 border border-gray-200 p-4 rounded-lg">
+            <div className="flex items-center">
+              <div className="spinner w-5 h-5 mr-3"></div>
+              <p className="text-gray-600">Verificando estado de caja...</p>
+            </div>
+          </div>
+        ) : !currentSession ? (
+          <div className="flex-1 bg-red-50 border-l-4 border-red-400 p-4 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <div className="text-red-600 mr-3">⚠️</div>
+                <div>
+                  <h3 className="font-medium text-red-800">Caja Cerrada</h3>
+                  <p className="text-red-700">Debe abrir una caja antes de realizar ventas</p>
+                </div>
+              </div>
+              <Link
+                to="/cash"
+                className="btn btn-primary"
+              >
+                Ir a Gestión de Caja
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 bg-green-50 border-l-4 border-green-400 p-4 rounded-lg">
+            <div className="flex items-center">
+              <div className="text-green-600 mr-3">✅</div>
+              <div>
+                <h3 className="font-medium text-green-800">Caja Abierta</h3>
+                <p className="text-green-700">
+                  Sesión activa - Monto inicial: ${currentSession.monto_inicial.toFixed(2)}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Scanner Info */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex-1">
+          <div className="flex items-center text-sm text-blue-800">
+            <Scan className="w-4 h-4 mr-2" />
+            <span className="font-medium">Modos de escaneado:</span>
+          </div>
+          <div className="mt-1 text-xs text-blue-700 space-y-1">
+            <p>• <strong>Escáner USB/Bluetooth:</strong> Simplemente escanea, se detecta automáticamente</p>
+            <p>• <strong>Cámara web:</strong> Usa el botón de cámara para escanear visualmente</p>
+            <p>• <strong>Manual:</strong> Ingresa el código y presiona Enter</p>
+          </div>
+        </div>
+        </div>
+
+        {/* Search + Products (dimmed when no session) */}
+        <div style={{ ...sessionDisabledStyle, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           {/* Search Section */}
           <div className="pos-search">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -454,19 +486,6 @@ const POS = () => {
                 </button>
               </div>
             </div>
-            
-            {/* Scanner Info */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <div className="flex items-center text-sm text-blue-800">
-                <Scan className="w-4 h-4 mr-2" />
-                <span className="font-medium">Modos de escaneado:</span>
-              </div>
-              <div className="mt-1 text-xs text-blue-700 space-y-1">
-                <p>• <strong>Escáner USB/Bluetooth:</strong> Simplemente escanea, se detecta automáticamente</p>
-                <p>• <strong>Cámara web:</strong> Usa el botón de cámara para escanear visualmente</p>
-                <p>• <strong>Manual:</strong> Ingresa el código y presiona Enter</p>
-              </div>
-            </div>
           </div>
 
           {/* Products Grid */}
@@ -512,9 +531,10 @@ const POS = () => {
             )}
           </div>
         </div>
+      </div>
 
-        {/* Right Section - Cart */}
-        <div className={`pos-cart ${mobileTab === 'cart' ? 'pos-tab-active' : ''}`}>
+      {/* Right Section - Cart */}
+      <div className={`pos-cart ${mobileTab === 'cart' ? 'pos-tab-active' : ''}`} style={sessionDisabledStyle}>
           <div className="cart-header">
             <div className="flex items-center justify-between">
               <h2 className="cart-title">
@@ -532,7 +552,7 @@ const POS = () => {
             </div>
           </div>
 
-          <div className="cart-items">
+          <div className="cart-items" ref={cartItemsRef}>
             {cart.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <ShoppingCart className="w-12 h-12 mx-auto mb-4 text-gray-300" />
@@ -676,8 +696,99 @@ const POS = () => {
               </button>
             </div>
           )}
-        </div>
       </div>
+
+      {/* Ticket Modal */}
+      {saleReceipt && (
+        <div className="ticket-modal-overlay">
+          <div className="ticket-modal-container">
+            <div className="ticket-modal-actions">
+              <h3>Venta procesada</h3>
+              <div className="ticket-modal-btns">
+                <button onClick={printTicket} className="btn btn-primary btn-sm">
+                  <Printer className="w-4 h-4" />
+                  Imprimir Ticket
+                </button>
+                <button onClick={() => setSaleReceipt(null)} className="btn btn-secondary btn-sm">
+                  <X className="w-4 h-4" />
+                  Cerrar
+                </button>
+              </div>
+            </div>
+
+            <div id="ticket-print-area">
+              {config?.company_logo && (
+                <img src={config.company_logo} alt="logo" className="ticket-logo" />
+              )}
+              <div className="ticket-company-name">{config?.company_name || 'Mi Empresa'}</div>
+              {config?.company_address && <div className="ticket-line">{config.company_address}</div>}
+              {config?.company_phone && <div className="ticket-line">Tel: {config.company_phone}</div>}
+              {config?.company_tax_id && <div className="ticket-line">CUIT: {config.company_tax_id}</div>}
+
+              <div className="ticket-separator">{'- '.repeat(16)}</div>
+
+              <div className="ticket-info-row">
+                <span>Comprobante:</span>
+                <span>{saleReceipt.numero_factura}</span>
+              </div>
+              <div className="ticket-info-row">
+                <span>Fecha:</span>
+                <span>{new Date(saleReceipt.fecha).toLocaleString('es-AR')}</span>
+              </div>
+              <div className="ticket-info-row">
+                <span>Cajero:</span>
+                <span>{user?.nombre}</span>
+              </div>
+              <div className="ticket-info-row">
+                <span>Pago:</span>
+                <span>
+                  {saleReceipt.metodo_pago === 'efectivo' ? 'Efectivo'
+                    : saleReceipt.metodo_pago === 'tarjeta' ? 'Tarjeta'
+                    : 'Transferencia'}
+                </span>
+              </div>
+
+              <div className="ticket-separator">{'- '.repeat(16)}</div>
+
+              <div className="ticket-items-header">
+                <span>PRODUCTO</span>
+                <span>TOTAL</span>
+              </div>
+              {saleReceipt.items.map((item, idx) => (
+                <div key={idx} className="ticket-item">
+                  <div className="ticket-item-name">{item.nombre}</div>
+                  <div className="ticket-item-detail">
+                    <span>{item.cantidad} x {config?.currency_symbol || '$'}{item.precio_unitario.toFixed(2)}</span>
+                    <span>{config?.currency_symbol || '$'}{item.subtotal.toFixed(2)}</span>
+                  </div>
+                </div>
+              ))}
+
+              <div className="ticket-separator">{'- '.repeat(16)}</div>
+
+              <div className="ticket-total-row">
+                <span>Subtotal:</span>
+                <span>{config?.currency_symbol || '$'}{saleReceipt.subtotal.toFixed(2)}</span>
+              </div>
+              {saleReceipt.impuestos > 0 && (
+                <div className="ticket-total-row">
+                  <span>Impuestos ({((config?.tax_rate ?? 0) * 100).toFixed(0)}%):</span>
+                  <span>{config?.currency_symbol || '$'}{saleReceipt.impuestos.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="ticket-total-row ticket-total-final">
+                <span>TOTAL:</span>
+                <span>{config?.currency_symbol || '$'}{saleReceipt.total.toFixed(2)}</span>
+              </div>
+
+              <div className="ticket-separator">{'- '.repeat(16)}</div>
+              <div className="ticket-footer">
+                {config?.receipt_footer_text || '¡Gracias por su compra!'}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Barcode Scanner Modal */}
       {showBarcodeScanner && (
