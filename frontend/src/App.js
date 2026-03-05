@@ -21,6 +21,7 @@ import Cuenta from './components/Cuenta';
 import Landing from './components/Landing';
 import OwnerPanel from './components/OwnerPanel';
 import SalesReports from './components/SalesReports';
+import StockAlerts from './components/StockAlerts';
 import { Toaster } from './components/ui/sonner';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -244,6 +245,14 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['admin', 'cajero', 'supervisor']}>
                   <SalesReports />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/stock-alerts"
+              element={
+                <ProtectedRoute allowedRoles={['admin', 'supervisor', 'cajero']}>
+                  <StockAlerts />
                 </ProtectedRoute>
               }
             />

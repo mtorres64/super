@@ -11,7 +11,8 @@ import {
   TrendingUp,
   Users,
   Building2,
-  Truck
+  Truck,
+  ClipboardList
 } from 'lucide-react';
 
 const Dashboard = () => {
@@ -61,7 +62,7 @@ const Dashboard = () => {
 
   const getQuickActions = () => {
     const actions = [];
-    
+
     if (['admin', 'cajero', 'supervisor'].includes(user?.rol)) {
       actions.push({
         title: 'Realizar Venta',
@@ -69,6 +70,13 @@ const Dashboard = () => {
         href: '/pos',
         icon: ShoppingBag,
         color: 'bg-green-500'
+      });
+      actions.push({
+        title: 'Historial de Ventas',
+        description: 'Ver y reimprimir tickets',
+        href: '/sales',
+        icon: ClipboardList,
+        color: 'bg-indigo-500'
       });
     }
 
@@ -125,6 +133,9 @@ const Dashboard = () => {
     return actions;
   };
 
+  const showStats = stats && ['admin', 'supervisor'].includes(user?.rol);
+  const showLowStockAlert = stats?.productos_bajo_stock?.length > 0;
+
   return (
     <div className="p-6">
       <div className="mb-8">
@@ -135,7 +146,7 @@ const Dashboard = () => {
       </div>
 
       {/* Stats Cards - Solo para admin y supervisor */}
-      {stats && ['admin', 'supervisor'].includes(user?.rol) && (
+      {showStats && (
         <div className="dashboard-grid fade-in">
           <div className="stat-card">
             <div className="stat-header">
@@ -165,7 +176,7 @@ const Dashboard = () => {
             </p>
           </div>
 
-          <div className="stat-card border-left-color: #ef4444;">
+          <Link to="/stock-alerts" className="stat-card border-l-4 border-red-400 hover:shadow-md transition-shadow cursor-pointer">
             <div className="stat-header">
               <div className="stat-title">Stock Bajo</div>
               <div className="stat-icon bg-red-100 text-red-600">
@@ -175,37 +186,50 @@ const Dashboard = () => {
             <div className="stat-value text-red-600">
               {stats.productos.bajo_stock}
             </div>
-            <p className="text-sm text-gray-500 mt-2">
-              Requieren atención
+            <p className="text-sm text-red-500 mt-2 font-medium">
+              Requieren atención · Ver detalle →
             </p>
-          </div>
+          </Link>
         </div>
       )}
 
-      {/* Low Stock Alert - Solo para admin */}
-      {stats?.productos_bajo_stock?.length > 0 && user?.rol === 'admin' && (
+      {/* Low Stock Alert - Para admin, supervisor y cajero */}
+      {showLowStockAlert && (
         <div className="mb-8 bg-red-50 border-l-4 border-red-400 p-4 rounded-lg">
           <div className="flex">
             <div className="flex-shrink-0">
               <AlertTriangle className="h-5 w-5 text-red-400" />
             </div>
-            <div className="ml-3">
+            <div className="ml-3 flex-1">
               <h3 className="text-sm font-medium text-red-800">
                 Productos con Stock Bajo
+                {user?.rol === 'admin' && ' (todas las sucursales)'}
               </h3>
               <div className="mt-2 text-sm text-red-700">
                 <ul className="list-disc list-inside space-y-1">
-                  {stats.productos_bajo_stock.slice(0, 5).map(product => (
-                    <li key={product.id}>
-                      {product.nombre}: {product.stock} unidades (mín: {product.stock_minimo})
+                  {stats.productos_bajo_stock.map((product, idx) => (
+                    <li key={product.id || idx}>
+                      <span className="font-medium">{product.nombre}</span>
+                      {product.sucursal && (
+                        <span className="text-red-500"> — {product.sucursal}</span>
+                      )}
+                      : {product.stock} unidades (mín: {product.stock_minimo})
                     </li>
                   ))}
                 </ul>
-                {stats.productos_bajo_stock.length > 5 && (
+                {stats.productos.bajo_stock > stats.productos_bajo_stock.length && (
                   <p className="mt-2 font-medium">
-                    Y {stats.productos_bajo_stock.length - 5} productos más...
+                    Y {stats.productos.bajo_stock - stats.productos_bajo_stock.length} productos más...
                   </p>
                 )}
+              </div>
+              <div className="mt-3">
+                <Link
+                  to="/stock-alerts"
+                  className="text-sm font-medium text-red-700 underline hover:text-red-900"
+                >
+                  Ver lista completa →
+                </Link>
               </div>
             </div>
           </div>
@@ -256,7 +280,7 @@ const Dashboard = () => {
                 <p className="text-green-700">Sistema listo para procesar ventas</p>
               </div>
             </div>
-            
+
             <div className="bg-gray-50 rounded-lg p-4">
               <h4 className="font-medium text-gray-900 mb-2">Instrucciones:</h4>
               <ul className="text-sm text-gray-600 space-y-1">

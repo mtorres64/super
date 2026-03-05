@@ -17,7 +17,6 @@ import {
   Grid3X3,
   Palette,
   Check,
-  FileText,
   Upload,
   Wifi,
   WifiOff
@@ -224,7 +223,7 @@ const Settings = () => {
     { id: 'interface', label: 'Interfaz', icon: Grid3X3 },
     { id: 'system', label: 'Sistema', icon: Globe },
     { id: 'receipt', label: 'Recibos', icon: Receipt },
-    { id: 'afip', label: 'ARCA / AFIP', icon: FileText },
+    // { id: 'afip', label: 'ARCA / AFIP', icon: FileText },
   ];
 
   if (loading) {

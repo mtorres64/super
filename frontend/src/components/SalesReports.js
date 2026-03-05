@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
+import { useSearchParams } from 'react-router-dom';
 import { API, AuthContext } from '../App';
 import Pagination from './Pagination';
 import { toast } from 'sonner';
@@ -30,7 +31,9 @@ const PAYMENT_COLORS = {
 
 const SalesReports = () => {
   const { user: currentUser } = useContext(AuthContext);
-  const canFilterByUser = ['admin', 'supervisor'].includes(currentUser?.rol);
+  const [searchParams] = useSearchParams();
+  const fromCaja = searchParams.get('from') === 'caja';
+  const canFilterByUser = !fromCaja && ['admin', 'supervisor'].includes(currentUser?.rol);
 
   const [sales, setSales] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -40,8 +43,8 @@ const SalesReports = () => {
   const [loading, setLoading] = useState(true);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [dateFilter, setDateFilter] = useState('today');
-  const [branchFilter, setBranchFilter] = useState('all');
-  const [userFilter, setUserFilter] = useState('all');
+  const [branchFilter, setBranchFilter] = useState(fromCaja && currentUser?.branch_id ? currentUser.branch_id : 'all');
+  const [userFilter, setUserFilter] = useState(fromCaja ? (currentUser?.id || 'all') : 'all');
   const [page, setPage] = useState(1);
   const [customDateFrom, setCustomDateFrom] = useState('');
   const [customDateTo, setCustomDateTo] = useState('');
@@ -134,8 +137,8 @@ const SalesReports = () => {
       filteredSales = filteredSales.filter(sale => sale.branch_id === branchFilter);
     }
 
-    // Filtro por usuario (solo admin/supervisor)
-    if (canFilterByUser && userFilter !== 'all') {
+    // Filtro por usuario
+    if (userFilter !== 'all') {
       filteredSales = filteredSales.filter(sale => sale.cajero_id === userFilter);
     }
 
@@ -543,8 +546,15 @@ const SalesReports = () => {
             <span className="font-medium text-gray-700">Filtrar por:</span>
           </div>
 
-          {/* Filtro usuario (solo admin/supervisor) */}
-          {canFilterByUser && users.length > 0 && (
+          {/* Filtro usuario */}
+          {fromCaja ? (
+            <div className="flex items-center gap-2">
+              <User className="w-4 h-4 text-gray-400" />
+              <span className="form-select bg-gray-50 cursor-default text-gray-700">
+                {currentUser?.nombre || 'Mi usuario'}
+              </span>
+            </div>
+          ) : canFilterByUser && users.length > 0 && (
             <div className="flex items-center gap-2">
               <User className="w-4 h-4 text-gray-400" />
               <select
@@ -561,20 +571,29 @@ const SalesReports = () => {
           )}
 
           {/* Filtro sucursal */}
-          <div className="flex items-center gap-2">
-            <Building2 className="w-4 h-4 text-gray-400" />
-            <select
-              className="form-select"
-              value={branchFilter}
-              onChange={(e) => { setBranchFilter(e.target.value); setPage(1); }}
-            >
-              <option value="all">Todas las sucursales</option>
-              <option value="global">Sin sucursal</option>
-              {branches.map(branch => (
-                <option key={branch.id} value={branch.id}>{branch.nombre}</option>
-              ))}
-            </select>
-          </div>
+          {fromCaja ? (
+            <div className="flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-gray-400" />
+              <span className="form-select bg-gray-50 cursor-default text-gray-700">
+                {currentUser?.branch_id ? (branches.find(b => b.id === currentUser.branch_id)?.nombre || 'Mi sucursal') : 'Sin sucursal'}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-gray-400" />
+              <select
+                className="form-select"
+                value={branchFilter}
+                onChange={(e) => { setBranchFilter(e.target.value); setPage(1); }}
+              >
+                <option value="all">Todas las sucursales</option>
+                <option value="global">Sin sucursal</option>
+                {branches.map(branch => (
+                  <option key={branch.id} value={branch.id}>{branch.nombre}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Filtro fecha */}
           <div className="flex items-center gap-2">

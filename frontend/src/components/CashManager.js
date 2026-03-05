@@ -273,7 +273,7 @@ const CashManager = () => {
         </Link>
 
         <Link
-          to="/sales"
+          to="/sales?from=caja"
           className="group block p-6 bg-white rounded-lg shadow hover:shadow-md transition-shadow border-2 border-purple-200 hover:border-purple-300"
         >
           <div className="flex items-center">

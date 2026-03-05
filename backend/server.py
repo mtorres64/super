@@ -1633,28 +1633,51 @@ async def get_cash_session_report(session_id: str, user: User = Depends(get_curr
 
 # Dashboard routes
 @api_router.get("/dashboard/stats")
-async def get_dashboard_stats(user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR]))):
+async def get_dashboard_stats(user: User = Depends(get_current_user)):
+    is_admin_or_supervisor = user.rol in [UserRole.ADMIN, UserRole.SUPERVISOR]
+
     # Today's sales
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     tomorrow = today + timedelta(days=1)
 
-    today_sales = await db.sales.find({
-        "empresa_id": user.empresa_id,
-        "fecha": {"$gte": today, "$lt": tomorrow}
-    }).to_list(1000)
+    sales_filter = {"empresa_id": user.empresa_id, "fecha": {"$gte": today, "$lt": tomorrow}}
+    if not is_admin_or_supervisor and user.branch_id:
+        sales_filter["branch_id"] = user.branch_id
 
+    today_sales = await db.sales.find(sales_filter).to_list(1000)
     total_ventas_hoy = sum(sale['total'] for sale in today_sales)
     numero_ventas_hoy = len(today_sales)
 
     # Total products
     total_productos = await db.products.count_documents({"empresa_id": user.empresa_id, "activo": True})
 
-    # Low stock products
-    productos_bajo_stock = await db.products.find({
+    # Low stock from branch_products (real per-branch stock)
+    bp_filter = {
         "empresa_id": user.empresa_id,
         "activo": True,
         "$expr": {"$lte": ["$stock", "$stock_minimo"]}
-    }).to_list(1000)
+    }
+    if not is_admin_or_supervisor and user.branch_id:
+        bp_filter["branch_id"] = user.branch_id
+    elif is_admin_or_supervisor and user.rol == UserRole.SUPERVISOR and user.branch_id:
+        bp_filter["branch_id"] = user.branch_id
+
+    bajo_stock_bps = await db.branch_products.find(bp_filter).to_list(1000)
+    bajo_stock_count = len(bajo_stock_bps)
+
+    # Build preview list (up to 5) with product names
+    preview = []
+    for bp in bajo_stock_bps[:5]:
+        prod = await db.products.find_one({"id": bp["product_id"], "empresa_id": user.empresa_id})
+        branch = await db.branches.find_one({"id": bp["branch_id"], "empresa_id": user.empresa_id})
+        if prod:
+            preview.append({
+                "id": bp["id"],
+                "nombre": prod.get("nombre", ""),
+                "sucursal": branch.get("nombre", "") if branch else "",
+                "stock": bp.get("stock", 0),
+                "stock_minimo": bp.get("stock_minimo", 0)
+            })
 
     return {
         "ventas_hoy": {
@@ -1663,10 +1686,104 @@ async def get_dashboard_stats(user: User = Depends(require_role([UserRole.ADMIN,
         },
         "productos": {
             "total": total_productos,
-            "bajo_stock": len(productos_bajo_stock)
+            "bajo_stock": bajo_stock_count
         },
-        "productos_bajo_stock": [Product(**prod) for prod in productos_bajo_stock]
+        "productos_bajo_stock": preview
     }
+
+@api_router.get("/dashboard/stock-alerts")
+async def get_stock_alerts(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=10000),
+    user: User = Depends(get_current_user)
+):
+    is_admin = user.rol == UserRole.ADMIN
+
+    bp_filter = {
+        "empresa_id": user.empresa_id,
+        "activo": True,
+        "$expr": {"$lte": ["$stock", "$stock_minimo"]}
+    }
+    # Supervisor and cajero: filter to their branch
+    if user.rol != UserRole.ADMIN and user.branch_id:
+        bp_filter["branch_id"] = user.branch_id
+
+    total = await db.branch_products.count_documents(bp_filter)
+    skip = (page - 1) * per_page
+    bajo_stock_bps = await db.branch_products.find(bp_filter).skip(skip).limit(per_page).to_list(per_page)
+
+    # Fetch product and branch info
+    items = []
+    for bp in bajo_stock_bps:
+        prod = await db.products.find_one({"id": bp["product_id"], "empresa_id": user.empresa_id})
+        branch = await db.branches.find_one({"id": bp["branch_id"], "empresa_id": user.empresa_id})
+        items.append({
+            "branch_product_id": bp["id"],
+            "product_id": bp["product_id"],
+            "branch_id": bp["branch_id"],
+            "nombre": prod.get("nombre", "") if prod else "",
+            "codigo_barras": prod.get("codigo_barras", "") if prod else "",
+            "sucursal": branch.get("nombre", "") if branch else "",
+            "stock": bp.get("stock", 0),
+            "stock_minimo": bp.get("stock_minimo", 0),
+            "diferencia": bp.get("stock", 0) - bp.get("stock_minimo", 0)
+        })
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, -(-total // per_page))
+    }
+
+@api_router.get("/dashboard/stock-alerts/export")
+async def export_stock_alerts(
+    format: str = Query("xlsx"),
+    user: User = Depends(get_current_user)
+):
+    bp_filter = {
+        "empresa_id": user.empresa_id,
+        "activo": True,
+        "$expr": {"$lte": ["$stock", "$stock_minimo"]}
+    }
+    if user.rol != UserRole.ADMIN and user.branch_id:
+        bp_filter["branch_id"] = user.branch_id
+
+    bajo_stock_bps = await db.branch_products.find(bp_filter).to_list(10000)
+
+    rows = []
+    for bp in bajo_stock_bps:
+        prod = await db.products.find_one({"id": bp["product_id"], "empresa_id": user.empresa_id})
+        branch = await db.branches.find_one({"id": bp["branch_id"], "empresa_id": user.empresa_id})
+        rows.append({
+            "Producto": prod.get("nombre", "") if prod else "",
+            "Código de Barras": prod.get("codigo_barras", "") if prod else "",
+            "Sucursal": branch.get("nombre", "") if branch else "",
+            "Stock Actual": bp.get("stock", 0),
+            "Stock Mínimo": bp.get("stock_minimo", 0),
+            "Diferencia": bp.get("stock", 0) - bp.get("stock_minimo", 0)
+        })
+
+    df = pd.DataFrame(rows)
+    output = io.BytesIO()
+
+    if format == "xlsx":
+        df.to_excel(output, index=False)
+        output.seek(0)
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=stock_bajo.xlsx"}
+        )
+    else:
+        df.to_csv(output, index=False)
+        output.seek(0)
+        return StreamingResponse(
+            output,
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=stock_bajo.csv"}
+        )
 
 # Proveedores routes
 @api_router.post("/proveedores", response_model=Proveedor)
