@@ -15,10 +15,10 @@ backend_path = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(backend_path))
 
 from motor.motor_asyncio import AsyncIOMotorClient
-from passlib.hash import bcrypt
+import bcrypt as _bcrypt
 from dotenv import load_dotenv
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 # Load environment variables
 load_dotenv(backend_path / '.env')
@@ -60,6 +60,10 @@ async def create_indexes(db):
     await db.sales.create_index([("empresa_id", 1), ("cajero_id", 1)])
     await db.sales.create_index([("empresa_id", 1), ("session_id", 1)])
 
+    # sale_returns
+    await db.sale_returns.create_index([("empresa_id", 1), ("sale_id", 1)])
+    await db.sale_returns.create_index([("empresa_id", 1), ("fecha", -1)])
+
     # cash_sessions
     await db.cash_sessions.create_index([("empresa_id", 1), ("user_id", 1), ("status", 1)])
     await db.cash_sessions.create_index([("empresa_id", 1), ("branch_id", 1), ("status", 1)])
@@ -77,6 +81,20 @@ async def create_indexes(db):
     await db.pagos_suscripcion.create_index([("empresa_id", 1), ("fecha", -1)])
     await db.pagos_suscripcion.create_index("mp_payment_id", sparse=True)
 
+    # proveedores
+    await db.proveedores.create_index([("empresa_id", 1), ("activo", 1)])
+    await db.proveedores.create_index([("empresa_id", 1), ("nombre", 1)])
+
+    # compras
+    await db.compras.create_index([("empresa_id", 1), ("fecha", -1)])
+    await db.compras.create_index([("empresa_id", 1), ("proveedor_id", 1)])
+
+    # afip_config
+    await db.afip_config.create_index("empresa_id", unique=True)
+
+    # system_config
+    await db.system_config.create_index("key", unique=True)
+
     print("✅ Indexes created successfully")
 
 
@@ -84,8 +102,9 @@ async def reset_database(db):
     """Elimina todos los datos de la base de datos."""
     collections = [
         "empresas", "users", "categories", "products", "branches",
-        "branch_products", "sales", "cash_sessions",
+        "branch_products", "sales", "sale_returns", "cash_sessions",
         "cash_movements", "configuration", "suscripciones", "pagos_suscripcion",
+        "proveedores", "compras", "afip_config", "system_config",
     ]
     for col in collections:
         await db[col].delete_many({})
@@ -107,7 +126,7 @@ def make_user(nombre, email, password, rol, empresa_id, branch_id=None):
         "empresa_id": empresa_id,
         "nombre": nombre,
         "email": email,
-        "password": bcrypt.hash(password),
+        "password": _bcrypt.hashpw(password.encode(), _bcrypt.gensalt()).decode(),
         "rol": rol,
         "branch_id": branch_id,
         "activo": True,
@@ -138,6 +157,20 @@ def make_product(nombre, barcode, tipo, precio, categoria_id, empresa_id,
         "categoria_id": categoria_id,
         "stock": stock,
         "stock_minimo": stock_minimo,
+        "activo": True,
+        "created_at": datetime.now(timezone.utc),
+    }
+
+
+def make_proveedor(nombre, ruc_cuit, email, telefono, direccion, empresa_id):
+    return {
+        "id": str(uuid.uuid4()),
+        "empresa_id": empresa_id,
+        "nombre": nombre,
+        "ruc_cuit": ruc_cuit,
+        "email": email,
+        "telefono": telefono,
+        "direccion": direccion,
         "activo": True,
         "created_at": datetime.now(timezone.utc),
     }
@@ -340,6 +373,8 @@ async def seed_branches(db, empresa_id):
             "precio_por_peso": product.get("precio_por_peso"),
             "stock": product["stock"],
             "stock_minimo": product["stock_minimo"],
+            "costo": None,
+            "margen": None,
             "activo": True,
             "created_at": datetime.now(timezone.utc),
         }
@@ -390,6 +425,62 @@ async def seed_configuration(db, empresa_id):
     print("✅ Default configuration created successfully")
 
 
+async def seed_suscripcion(db, empresa_id):
+    print("Creating demo subscription...")
+    if await db.suscripciones.find_one({"empresa_id": empresa_id}):
+        print("ℹ️  Subscription already exists")
+        return
+
+    now = datetime.now(timezone.utc)
+    suscripcion = {
+        "id": str(uuid.uuid4()),
+        "empresa_id": empresa_id,
+        "plan_nombre": "Plan Trial",
+        "precio": 0.0,
+        "moneda": "ARS",
+        "status": "TRIAL",
+        "fecha_inicio": now,
+        "fecha_vencimiento": now + timedelta(days=30),
+        "dia_facturacion": None,
+        "plan_tipo": "mensual",
+        "created_at": now,
+    }
+    await db.suscripciones.insert_one(suscripcion)
+    print("✅ Demo subscription created (TRIAL - 30 days)")
+
+
+async def seed_proveedores(db, empresa_id):
+    print("Creating demo proveedores...")
+    if await db.proveedores.find_one({"empresa_id": empresa_id}):
+        print("ℹ️  Proveedores already exist")
+        return
+
+    proveedores = [
+        make_proveedor("Distribuidora Central",   "20-12345678-9", "ventas@distcentral.com",  "+54 11 4567-8901", "Av. Industria 1000, Buenos Aires", empresa_id),
+        make_proveedor("Lácteos del Sur S.A.",    "30-98765432-1", "pedidos@lacteosdelsur.com","+54 11 2345-6789", "Ruta 2 km 45, La Plata",          empresa_id),
+        make_proveedor("Bebidas & Más",           "20-55566677-3", "contacto@bebidasmas.com",  "+54 11 3456-7890", "Calle Comercio 500, Rosario",     empresa_id),
+    ]
+    await db.proveedores.insert_many(proveedores)
+    print(f"✅ {len(proveedores)} proveedores created successfully")
+
+
+async def seed_system_config(db):
+    print("Creating system configuration...")
+    defaults = [
+        {"key": "suscripcion_precio",      "value": 5000.0},
+        {"key": "suscripcion_plan_nombre", "value": "Plan Mensual"},
+        {"key": "suscripcion_plan_tipo",   "value": "mensual"},
+        {"key": "suscripcion_moneda",      "value": "ARS"},
+        {"key": "trial_dias",              "value": 30},
+    ]
+    for entry in defaults:
+        existing = await db.system_config.find_one({"key": entry["key"]})
+        if not existing:
+            await db.system_config.insert_one(entry)
+
+    print("✅ System configuration created successfully")
+
+
 async def init_database(reset: bool = False):
     mongo_url = os.environ["MONGO_URL"]
     db_name = os.environ["DB_NAME"]
@@ -403,12 +494,15 @@ async def init_database(reset: bool = False):
             await reset_database(db)
 
         await create_indexes(db)
+        await seed_system_config(db)
         empresa_id = await seed_empresa(db)
         await seed_users(db, empresa_id)
         await seed_categories(db, empresa_id)
         await seed_products(db, empresa_id)
         await seed_branches(db, empresa_id)
         await seed_configuration(db, empresa_id)
+        await seed_suscripcion(db, empresa_id)
+        await seed_proveedores(db, empresa_id)
 
         print("\n🎉 Database initialization completed!")
     finally:
