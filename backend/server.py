@@ -1849,7 +1849,7 @@ async def create_compra(
     )
     await db.compras.insert_one(compra.dict())
 
-    # Update product costs (and optionally sale prices) for linked items
+    # Update product costs (and optionally sale prices) and stock for linked items
     if compra_data.sucursal_id:
         for item in compra_data.items:
             if item.product_id:
@@ -1865,8 +1865,27 @@ async def create_compra(
                         bp_update["precio"] = round(item.precio_unitario * (1 + margen / 100), 2)
                     await db.branch_products.update_one(
                         {"id": bp["id"]},
-                        {"$set": bp_update}
+                        {"$set": bp_update, "$inc": {"stock": int(item.cantidad)}}
                     )
+                else:
+                    # No branch_product exists yet — create one with purchase stock
+                    global_product = await db.products.find_one({"id": item.product_id, "empresa_id": user.empresa_id})
+                    if global_product:
+                        new_bp = BranchProduct(
+                            empresa_id=user.empresa_id,
+                            product_id=item.product_id,
+                            branch_id=compra_data.sucursal_id,
+                            precio=global_product.get("precio", 0),
+                            stock=int(item.cantidad),
+                            stock_minimo=global_product.get("stock_minimo", 10),
+                            costo=item.precio_unitario,
+                        )
+                        await db.branch_products.insert_one(new_bp.dict())
+                # Also increment global product stock
+                await db.products.update_one(
+                    {"id": item.product_id, "empresa_id": user.empresa_id},
+                    {"$inc": {"stock": int(item.cantidad)}}
+                )
 
     return compra
 

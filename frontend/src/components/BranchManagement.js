@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useLocation } from 'react-router-dom';
 import { API } from '../App';
+import Pagination from './Pagination';
 import { toast } from 'sonner';
 import {
   Building2,
@@ -23,6 +25,7 @@ import {
 } from 'lucide-react';
 
 const BranchManagement = () => {
+  const location = useLocation();
   const [branches, setBranches] = useState([]);
   const [users, setUsers] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -42,6 +45,8 @@ const BranchManagement = () => {
   const [bulkMargenValor, setBulkMargenValor] = useState('');
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [config, setConfig] = useState(null);
 
   const [formData, setFormData] = useState({
     nombre: '',
@@ -53,12 +58,18 @@ const BranchManagement = () => {
     fetchBranches();
     fetchUsers();
     fetchCategories();
+    axios.get(`${API}/config`).then(r => setConfig(r.data)).catch(() => {});
   }, []);
 
   const fetchBranches = async () => {
     try {
       const response = await axios.get(`${API}/branches`);
       setBranches(response.data);
+      const targetId = location.state?.branchId;
+      if (targetId) {
+        const branch = response.data.find(b => b.id === targetId);
+        if (branch) selectBranch(branch);
+      }
     } catch (error) {
       toast.error('Error al cargar sucursales');
     } finally {
@@ -346,6 +357,15 @@ const BranchManagement = () => {
     (p.codigo_barras && p.codigo_barras.includes(searchTerm))
   );
 
+  const itemsPerPage = config?.items_per_page || 10;
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
+  const paginatedProducts = filteredProducts.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const handleSearch = (value) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
+
   const hasPendingChanges = Object.keys(pendingChanges).length > 0;
   const allFilteredSelected = filteredProducts.length > 0 && filteredProducts.every(p => selectedRows.has(p.product_id));
   const someFilteredSelected = filteredProducts.some(p => selectedRows.has(p.product_id));
@@ -433,7 +453,7 @@ const BranchManagement = () => {
               placeholder="Buscar productos..."
               className="form-input pl-10"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => handleSearch(e.target.value)}
             />
           </div>
         </div>
@@ -471,6 +491,7 @@ const BranchManagement = () => {
             <div className="spinner w-8 h-8"></div>
           </div>
         ) : (
+          <>
           <div className="table-container">
             <table className="table">
               <thead>
@@ -494,7 +515,7 @@ const BranchManagement = () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredProducts.map(product => {
+                {paginatedProducts.map(product => {
                   const changes = pendingChanges[product.product_id] || {};
                   const currentPrice = changes.precio !== undefined
                     ? changes.precio
@@ -621,6 +642,15 @@ const BranchManagement = () => {
               </div>
             )}
           </div>
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={filteredProducts.length}
+            itemsPerPage={itemsPerPage}
+            onPageChange={setCurrentPage}
+            itemName="productos"
+          />
+          </>
         )}
 
         {/* Bulk Delete Confirmation Modal */}

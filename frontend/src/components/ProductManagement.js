@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
 import axios from 'axios';
-import { API } from '../App';
+import { API, AuthContext } from '../App';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import Pagination from './Pagination';
 import {
@@ -15,10 +16,13 @@ import {
   Download,
   Upload,
   FileText,
-  ChevronDown
+  ChevronDown,
+  Tag
 } from 'lucide-react';
 
 const ProductManagement = () => {
+  const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [config, setConfig] = useState(null);
@@ -312,6 +316,13 @@ const ProductManagement = () => {
           <p className="text-gray-600">
             {products.length} productos registrados
           </p>
+          <button
+            onClick={() => navigate('/branches', { state: { branchId: user?.branch_id } })}
+            className="mt-1 text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+          >
+            <Tag className="w-3 h-3" />
+            Lista de precios de sucursal
+          </button>
         </div>
         <div className="flex gap-3 flex-wrap">
           {/* Export dropdown */}
@@ -441,8 +452,7 @@ const ProductManagement = () => {
               <th>Producto</th>
               <th>Código</th>
               <th>Categoría</th>
-              <th>Precio</th>
-              <th>Stock</th>
+              <th>Stock Mínimo</th>
               <th>Estado</th>
               <th>Acciones</th>
             </tr>
@@ -479,33 +489,9 @@ const ProductManagement = () => {
                   </span>
                 </td>
                 <td>
-                  <div>
-                    <div className="font-medium">
-                      ${product.precio.toFixed(2)}
-                    </div>
-                    {product.precio_por_peso && (
-                      <div className="text-sm text-gray-500">
-                        ${product.precio_por_peso.toFixed(2)}/kg
-                      </div>
-                    )}
-                  </div>
-                </td>
-                <td>
-                  <div className="flex items-center">
-                    <span className={`font-medium ${
-                      product.stock <= product.stock_minimo 
-                        ? 'text-red-600' 
-                        : 'text-gray-900'
-                    }`}>
-                      {product.stock}
-                    </span>
-                    {product.stock <= product.stock_minimo && (
-                      <AlertCircle className="w-4 h-4 text-red-500 ml-2" />
-                    )}
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    Mín: {product.stock_minimo}
-                  </div>
+                  <span className="font-medium text-gray-900">
+                    {product.stock_minimo}
+                  </span>
                 </td>
                 <td>
                   <span className={`px-2 py-1 text-xs font-medium rounded-full ${

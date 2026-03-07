@@ -4,6 +4,7 @@ import axios from 'axios';
 import { API, AuthContext } from '../App';
 import { toast } from 'sonner';
 import BarcodeScanner from './BarcodeScanner';
+import ReturnModal from './ReturnModal';
 import Pagination from './Pagination';
 import {
   Search,
@@ -19,7 +20,8 @@ import {
   Keyboard,
   Volume2,
   Printer,
-  X
+  X,
+  RotateCcw
 } from 'lucide-react';
 
 const POS = () => {
@@ -40,6 +42,7 @@ const POS = () => {
   const [mobileTab, setMobileTab] = useState('products');
   const [saleReceipt, setSaleReceipt] = useState(null);
   const [afipConfig, setAfipConfig] = useState(null);
+  const [returnModal, setReturnModal] = useState(null); // { sale, returnedQty }
   const { user } = useContext(AuthContext);
   const barcodeInputRef = useRef(null);
   const lastKeyTime = useRef(0);
@@ -360,6 +363,44 @@ const POS = () => {
     pointerEvents: !sessionLoading && !currentSession ? 'none' : 'auto',
   };
 
+  const openReturnModal = async () => {
+    try {
+      const [salesResponse, productsResponse] = await Promise.all([
+        axios.get(`${API}/sales`),
+        axios.get(`${API}/products`)
+      ]);
+      const sales = salesResponse.data;
+      if (!sales || sales.length === 0) {
+        toast.error('No hay ventas registradas');
+        return;
+      }
+      const sale = sales[0];
+
+      const productNames = {};
+      productsResponse.data.forEach(p => { productNames[p.id] = p.nombre; });
+
+      const enrichedSale = {
+        ...sale,
+        items: sale.items.map(item => ({
+          ...item,
+          nombre: item.nombre || productNames[item.producto_id] || item.producto_id
+        }))
+      };
+
+      const returnsResponse = await axios.get(`${API}/sales/${sale.id}/returns`);
+      const returnedQty = {};
+      returnsResponse.data.forEach(ret => {
+        ret.items.forEach(item => {
+          returnedQty[item.producto_id] = (returnedQty[item.producto_id] || 0) + item.cantidad;
+        });
+      });
+
+      setReturnModal({ sale: enrichedSale, returnedQty });
+    } catch (error) {
+      toast.error('Error al obtener la última venta');
+    }
+  };
+
   return (
     <div className="pos-page">
       {/* Tabs móvil: Productos / Carrito */}
@@ -554,14 +595,23 @@ const POS = () => {
                 <ShoppingCart className="w-5 h-5 inline mr-2" />
                 Carrito ({cart.length})
               </h2>
-              {cart.length > 0 && (
+              <div className="flex gap-2">
                 <button
-                  onClick={clearCart}
+                  onClick={openReturnModal}
                   className="btn btn-secondary btn-sm"
+                  title="Devolver última venta"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <RotateCcw className="w-4 h-4" />
                 </button>
-              )}
+                {cart.length > 0 && (
+                  <button
+                    onClick={clearCart}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -840,6 +890,16 @@ const POS = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Return Modal */}
+      {returnModal && (
+        <ReturnModal
+          sale={returnModal.sale}
+          returnedQty={returnModal.returnedQty}
+          onClose={() => setReturnModal(null)}
+          onSuccess={fetchProducts}
+        />
       )}
 
       {/* Barcode Scanner Modal */}
