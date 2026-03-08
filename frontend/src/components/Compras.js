@@ -551,17 +551,19 @@ const Compras = () => {
                         <div className="flex gap-2">
                           <button
                             onClick={() => openCompraModal(compra)}
-                            className="btn btn-secondary btn-sm"
+                            className="btn btn-sm flex items-center gap-1"
+                            style={{ background: 'var(--secondary)', color: 'var(--secondary-text)' }}
                             title="Editar"
                           >
-                            <Edit className="w-4 h-4" />
+                            <Edit className="w-3 h-3" />
                           </button>
                           <button
                             onClick={() => handleDeleteCompra(compra)}
-                            className="btn btn-danger btn-sm"
+                            className="btn btn-sm flex items-center gap-1"
+                            style={{ background: 'var(--tertiary)', color: 'var(--tertiary-text)' }}
                             title="Eliminar"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3 h-3" />
                           </button>
                         </div>
                       </td>

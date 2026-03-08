@@ -20,6 +20,7 @@ import base64
 import pandas as pd
 import mercadopago
 import httpx
+import asyncio
 from afip import AfipService, encrypt_private_key, decrypt_private_key, extract_p12
 
 ROOT_DIR = Path(__file__).parent
@@ -71,6 +72,53 @@ def _aplicar_renovacion(suscripcion: dict, meses: int, now: datetime):
     dia = suscripcion.get("dia_facturacion") or min(base.day, 28)
     nueva_fecha = calcular_siguiente_vencimiento(dia, meses, base)
     return base, nueva_fecha
+
+DIAS_ALERTA = [10, 5]
+
+async def generar_alertas_vencimiento() -> int:
+    """Genera notificaciones para suscripciones próximas a vencer. Retorna cantidad generadas."""
+    now = datetime.now(timezone.utc)
+    suscripciones = await db.suscripciones.find(
+        {"status": {"$in": [SuscripcionStatus.TRIAL, SuscripcionStatus.ACTIVA]}}
+    ).to_list(None)
+    generadas = 0
+    for sus in suscripciones:
+        vencimiento = sus.get("fecha_vencimiento")
+        if isinstance(vencimiento, str):
+            vencimiento = datetime.fromisoformat(vencimiento)
+        if vencimiento and not vencimiento.tzinfo:
+            vencimiento = vencimiento.replace(tzinfo=timezone.utc)
+        if not vencimiento:
+            continue
+        dias_restantes = (vencimiento - now).days
+        empresa_id = sus["empresa_id"]
+        periodo_ref = vencimiento.date().isoformat()
+        plan_nombre = sus.get("plan_nombre", "Plan")
+        status_label = "trial" if sus.get("status") == SuscripcionStatus.TRIAL else "suscripción"
+        for threshold in DIAS_ALERTA:
+            if dias_restantes <= threshold:
+                tipo = f"plan_por_vencer_{threshold}"
+                existing = await db.notificaciones.find_one({
+                    "empresa_id": empresa_id,
+                    "tipo": tipo,
+                    "periodo_ref": periodo_ref,
+                })
+                if not existing:
+                    dias_str = f"Quedan {max(0, dias_restantes)} días" if dias_restantes >= 0 else "Ya venció"
+                    notif = Notificacion(
+                        empresa_id=empresa_id,
+                        tipo=tipo,
+                        titulo=f"Tu {status_label} vence pronto",
+                        mensaje=(
+                            f"Tu {plan_nombre} vence el {vencimiento.strftime('%d/%m/%Y')}. "
+                            f"{dias_str}. Renovalo para continuar usando el sistema."
+                        ),
+                        dias_restantes=max(0, dias_restantes),
+                        periodo_ref=periodo_ref,
+                    )
+                    await db.notificaciones.insert_one(notif.dict())
+                    generadas += 1
+    return generadas
 
 # Owner (system admin) credentials
 OWNER_USERNAME = os.environ.get('OWNER_USERNAME', 'owner')
@@ -157,6 +205,17 @@ class PagoSuscripcion(BaseModel):
     fecha: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     periodo_inicio: Optional[datetime] = None
     periodo_fin: Optional[datetime] = None
+
+class Notificacion(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    empresa_id: str
+    tipo: str  # "plan_por_vencer_10", "plan_por_vencer_5"
+    titulo: str
+    mensaje: str
+    leida: bool = False
+    dias_restantes: Optional[int] = None
+    periodo_ref: str = ""  # fecha_vencimiento ISO date para deduplicación
+    fecha: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 # Models
 class Branch(BaseModel):
@@ -286,6 +345,11 @@ class Configuration(BaseModel):
     # Company Branding
     company_logo: Optional[str] = None  # URL or base64 of logo
 
+    # Color Theme
+    primary_color: Optional[str] = None
+    secondary_color: Optional[str] = None
+    tertiary_color: Optional[str] = None
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -312,6 +376,9 @@ class ConfigurationUpdate(BaseModel):
     receipt_width: Optional[int] = None
     items_per_page: Optional[int] = None
     company_logo: Optional[str] = None
+    primary_color: Optional[str] = None
+    secondary_color: Optional[str] = None
+    tertiary_color: Optional[str] = None
 
 class User(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -2022,6 +2089,62 @@ async def get_planes(user: User = Depends(require_role([UserRole.ADMIN]))):
         "anual":   {"plan_tipo": "anual",   "nombre": f"{nombre_base} Anual", "precio": precio_mensual * 11, "meses": 12},
     }
 
+@api_router.get("/public/planes")
+async def get_planes_public():
+    precio_mensual = await get_precio_suscripcion()
+    nombre_base = await get_plan_nombre_suscripcion()
+    return {
+        "mensual": {"plan_tipo": "mensual", "nombre": nombre_base, "precio": precio_mensual, "meses": 1},
+        "anual":   {"plan_tipo": "anual",   "nombre": f"{nombre_base} Anual", "precio": precio_mensual * 11, "meses": 12},
+    }
+
+
+@api_router.get("/notificaciones")
+async def get_notificaciones(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    user: User = Depends(require_role([UserRole.ADMIN]))
+):
+    skip = (page - 1) * per_page
+    total = await db.notificaciones.count_documents({"empresa_id": user.empresa_id})
+    items = await db.notificaciones.find(
+        {"empresa_id": user.empresa_id}
+    ).sort("fecha", -1).skip(skip).limit(per_page).to_list(per_page)
+    return {
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "items": [Notificacion(**n).dict() for n in items],
+    }
+
+
+@api_router.get("/notificaciones/count")
+async def get_notificaciones_count(user: User = Depends(require_role([UserRole.ADMIN]))):
+    count = await db.notificaciones.count_documents(
+        {"empresa_id": user.empresa_id, "leida": False}
+    )
+    return {"no_leidas": count}
+
+
+@api_router.put("/notificaciones/leer-todas")
+async def marcar_todas_leidas(user: User = Depends(require_role([UserRole.ADMIN]))):
+    await db.notificaciones.update_many(
+        {"empresa_id": user.empresa_id, "leida": False},
+        {"$set": {"leida": True}},
+    )
+    return {"ok": True}
+
+
+@api_router.put("/notificaciones/{notif_id}/leer")
+async def marcar_notificacion_leida(notif_id: str, user: User = Depends(require_role([UserRole.ADMIN]))):
+    result = await db.notificaciones.update_one(
+        {"id": notif_id, "empresa_id": user.empresa_id},
+        {"$set": {"leida": True}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Notificación no encontrada")
+    return {"ok": True}
+
 
 class PagoCreate(BaseModel):
     plan_tipo: str = "mensual"  # "mensual" | "anual"
@@ -2338,7 +2461,7 @@ class SuscripcionUpdate(BaseModel):
 class PagoManual(BaseModel):
     monto: float
     concepto: str
-    dias_extension: int = 30
+    plan_tipo: str = "mensual"  # "mensual" | "anual"
 
 owner_router = APIRouter(prefix="/owner")
 
@@ -2505,29 +2628,27 @@ async def owner_registrar_pago(
     emp = await db.empresas.find_one({"id": empresa_id})
     if not emp:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    plan_tipo = data.plan_tipo if data.plan_tipo in ("mensual", "anual") else "mensual"
+    meses = 1 if plan_tipo == "mensual" else 12
     pago = PagoSuscripcion(
         empresa_id=empresa_id,
         monto=data.monto,
         moneda="ARS",
         estado="approved",
         concepto=data.concepto,
+        plan_tipo=plan_tipo,
     )
     await db.pagos_suscripcion.insert_one(pago.dict())
     suscripcion = await db.suscripciones.find_one({"empresa_id": empresa_id})
     now = datetime.now(timezone.utc)
     if suscripcion:
-        vencimiento = suscripcion.get("fecha_vencimiento")
-        if isinstance(vencimiento, str):
-            vencimiento = datetime.fromisoformat(vencimiento)
-        if vencimiento and not vencimiento.tzinfo:
-            vencimiento = vencimiento.replace(tzinfo=timezone.utc)
-        base = vencimiento if vencimiento and vencimiento > now else now
-        nueva_fecha = base + timedelta(days=data.dias_extension)
+        base, nueva_fecha = _aplicar_renovacion(suscripcion, meses, now)
         await db.suscripciones.update_one(
             {"empresa_id": empresa_id},
             {"$set": {
                 "status": SuscripcionStatus.ACTIVA,
                 "fecha_vencimiento": nueva_fecha,
+                "plan_tipo": plan_tipo,
             }}
         )
         await db.pagos_suscripcion.update_one(
@@ -2535,17 +2656,20 @@ async def owner_registrar_pago(
             {"$set": {"periodo_inicio": base, "periodo_fin": nueva_fecha}}
         )
     else:
-        nueva_fecha = now + timedelta(days=data.dias_extension)
+        dia_facturacion = min(now.day, 28)
+        nueva_fecha = calcular_siguiente_vencimiento(dia_facturacion, meses, now)
         nueva_sus = Suscripcion(
             empresa_id=empresa_id,
-            plan_nombre=SUSCRIPCION_PLAN_NOMBRE,
+            plan_nombre=await get_plan_nombre_suscripcion(),
             precio=data.monto,
             status=SuscripcionStatus.ACTIVA,
             fecha_inicio=now,
             fecha_vencimiento=nueva_fecha,
+            dia_facturacion=dia_facturacion,
+            plan_tipo=plan_tipo,
         )
         await db.suscripciones.insert_one(nueva_sus.dict())
-    return {"message": "Pago registrado y suscripción extendida"}
+    return {"message": "Pago registrado y suscripción renovada"}
 
 @owner_router.put("/clientes/{empresa_id}/activo")
 async def owner_toggle_empresa(empresa_id: str, _=Depends(verify_owner_token)):
@@ -2602,6 +2726,46 @@ async def owner_update_config(data: OwnerConfigUpdate, _=Depends(verify_owner_to
             upsert=True,
         )
     return {"ok": True}
+
+@owner_router.get("/alertas")
+async def owner_get_alertas(_=Depends(verify_owner_token)):
+    """Empresas con suscripciones próximas a vencer (≤ 10 días) y últimas alertas generadas."""
+    now = datetime.now(timezone.utc)
+    suscripciones = await db.suscripciones.find(
+        {"status": {"$in": [SuscripcionStatus.TRIAL, SuscripcionStatus.ACTIVA]}}
+    ).to_list(None)
+    por_vencer = []
+    for sus in suscripciones:
+        vencimiento = sus.get("fecha_vencimiento")
+        if isinstance(vencimiento, str):
+            vencimiento = datetime.fromisoformat(vencimiento)
+        if vencimiento and not vencimiento.tzinfo:
+            vencimiento = vencimiento.replace(tzinfo=timezone.utc)
+        if not vencimiento:
+            continue
+        dias_restantes = (vencimiento - now).days
+        if dias_restantes <= 10:
+            empresa = await db.empresas.find_one({"id": sus["empresa_id"]})
+            por_vencer.append({
+                "empresa_id": sus["empresa_id"],
+                "empresa_nombre": empresa["nombre"] if empresa else sus["empresa_id"],
+                "status": sus.get("status"),
+                "plan_nombre": sus.get("plan_nombre"),
+                "fecha_vencimiento": sus.get("fecha_vencimiento"),
+                "dias_restantes": max(0, dias_restantes),
+            })
+    por_vencer.sort(key=lambda x: x["dias_restantes"])
+    alertas_recientes = await db.notificaciones.find().sort("fecha", -1).limit(50).to_list(50)
+    return {
+        "por_vencer": por_vencer,
+        "alertas_recientes": [Notificacion(**a).dict() for a in alertas_recientes],
+    }
+
+@owner_router.post("/alertas/generar")
+async def owner_generar_alertas(_=Depends(verify_owner_token)):
+    """Genera manualmente alertas para suscripciones próximas a vencer."""
+    generadas = await generar_alertas_vencimiento()
+    return {"ok": True, "generadas": generadas}
 
 # ─── Router AFIP/ARCA ─────────────────────────────────────────────────────────
 
@@ -2769,6 +2933,17 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+@app.on_event("startup")
+async def startup_tasks():
+    async def periodic_alerts():
+        while True:
+            try:
+                await generar_alertas_vencimiento()
+            except Exception as e:
+                logger.error(f"Error generando alertas: {e}")
+            await asyncio.sleep(24 * 60 * 60)  # cada 24 horas
+    asyncio.create_task(periodic_alerts())
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

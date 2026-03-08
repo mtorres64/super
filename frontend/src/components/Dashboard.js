@@ -12,17 +12,27 @@ import {
   Users,
   Building2,
   Truck,
-  ClipboardList
+  ClipboardList,
+  Bell
 } from 'lucide-react';
 
 const Dashboard = () => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [noLeidas, setNoLeidas] = useState(0);
   const { user } = useContext(AuthContext);
 
   useEffect(() => {
     fetchDashboardStats();
   }, []);
+
+  useEffect(() => {
+    if (user?.rol === 'admin') {
+      axios.get(`${API}/notificaciones/count`)
+        .then(res => setNoLeidas(res.data.no_leidas))
+        .catch(() => {});
+    }
+  }, [user]);
 
   const fetchDashboardStats = async () => {
     try {
@@ -163,31 +173,33 @@ const Dashboard = () => {
             </p>
           </div>
 
-          <div className="stat-card">
-            <div className="stat-header">
-              <div className="stat-title">Total Productos</div>
-              <div className="stat-icon">
-                <Package className="w-6 h-6" />
-              </div>
-            </div>
-            <div className="stat-value">{stats.productos.total}</div>
-            <p className="text-sm text-gray-500 mt-2">
-              Productos activos
-            </p>
-          </div>
-
-          <Link to="/stock-alerts" className="stat-card border-l-4 border-red-400 hover:shadow-md transition-shadow cursor-pointer">
+          <Link to="/stock-alerts" className={`stat-card border-l-4 hover:shadow-md transition-shadow cursor-pointer ${stats.productos.bajo_stock > 0 ? 'border-red-400' : 'border-gray-200'}`}>
             <div className="stat-header">
               <div className="stat-title">Stock Bajo</div>
-              <div className="stat-icon bg-red-100 text-red-600">
+              <div className={`stat-icon ${stats.productos.bajo_stock > 0 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-400'}`}>
                 <AlertTriangle className="w-6 h-6" />
               </div>
             </div>
-            <div className="stat-value text-red-600">
+            <div className={`stat-value ${stats.productos.bajo_stock > 0 ? 'text-red-600' : 'text-gray-400'}`}>
               {stats.productos.bajo_stock}
             </div>
-            <p className="text-sm text-red-500 mt-2 font-medium">
-              Requieren atención · Ver detalle →
+            <p className={`text-sm mt-2 font-medium ${stats.productos.bajo_stock > 0 ? 'text-red-500' : 'text-gray-400'}`}>
+              {stats.productos.bajo_stock > 0 ? 'Requieren atención · Ver detalle →' : 'Sin alertas · Ver detalle →'}
+            </p>
+          </Link>
+
+          <Link to="/notificaciones" className="stat-card border-l-4 border-indigo-400 hover:shadow-md transition-shadow cursor-pointer">
+            <div className="stat-header">
+              <div className="stat-title">Notificaciones</div>
+              <div className={`stat-icon ${noLeidas > 0 ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-400'}`}>
+                <Bell className="w-6 h-6" />
+              </div>
+            </div>
+            <div className={`stat-value ${noLeidas > 0 ? 'text-indigo-600' : 'text-gray-400'}`}>
+              {noLeidas}
+            </div>
+            <p className={`text-sm mt-2 font-medium ${noLeidas > 0 ? 'text-indigo-500' : 'text-gray-400'}`}>
+              {noLeidas > 0 ? 'Sin leer · Ver todas →' : 'Al día'}
             </p>
           </Link>
         </div>

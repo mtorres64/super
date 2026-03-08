@@ -63,6 +63,8 @@ const getContrastColor = (hex) => {
   return brightness > 155 ? '#1f2937' : 'white';
 };
 
+// Applies CSS variables only — does NOT persist to localStorage.
+// Call persistTheme() after a successful DB save to also update localStorage.
 const applyTheme = (theme) => {
   const root = document.documentElement;
   root.style.setProperty('--primary',        theme.primary);
@@ -85,7 +87,17 @@ const applyTheme = (theme) => {
     root.style.setProperty('--tertiary-bg',    hexToRgba(theme.tertiary, 0.05));
     root.style.setProperty('--tertiary-text',  getContrastColor(theme.tertiary));
   }
+};
+
+// Persists theme to localStorage (call only after successful DB save).
+const persistTheme = (theme) => {
   localStorage.setItem('app_theme', JSON.stringify(theme));
+};
+
+const DEFAULT_COLORS = {
+  primary_color:   '#10b981',
+  secondary_color: '#e0f6ff',
+  tertiary_color:  '#ede0ff',
 };
 
 const buildCustomTheme = (color) => ({
@@ -125,18 +137,11 @@ const Settings = () => {
       const data = response.data;
       setConfig(data);
       setTaxInput(data?.tax_rate != null ? String(data.tax_rate * 100) : '');
-      // Restore saved theme (localStorage takes precedence so it's instant on reload)
-      const saved = localStorage.getItem('app_theme');
-      if (saved) {
-        applyTheme(JSON.parse(saved));
-      } else if (data?.primary_color) {
+      // DB is the source of truth — apply whatever is saved there
+      if (data?.primary_color) {
         const preset = COLOR_THEMES.find(t => t.primary === data.primary_color);
         const baseTheme = preset || buildCustomTheme(data.primary_color);
-        applyTheme({
-          ...baseTheme,
-          secondary: data.secondary_color,
-          tertiary:  data.tertiary_color,
-        });
+        applyTheme({ ...baseTheme, secondary: data.secondary_color, tertiary: data.tertiary_color });
       }
     } catch (error) {
       toast.error('Error al cargar configuración');
@@ -149,11 +154,32 @@ const Settings = () => {
     setSaving(true);
     try {
       await axios.put(`${API}/config`, config);
+      // Only persist to localStorage after a successful DB save
+      if (config?.primary_color) {
+        const preset = COLOR_THEMES.find(t => t.primary === config.primary_color);
+        const baseTheme = preset || buildCustomTheme(config.primary_color);
+        persistTheme({ ...baseTheme, secondary: config.secondary_color, tertiary: config.tertiary_color });
+      }
       toast.success('Configuración guardada exitosamente');
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error al guardar configuración');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleRestoreDefaults = async () => {
+    const newConfig = { ...config, ...DEFAULT_COLORS };
+    setConfig(newConfig);
+    const preset = COLOR_THEMES.find(t => t.primary === DEFAULT_COLORS.primary_color);
+    const baseTheme = preset || buildCustomTheme(DEFAULT_COLORS.primary_color);
+    applyTheme({ ...baseTheme, secondary: DEFAULT_COLORS.secondary_color, tertiary: DEFAULT_COLORS.tertiary_color });
+    try {
+      await axios.put(`${API}/config`, newConfig);
+      persistTheme({ ...baseTheme, secondary: DEFAULT_COLORS.secondary_color, tertiary: DEFAULT_COLORS.tertiary_color });
+      toast.success('Colores restaurados a valores predeterminados');
+    } catch {
+      toast.error('Error al guardar configuración');
     }
   };
 
@@ -170,30 +196,26 @@ const Settings = () => {
 
   const handleThemeSelect = (theme) => {
     updateConfig('primary_color', theme.primary);
-    const saved = localStorage.getItem('app_theme');
-    const current = saved ? JSON.parse(saved) : {};
-    applyTheme({ ...theme, secondary: current.secondary, tertiary: current.tertiary });
+    applyTheme({ ...theme, secondary: config?.secondary_color, tertiary: config?.tertiary_color });
   };
 
   const handleCustomColor = (color) => {
     updateConfig('primary_color', color);
-    const saved = localStorage.getItem('app_theme');
-    const current = saved ? JSON.parse(saved) : {};
-    applyTheme({ ...buildCustomTheme(color), secondary: current.secondary, tertiary: current.tertiary });
+    applyTheme({ ...buildCustomTheme(color), secondary: config?.secondary_color, tertiary: config?.tertiary_color });
   };
 
   const handleCustomSecondary = (color) => {
     updateConfig('secondary_color', color);
-    const saved = localStorage.getItem('app_theme');
-    const current = saved ? JSON.parse(saved) : buildCustomTheme(config?.primary_color || '#10b981');
-    applyTheme({ ...current, secondary: color });
+    const preset = COLOR_THEMES.find(t => t.primary === config?.primary_color);
+    const baseTheme = preset || buildCustomTheme(config?.primary_color || '#10b981');
+    applyTheme({ ...baseTheme, secondary: color, tertiary: config?.tertiary_color });
   };
 
   const handleCustomTertiary = (color) => {
     updateConfig('tertiary_color', color);
-    const saved = localStorage.getItem('app_theme');
-    const current = saved ? JSON.parse(saved) : buildCustomTheme(config?.primary_color || '#10b981');
-    applyTheme({ ...current, tertiary: color });
+    const preset = COLOR_THEMES.find(t => t.primary === config?.primary_color);
+    const baseTheme = preset || buildCustomTheme(config?.primary_color || '#10b981');
+    applyTheme({ ...baseTheme, secondary: config?.secondary_color, tertiary: color });
   };
 
   const activeTheme = (() => {
@@ -617,9 +639,17 @@ const Settings = () => {
 
                 {/* ── Color Theme ── */}
                 <div className="bg-gray-50 rounded-lg p-6">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Palette className="w-5 h-5 text-gray-600" />
-                    <h4 className="font-medium text-gray-900">Esquema de Colores</h4>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <Palette className="w-5 h-5 text-gray-600" />
+                      <h4 className="font-medium text-gray-900">Esquema de Colores</h4>
+                    </div>
+                    <button
+                      onClick={handleRestoreDefaults}
+                      className="text-xs text-gray-500 hover:text-gray-700 underline"
+                    >
+                      Restaurar predeterminados
+                    </button>
                   </div>
                   <p className="text-sm text-gray-500 mb-6">
                     Personaliza los tres colores del sistema. Los cambios se aplican de forma inmediata.
@@ -631,7 +661,7 @@ const Settings = () => {
                     <p className="text-xs text-gray-500 mb-4">Botón principal, navegación activa, elementos destacados.</p>
 
                     {/* Preset swatches */}
-                    <div className="grid grid-cols-4 gap-3 mb-4">
+                    <div className="flex gap-3 mb-4">
                       {COLOR_THEMES.map(theme => {
                         const isActive = config?.primary_color === theme.primary;
                         return (

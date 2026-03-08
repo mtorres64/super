@@ -4,7 +4,7 @@ import {
   Users, LogOut, BarChart3, RefreshCw, CheckCircle,
   AlertTriangle, Clock, Ban, ChevronRight,
   ArrowLeft, Plus, Edit3, ToggleLeft, ToggleRight,
-  DollarSign, Shield, Settings,
+  DollarSign, Shield, Settings, Bell,
 } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -251,7 +251,7 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
   const [actionLoading, setActionLoading] = useState(false);
   const [showPagoModal, setShowPagoModal] = useState(false);
   const [showSuscModal, setShowSuscModal] = useState(false);
-  const [pagoForm, setPagoForm] = useState({ monto: '', concepto: '', dias_extension: 30 });
+  const [pagoForm, setPagoForm] = useState({ monto: '', concepto: '', plan_tipo: 'mensual' });
   const [suscForm, setSuscForm] = useState({ status: '', dias_extra: '', fecha_vencimiento: '', precio: '' });
 
   const authHeader = { headers: { Authorization: `Bearer ${token}` } };
@@ -292,10 +292,10 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
       await ownerAxios.post(`/clientes/${clienteId}/pago`, {
         monto: parseFloat(pagoForm.monto),
         concepto: pagoForm.concepto,
-        dias_extension: parseInt(pagoForm.dias_extension),
+        plan_tipo: pagoForm.plan_tipo,
       }, authHeader);
       setShowPagoModal(false);
-      setPagoForm({ monto: '', concepto: '', dias_extension: 30 });
+      setPagoForm({ monto: '', concepto: '', plan_tipo: 'mensual' });
       await loadCliente();
     } catch (err) {
       alert(err.response?.data?.detail || 'Error al registrar pago');
@@ -513,15 +513,16 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-400 mb-1.5">Días a extender la suscripción</label>
-                <input
-                  type="number"
-                  value={pagoForm.dias_extension}
-                  onChange={e => setPagoForm({ ...pagoForm, dias_extension: e.target.value })}
+                <label className="block text-sm text-gray-400 mb-1.5">Tipo de plan</label>
+                <select
+                  value={pagoForm.plan_tipo}
+                  onChange={e => setPagoForm({ ...pagoForm, plan_tipo: e.target.value })}
                   className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  min="1"
                   required
-                />
+                >
+                  <option value="mensual">Mensual (1 mes desde día de facturación)</option>
+                  <option value="anual">Anual (12 meses desde día de facturación)</option>
+                </select>
               </div>
               <div className="flex gap-3 pt-1">
                 <button
@@ -697,6 +698,130 @@ const ConfigView = ({ token }) => {
   );
 };
 
+// ─── Alertas ──────────────────────────────────────────────────────────────────
+
+const AlertasView = ({ token }) => {
+  const authHeader = { headers: { Authorization: `Bearer ${token}` } };
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await ownerAxios.get('/alertas', authHeader);
+      setData(res.data);
+    } catch (err) {
+      if (err.response?.status === 401) return;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]); // eslint-disable-line
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const generarAlertas = async () => {
+    setGenerating(true);
+    setMsg(null);
+    try {
+      const res = await ownerAxios.post('/alertas/generar', {}, authHeader);
+      setMsg({ ok: true, text: `Listo. Se generaron ${res.data.generadas} alertas nuevas.` });
+      loadData();
+    } catch {
+      setMsg({ ok: false, text: 'Error al generar alertas.' });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  if (loading) return <div className="flex justify-center py-24"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500" /></div>;
+
+  const porVencer = data?.por_vencer || [];
+  const alertasRecientes = data?.alertas_recientes || [];
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-white">Alertas de vencimiento</h2>
+        <div className="flex items-center gap-3">
+          <button onClick={loadData} className="flex items-center gap-2 text-gray-500 hover:text-gray-300 text-sm transition-colors">
+            <RefreshCw className="w-4 h-4" /> Actualizar
+          </button>
+          <button
+            onClick={generarAlertas}
+            disabled={generating}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            <Bell className="w-4 h-4" />
+            {generating ? 'Generando...' : 'Generar alertas ahora'}
+          </button>
+        </div>
+      </div>
+
+      {msg && (
+        <p className={`text-sm px-4 py-2 rounded-lg ${msg.ok ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'}`}>
+          {msg.text}
+        </p>
+      )}
+
+      {/* Empresas por vencer */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4">
+          Vencen en los próximos 10 días ({porVencer.length})
+        </h3>
+        {porVencer.length === 0 ? (
+          <p className="text-gray-600 text-sm">Ningún cliente vence en los próximos 10 días</p>
+        ) : (
+          <div className="space-y-2">
+            {porVencer.map((item) => (
+              <div key={item.empresa_id} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
+                <div>
+                  <p className="text-white font-medium text-sm">{item.empresa_nombre}</p>
+                  <p className="text-gray-500 text-xs mt-0.5">{item.plan_nombre} · Vence: {formatDate(item.fecha_vencimiento)}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <StatusBadge status={item.status} />
+                  <span className={`text-sm font-bold ${item.dias_restantes <= 2 ? 'text-red-400' : item.dias_restantes <= 5 ? 'text-orange-400' : 'text-yellow-400'}`}>
+                    {item.dias_restantes === 0 ? 'Hoy' : `${item.dias_restantes}d`}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Alertas recientes enviadas */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4">
+          Últimas alertas enviadas
+        </h3>
+        {alertasRecientes.length === 0 ? (
+          <p className="text-gray-600 text-sm">No hay alertas generadas aún</p>
+        ) : (
+          <div className="space-y-2">
+            {alertasRecientes.slice(0, 20).map((a, i) => (
+              <div key={a.id || i} className="flex items-start justify-between p-3 bg-gray-800/50 rounded-lg">
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm font-medium">{a.titulo}</p>
+                  <p className="text-gray-500 text-xs mt-0.5 truncate">{a.mensaje}</p>
+                </div>
+                <div className="flex-shrink-0 ml-3 text-right">
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${a.leida ? 'bg-gray-700 text-gray-500' : 'bg-indigo-900/50 text-indigo-300 border border-indigo-800'}`}>
+                    {a.leida ? 'Leída' : 'Sin leer'}
+                  </span>
+                  <p className="text-gray-600 text-xs mt-1">{formatDate(a.fecha)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ─── Main OwnerPanel ──────────────────────────────────────────────────────────
 
 const OwnerPanel = () => {
@@ -793,6 +918,15 @@ const OwnerPanel = () => {
             )}
           </button>
           <button
+            onClick={() => { setView('alertas'); setSelectedClienteId(null); }}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+              view === 'alertas' ? 'bg-indigo-700 text-white' : 'text-gray-500 hover:text-white hover:bg-gray-800'
+            }`}
+          >
+            <Bell className="w-4 h-4 flex-shrink-0" />
+            Alertas
+          </button>
+          <button
             onClick={() => { setView('config'); setSelectedClienteId(null); }}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm transition-colors ${
               view === 'config' ? 'bg-indigo-700 text-white' : 'text-gray-500 hover:text-white hover:bg-gray-800'
@@ -837,6 +971,8 @@ const OwnerPanel = () => {
             token={token}
             onBack={() => { setView('clientes'); setSelectedClienteId(null); }}
           />
+        ) : view === 'alertas' ? (
+          <AlertasView token={token} />
         ) : view === 'config' ? (
           <ConfigView token={token} />
         ) : null}

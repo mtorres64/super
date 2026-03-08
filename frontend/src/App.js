@@ -22,6 +22,7 @@ import Landing from './components/Landing';
 import OwnerPanel from './components/OwnerPanel';
 import SalesReports from './components/SalesReports';
 import StockAlerts from './components/StockAlerts';
+import Notificaciones from './components/Notificaciones';
 import { Toaster } from './components/ui/sonner';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -129,51 +130,59 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
 };
 
 function App() {
-  // Apply saved color theme before first render
+  // Apply saved color theme before first render, then sync secondary/tertiary from DB
   useEffect(() => {
+    const root = document.documentElement;
+    const brightness = (hex) => {
+      const h = hex.replace('#','');
+      const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+      return (r*299 + g*587 + b*114) / 1000;
+    };
+    const contrast = (hex) => brightness(hex) > 155 ? '#1f2937' : 'white';
+    const darken = (hex, amt) => {
+      const h = hex.replace('#','');
+      const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+      return `#${[r-amt,g-amt,b-amt].map(v=>Math.max(0,v).toString(16).padStart(2,'0')).join('')}`;
+    };
+    const rgba = (hex, a) => {
+      const h = hex.replace('#','');
+      const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+      return `rgba(${r},${g},${b},${a})`;
+    };
+    const applyColorVar = (color, prefix) => {
+      root.style.setProperty(`--${prefix}`,       color);
+      root.style.setProperty(`--${prefix}-dark`,  darken(color, 20));
+      root.style.setProperty(`--${prefix}-light`, rgba(color, 0.1));
+      root.style.setProperty(`--${prefix}-bg`,    rgba(color, 0.05));
+      root.style.setProperty(`--${prefix}-text`,  contrast(color));
+    };
+
     try {
       const saved = localStorage.getItem('app_theme');
       if (saved) {
         const theme = JSON.parse(saved);
-        const root = document.documentElement;
-        const brightness = (hex) => {
-          const h = hex.replace('#','');
-          const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
-          return (r*299 + g*587 + b*114) / 1000;
-        };
-        const contrast = (hex) => brightness(hex) > 155 ? '#1f2937' : 'white';
-        const darken = (hex, amt) => {
-          const h = hex.replace('#','');
-          const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
-          return `#${[r-amt,g-amt,b-amt].map(v=>Math.max(0,v).toString(16).padStart(2,'0')).join('')}`;
-        };
-        const rgba = (hex, a) => {
-          const h = hex.replace('#','');
-          const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
-          return `rgba(${r},${g},${b},${a})`;
-        };
         root.style.setProperty('--primary',        theme.primary);
         root.style.setProperty('--primary-dark',   theme.dark);
         root.style.setProperty('--primary-darker', theme.darker);
         root.style.setProperty('--primary-light',  theme.light);
         root.style.setProperty('--primary-bg',     theme.bg);
         root.style.setProperty('--primary-text',   contrast(theme.primary));
-        if (theme.secondary) {
-          root.style.setProperty('--secondary',       theme.secondary);
-          root.style.setProperty('--secondary-dark',  darken(theme.secondary, 20));
-          root.style.setProperty('--secondary-light', rgba(theme.secondary, 0.1));
-          root.style.setProperty('--secondary-bg',    rgba(theme.secondary, 0.05));
-          root.style.setProperty('--secondary-text',  contrast(theme.secondary));
-        }
-        if (theme.tertiary) {
-          root.style.setProperty('--tertiary',       theme.tertiary);
-          root.style.setProperty('--tertiary-dark',  darken(theme.tertiary, 20));
-          root.style.setProperty('--tertiary-light', rgba(theme.tertiary, 0.1));
-          root.style.setProperty('--tertiary-bg',    rgba(theme.tertiary, 0.05));
-          root.style.setProperty('--tertiary-text',  contrast(theme.tertiary));
-        }
+        if (theme.secondary) applyColorVar(theme.secondary, 'secondary');
+        if (theme.tertiary)  applyColorVar(theme.tertiary,  'tertiary');
       }
     } catch (_) {}
+
+    // Sync secondary/tertiary from DB so they always match what's configured
+    const token = localStorage.getItem('token');
+    if (token) {
+      axios.get(`${API}/config`, {
+        headers: { Authorization: `Bearer ${token}` }
+      }).then(res => {
+        const data = res.data;
+        if (data?.secondary_color) applyColorVar(data.secondary_color, 'secondary');
+        if (data?.tertiary_color)  applyColorVar(data.tertiary_color,  'tertiary');
+      }).catch(() => {});
+    }
   }, []);
 
   return (
@@ -284,6 +293,14 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['admin', 'supervisor', 'cajero']}>
                   <StockAlerts />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/notificaciones"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <Notificaciones />
                 </ProtectedRoute>
               }
             />

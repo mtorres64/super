@@ -801,7 +801,8 @@ const SalesReports = () => {
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => setReprintSale(sale)}
-                        className="btn btn-sm flex items-center gap-1 bg-blue-100 text-blue-800 hover:bg-blue-200"
+                        className="btn btn-sm flex items-center gap-1"
+                        style={{ background: 'var(--secondary)', color: 'var(--secondary-text)' }}
                         title="Reimprimir ticket"
                       >
                         <Printer className="w-3 h-3" />
@@ -809,7 +810,8 @@ const SalesReports = () => {
                       {sale.estado !== 'cancelado' && (
                         <button
                           onClick={() => openReturnModal(sale)}
-                          className="btn btn-sm flex items-center gap-1 bg-purple-100 text-purple-800 hover:bg-purple-200"
+                          className="btn btn-sm flex items-center gap-1"
+                          style={{ background: 'var(--tertiary)', color: 'var(--tertiary-text)' }}
                           title="Procesar devolución"
                         >
                           <RotateCcw className="w-3 h-3" />

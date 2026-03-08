@@ -62,6 +62,7 @@ const POS = () => {
   const [showPriceCheck, setShowPriceCheck] = useState(false);
   const [priceCheckQuery, setPriceCheckQuery] = useState('');
   const [priceCheckResult, setPriceCheckResult] = useState(null); // null | product | 'not_found'
+  const [branchName, setBranchName] = useState(null);
   const { user } = useContext(AuthContext);
 
   // Derived from tabs
@@ -76,6 +77,17 @@ const POS = () => {
   const barcodeInputRef = useRef(null);
   const lastKeyTime = useRef(0);
   const cartItemsRef = useRef(null);
+
+  useEffect(() => {
+    if (user?.branch_id) {
+      axios.get(`${API}/branches`)
+        .then(res => {
+          const branch = res.data.find(b => b.id === user.branch_id);
+          if (branch) setBranchName(branch.nombre);
+        })
+        .catch(() => {});
+    }
+  }, [user]);
 
   useEffect(() => {
     fetchProducts();
@@ -495,7 +507,7 @@ const POS = () => {
             Cajero: {user?.nombre}
             {user?.branch_id && (
               <span className="ml-3 px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 rounded-full">
-                Sucursal asignada — precios diferenciados
+                {branchName ? branchName : 'Sucursal asignada'} — precios diferenciados
               </span>
             )}
           </p>
@@ -606,7 +618,8 @@ const POS = () => {
                 </button>
                 <button
                   onClick={() => setShowPriceCheck(true)}
-                  className="btn bg-purple-100 text-purple-800 hover:bg-purple-200"
+                  className="btn"
+                  style={{ background: 'var(--tertiary)', color: 'var(--tertiary-text)' }}
                   title="Consultar precio"
                 >
                   <Tag className="w-4 h-4" />
@@ -701,7 +714,8 @@ const POS = () => {
               <div className="flex gap-2">
                 <button
                   onClick={openReturnModal}
-                  className="btn btn-sm bg-purple-100 text-purple-800 hover:bg-purple-200"
+                  className="btn btn-sm"
+                  style={{ background: 'var(--tertiary)', color: 'var(--tertiary-text)' }}
                   title="Devolver última venta"
                 >
                   <RotateCcw className="w-4 h-4" />

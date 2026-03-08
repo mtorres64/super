@@ -171,7 +171,7 @@ const UserManagement = () => {
               <th>Rol</th>
               <th>Sucursal</th>
               <th>Estado</th>
-              <th>Acciones</th>
+              <th className="text-center">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -216,12 +216,14 @@ const UserManagement = () => {
                     }
                   </button>
                 </td>
-                <td>
+                <td className="text-center">
                   <button
                     onClick={() => openModal(user)}
-                    className="text-blue-600 hover:text-blue-800"
+                    className="btn btn-sm flex items-center gap-1 mx-auto"
+                    style={{ background: 'var(--tertiary)', color: 'var(--tertiary-text)' }}
+                    title="Editar"
                   >
-                    <Edit className="w-4 h-4" />
+                    <Edit className="w-3 h-3" />
                   </button>
                 </td>
               </tr>

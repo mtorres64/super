@@ -265,7 +265,7 @@ const Cuenta = () => {
               </div>
 
               {/* Plan anual */}
-              <div className="flex-1 min-w-[200px] border-2 border-primary rounded-lg p-4 flex flex-col gap-3 relative">
+              <div className="flex-1 min-w-[200px] border border-gray-200 rounded-lg p-4 flex flex-col gap-3 relative">
                 <span className="absolute -top-3 left-4 bg-green-600 text-white text-xs font-semibold px-2 py-0.5 rounded-full">
                   1 mes gratis
                 </span>
