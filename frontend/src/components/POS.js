@@ -49,6 +49,7 @@ const POS = () => {
   const [activeTabId, setActiveTabId] = useState(1);
   const [nextTabId, setNextTabId] = useState(2);
   const [loading, setLoading] = useState(false);
+  const [productsLoading, setProductsLoading] = useState(true);
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [scannerMode, setScannerMode] = useState('manual'); // 'manual' or 'camera'
   const [isAutoScanning, setIsAutoScanning] = useState(false);
@@ -136,6 +137,7 @@ const POS = () => {
   const TIPO_CBTE_NOMBRES = { 1: 'FACTURA A', 6: 'FACTURA B', 11: 'FACTURA C' };
 
   const fetchProducts = async () => {
+    setProductsLoading(true);
     try {
       // If user has a branch, use branch-specific prices
       if (user?.branch_id) {
@@ -147,6 +149,8 @@ const POS = () => {
       }
     } catch (error) {
       toast.error('Error al cargar productos');
+    } finally {
+      setProductsLoading(false);
     }
   };
 
@@ -630,44 +634,53 @@ const POS = () => {
 
           {/* Products Grid */}
           <div className="pos-products">
-            <div className="products-grid">
-              {paginatedProducts.map(product => (
-                <div
-                  key={product.id}
-                  className="product-card"
-                  onClick={() => addToCart(product)}
-                >
-                  <div className="product-name">{product.nombre}</div>
-                  <div className="product-price">
-                    {config?.currency_symbol || '$'}{product.precio.toFixed(2)}
-                    {product.tipo === 'por_peso' && '/kg'}
-                  </div>
-                  <div className="product-stock">
-                    Stock: {product.stock}
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {getCategoryName(product.categoria_id)}
-                  </div>
-                  {product.codigo_barras && (
-                    <div className="text-xs text-blue-600 mt-1">
-                      Código: {product.codigo_barras}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-            
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="mt-4">
-                <Pagination
-                  currentPage={currentPage}
-                  totalPages={totalPages}
-                  totalItems={filteredProducts.length}
-                  itemsPerPage={itemsPerPage}
-                  onPageChange={handlePageChange}
-                />
+            {productsLoading ? (
+              <div className="flex flex-col items-center justify-center h-full py-16 text-gray-500">
+                <div className="spinner w-10 h-10 mb-4"></div>
+                <p className="text-sm">Cargando productos...</p>
               </div>
+            ) : (
+              <>
+                <div className="products-grid">
+                  {paginatedProducts.map(product => (
+                    <div
+                      key={product.id}
+                      className="product-card"
+                      onClick={() => addToCart(product)}
+                    >
+                      <div className="product-name">{product.nombre}</div>
+                      <div className="product-price">
+                        {config?.currency_symbol || '$'}{product.precio.toFixed(2)}
+                        {product.tipo === 'por_peso' && '/kg'}
+                      </div>
+                      <div className="product-stock">
+                        Stock: {product.stock}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {getCategoryName(product.categoria_id)}
+                      </div>
+                      {product.codigo_barras && (
+                        <div className="text-xs text-blue-600 mt-1">
+                          Código: {product.codigo_barras}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="mt-4">
+                    <Pagination
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      totalItems={filteredProducts.length}
+                      itemsPerPage={itemsPerPage}
+                      onPageChange={handlePageChange}
+                    />
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
