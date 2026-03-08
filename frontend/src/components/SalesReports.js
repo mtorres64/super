@@ -745,15 +745,13 @@ const SalesReports = () => {
             <thead>
               <tr>
                 <th>Factura</th>
-                <th>Fecha</th>
-                <th>Sucursal</th>
+                <th className="hidden lg:table-cell">Fecha</th>
+                <th className="hidden lg:table-cell">Sucursal</th>
                 <th>Items</th>
-                <th>Subtotal</th>
-                <th>Impuestos</th>
+                <th className="hidden lg:table-cell">Subtotal</th>
                 <th>Total</th>
                 <th>Método de Pago</th>
-                <th>Estado</th>
-                <th>AFIP</th>
+                <th className="hidden md:table-cell">Estado</th>
                 <th></th>
               </tr>
             </thead>
@@ -763,8 +761,8 @@ const SalesReports = () => {
                   <td>
                     <span className="font-medium text-blue-600">{sale.numero_factura}</span>
                   </td>
-                  <td>{formatDate(sale.fecha)}</td>
-                  <td>
+                  <td className="hidden lg:table-cell">{formatDate(sale.fecha)}</td>
+                  <td className="hidden lg:table-cell">
                     <span className="flex items-center gap-1 text-sm text-gray-600">
                       <Building2 className="w-3 h-3" />
                       {getBranchName(sale.branch_id)}
@@ -775,8 +773,7 @@ const SalesReports = () => {
                       {sale.items.length} productos
                     </span>
                   </td>
-                  <td>${sale.subtotal.toFixed(2)}</td>
-                  <td>${sale.impuestos.toFixed(2)}</td>
+                  <td className="hidden lg:table-cell">${sale.subtotal.toFixed(2)}</td>
                   <td>
                     <span className="font-semibold text-green-600">${sale.total.toFixed(2)}</span>
                   </td>
@@ -791,7 +788,7 @@ const SalesReports = () => {
                       {getPaymentMethodLabel(sale.metodo_pago)}
                     </span>
                   </td>
-                  <td>
+                  <td className="hidden md:table-cell">
                     {sale.estado === 'cancelado' ? (
                       <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">Cancelada</span>
                     ) : sale.estado === 'devolucion_parcial' ? (
@@ -801,42 +798,21 @@ const SalesReports = () => {
                     )}
                   </td>
                   <td>
-                    {sale.afip_estado === 'autorizado' ? (
-                      <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800" title={`CAE: ${sale.cae}`}>CAE ✓</span>
-                    ) : sale.afip_estado === 'contingencia' || sale.afip_estado === 'error' ? (
-                      <div className="flex flex-col gap-1">
-                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">Contingencia</span>
-                        <button
-                          onClick={() => handleRetryAfip(sale.id)}
-                          disabled={retryingAfip === sale.id}
-                          className="btn btn-secondary btn-sm"
-                          style={{ fontSize: '10px', padding: '2px 6px' }}
-                        >
-                          {retryingAfip === sale.id ? '...' : 'Reintentar'}
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-500">N/A</span>
-                    )}
-                  </td>
-                  <td>
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => setReprintSale(sale)}
-                        className="btn btn-secondary btn-sm flex items-center gap-1"
+                        className="btn btn-sm flex items-center gap-1 bg-blue-100 text-blue-800 hover:bg-blue-200"
                         title="Reimprimir ticket"
                       >
                         <Printer className="w-3 h-3" />
-                        Ticket
                       </button>
                       {sale.estado !== 'cancelado' && (
                         <button
                           onClick={() => openReturnModal(sale)}
-                          className="btn btn-secondary btn-sm flex items-center gap-1"
+                          className="btn btn-sm flex items-center gap-1 bg-purple-100 text-purple-800 hover:bg-purple-200"
                           title="Procesar devolución"
                         >
                           <RotateCcw className="w-3 h-3" />
-                          Devolver
                         </button>
                       )}
                     </div>

@@ -324,12 +324,52 @@ const ProductManagement = () => {
             Lista de precios de sucursal
           </button>
         </div>
-        <div className="flex gap-3 flex-wrap">
+        <button
+          onClick={() => openModal()}
+          className="btn btn-primary"
+        >
+          <Plus className="w-4 h-4" />
+          Nuevo Producto
+        </button>
+      </div>
+
+      {/* Low Stock Alert */}
+      {getLowStockProducts().length > 0 && (
+        <div className="mb-6 bg-red-50 border-l-4 border-red-400 p-4 rounded-lg">
+          <div className="flex">
+            <AlertCircle className="h-5 w-5 text-red-400" />
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">
+                {getLowStockProducts().length} productos con stock bajo
+              </h3>
+              <p className="text-sm text-red-700">
+                Algunos productos requieren reabastecimiento
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Search Bar + Action Buttons */}
+      <div className="bg-white rounded-lg shadow p-4 mb-6">
+        <div className="flex gap-3 items-center">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar productos..."
+              className="form-input pl-10"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+
           {/* Export dropdown */}
           <div className="relative" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={() => setShowExportMenu(prev => !prev)}
-              className="btn btn-secondary"
+              className="btn"
+              style={{ background: 'var(--primary)', color: 'var(--primary-text)' }}
             >
               <Download className="w-4 h-4" />
               Exportar
@@ -358,7 +398,8 @@ const ProductManagement = () => {
           {/* Import button */}
           <button
             onClick={() => setShowImportModal(true)}
-            className="btn btn-secondary"
+            className="btn"
+            style={{ background: 'var(--secondary)', color: 'var(--secondary-text)' }}
           >
             <Upload className="w-4 h-4" />
             Importar
@@ -366,49 +407,12 @@ const ProductManagement = () => {
 
           <button
             onClick={() => setShowCategoryModal(true)}
-            className="btn btn-secondary"
+            className="btn"
+            style={{ background: 'var(--tertiary)', color: 'var(--tertiary-text)' }}
           >
             <Plus className="w-4 h-4" />
             Nueva Categoría
           </button>
-          <button
-            onClick={() => openModal()}
-            className="btn btn-primary"
-          >
-            <Plus className="w-4 h-4" />
-            Nuevo Producto
-          </button>
-        </div>
-      </div>
-
-      {/* Low Stock Alert */}
-      {getLowStockProducts().length > 0 && (
-        <div className="mb-6 bg-red-50 border-l-4 border-red-400 p-4 rounded-lg">
-          <div className="flex">
-            <AlertCircle className="h-5 w-5 text-red-400" />
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">
-                {getLowStockProducts().length} productos con stock bajo
-              </h3>
-              <p className="text-sm text-red-700">
-                Algunos productos requieren reabastecimiento
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Search Bar */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Buscar productos..."
-            className="form-input pl-10"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
         </div>
       </div>
 

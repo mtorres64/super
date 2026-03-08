@@ -136,11 +136,42 @@ function App() {
       if (saved) {
         const theme = JSON.parse(saved);
         const root = document.documentElement;
+        const brightness = (hex) => {
+          const h = hex.replace('#','');
+          const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+          return (r*299 + g*587 + b*114) / 1000;
+        };
+        const contrast = (hex) => brightness(hex) > 155 ? '#1f2937' : 'white';
+        const darken = (hex, amt) => {
+          const h = hex.replace('#','');
+          const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+          return `#${[r-amt,g-amt,b-amt].map(v=>Math.max(0,v).toString(16).padStart(2,'0')).join('')}`;
+        };
+        const rgba = (hex, a) => {
+          const h = hex.replace('#','');
+          const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+          return `rgba(${r},${g},${b},${a})`;
+        };
         root.style.setProperty('--primary',        theme.primary);
         root.style.setProperty('--primary-dark',   theme.dark);
         root.style.setProperty('--primary-darker', theme.darker);
         root.style.setProperty('--primary-light',  theme.light);
         root.style.setProperty('--primary-bg',     theme.bg);
+        root.style.setProperty('--primary-text',   contrast(theme.primary));
+        if (theme.secondary) {
+          root.style.setProperty('--secondary',       theme.secondary);
+          root.style.setProperty('--secondary-dark',  darken(theme.secondary, 20));
+          root.style.setProperty('--secondary-light', rgba(theme.secondary, 0.1));
+          root.style.setProperty('--secondary-bg',    rgba(theme.secondary, 0.05));
+          root.style.setProperty('--secondary-text',  contrast(theme.secondary));
+        }
+        if (theme.tertiary) {
+          root.style.setProperty('--tertiary',       theme.tertiary);
+          root.style.setProperty('--tertiary-dark',  darken(theme.tertiary, 20));
+          root.style.setProperty('--tertiary-light', rgba(theme.tertiary, 0.1));
+          root.style.setProperty('--tertiary-bg',    rgba(theme.tertiary, 0.05));
+          root.style.setProperty('--tertiary-text',  contrast(theme.tertiary));
+        }
       }
     } catch (_) {}
   }, []);

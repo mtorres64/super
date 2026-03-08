@@ -56,6 +56,13 @@ const hexToRgba = (hex, alpha) => {
   return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
 };
 
+const getContrastColor = (hex) => {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return 'white';
+  const brightness = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
+  return brightness > 155 ? '#1f2937' : 'white';
+};
+
 const applyTheme = (theme) => {
   const root = document.documentElement;
   root.style.setProperty('--primary',        theme.primary);
@@ -63,6 +70,21 @@ const applyTheme = (theme) => {
   root.style.setProperty('--primary-darker', theme.darker);
   root.style.setProperty('--primary-light',  theme.light);
   root.style.setProperty('--primary-bg',     theme.bg);
+  root.style.setProperty('--primary-text',   getContrastColor(theme.primary));
+  if (theme.secondary) {
+    root.style.setProperty('--secondary',       theme.secondary);
+    root.style.setProperty('--secondary-dark',  darkenHex(theme.secondary, 20));
+    root.style.setProperty('--secondary-light', hexToRgba(theme.secondary, 0.1));
+    root.style.setProperty('--secondary-bg',    hexToRgba(theme.secondary, 0.05));
+    root.style.setProperty('--secondary-text',  getContrastColor(theme.secondary));
+  }
+  if (theme.tertiary) {
+    root.style.setProperty('--tertiary',       theme.tertiary);
+    root.style.setProperty('--tertiary-dark',  darkenHex(theme.tertiary, 20));
+    root.style.setProperty('--tertiary-light', hexToRgba(theme.tertiary, 0.1));
+    root.style.setProperty('--tertiary-bg',    hexToRgba(theme.tertiary, 0.05));
+    root.style.setProperty('--tertiary-text',  getContrastColor(theme.tertiary));
+  }
   localStorage.setItem('app_theme', JSON.stringify(theme));
 };
 
@@ -109,7 +131,12 @@ const Settings = () => {
         applyTheme(JSON.parse(saved));
       } else if (data?.primary_color) {
         const preset = COLOR_THEMES.find(t => t.primary === data.primary_color);
-        applyTheme(preset || buildCustomTheme(data.primary_color));
+        const baseTheme = preset || buildCustomTheme(data.primary_color);
+        applyTheme({
+          ...baseTheme,
+          secondary: data.secondary_color,
+          tertiary:  data.tertiary_color,
+        });
       }
     } catch (error) {
       toast.error('Error al cargar configuración');
@@ -143,12 +170,30 @@ const Settings = () => {
 
   const handleThemeSelect = (theme) => {
     updateConfig('primary_color', theme.primary);
-    applyTheme(theme);
+    const saved = localStorage.getItem('app_theme');
+    const current = saved ? JSON.parse(saved) : {};
+    applyTheme({ ...theme, secondary: current.secondary, tertiary: current.tertiary });
   };
 
   const handleCustomColor = (color) => {
     updateConfig('primary_color', color);
-    applyTheme(buildCustomTheme(color));
+    const saved = localStorage.getItem('app_theme');
+    const current = saved ? JSON.parse(saved) : {};
+    applyTheme({ ...buildCustomTheme(color), secondary: current.secondary, tertiary: current.tertiary });
+  };
+
+  const handleCustomSecondary = (color) => {
+    updateConfig('secondary_color', color);
+    const saved = localStorage.getItem('app_theme');
+    const current = saved ? JSON.parse(saved) : buildCustomTheme(config?.primary_color || '#10b981');
+    applyTheme({ ...current, secondary: color });
+  };
+
+  const handleCustomTertiary = (color) => {
+    updateConfig('tertiary_color', color);
+    const saved = localStorage.getItem('app_theme');
+    const current = saved ? JSON.parse(saved) : buildCustomTheme(config?.primary_color || '#10b981');
+    applyTheme({ ...current, tertiary: color });
   };
 
   const activeTheme = (() => {
@@ -574,85 +619,140 @@ const Settings = () => {
                 <div className="bg-gray-50 rounded-lg p-6">
                   <div className="flex items-center gap-2 mb-1">
                     <Palette className="w-5 h-5 text-gray-600" />
-                    <h4 className="font-medium text-gray-900">Color del Sistema</h4>
+                    <h4 className="font-medium text-gray-900">Esquema de Colores</h4>
                   </div>
-                  <p className="text-sm text-gray-500 mb-5">
-                    Elige el color principal para botones, selecciones y elementos destacados.
-                    El cambio se aplica de forma inmediata.
+                  <p className="text-sm text-gray-500 mb-6">
+                    Personaliza los tres colores del sistema. Los cambios se aplican de forma inmediata.
                   </p>
 
-                  {/* Preset swatches */}
-                  <div className="grid grid-cols-4 gap-3 mb-5">
-                    {COLOR_THEMES.map(theme => {
-                      const isActive = config?.primary_color === theme.primary;
-                      return (
-                        <button
-                          key={theme.id}
-                          onClick={() => handleThemeSelect(theme)}
-                          title={theme.name}
-                          className={`relative flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
-                            isActive
-                              ? 'border-gray-700 shadow-md bg-white'
-                              : 'border-gray-200 hover:border-gray-400 bg-white'
-                          }`}
-                        >
-                          <div
-                            className="w-9 h-9 rounded-full shadow-sm flex items-center justify-center"
-                            style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.dark})` }}
+                  {/* ── Primary ── */}
+                  <div className="mb-6 pb-6 border-b border-gray-200">
+                    <h5 className="text-sm font-semibold text-gray-700 mb-1">Color Primario</h5>
+                    <p className="text-xs text-gray-500 mb-4">Botón principal, navegación activa, elementos destacados.</p>
+
+                    {/* Preset swatches */}
+                    <div className="grid grid-cols-4 gap-3 mb-4">
+                      {COLOR_THEMES.map(theme => {
+                        const isActive = config?.primary_color === theme.primary;
+                        return (
+                          <button
+                            key={theme.id}
+                            onClick={() => handleThemeSelect(theme)}
+                            title={theme.name}
+                            className={`relative flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                              isActive
+                                ? 'border-gray-700 shadow-md bg-white'
+                                : 'border-gray-200 hover:border-gray-400 bg-white'
+                            }`}
                           >
-                            {isActive && <Check className="w-4 h-4 text-white" strokeWidth={3} />}
-                          </div>
-                          <span className="text-xs text-gray-600 text-center leading-tight">
-                            {theme.name}
-                          </span>
-                        </button>
-                      );
-                    })}
+                            <div
+                              className="w-9 h-9 rounded-full shadow-sm flex items-center justify-center"
+                              style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.dark})` }}
+                            >
+                              {isActive && <Check className="w-4 h-4 text-white" strokeWidth={3} />}
+                            </div>
+                            <span className="text-xs text-gray-600 text-center leading-tight">
+                              {theme.name}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <label className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                        Personalizado:
+                      </label>
+                      <input
+                        type="color"
+                        value={config?.primary_color || '#10b981'}
+                        onChange={(e) => handleCustomColor(e.target.value)}
+                        className="w-10 h-10 rounded-lg cursor-pointer border border-gray-300 p-0.5"
+                      />
+                      <span className="text-sm text-gray-500 font-mono">
+                        {config?.primary_color || '#10b981'}
+                      </span>
+                    </div>
                   </div>
 
-                  {/* Custom color picker */}
-                  <div className="flex items-center gap-3 mb-5">
-                    <label className="text-sm font-medium text-gray-700 whitespace-nowrap">
-                      Color personalizado:
-                    </label>
-                    <input
-                      type="color"
-                      value={config?.primary_color || '#10b981'}
-                      onChange={(e) => handleCustomColor(e.target.value)}
-                      className="w-10 h-10 rounded-lg cursor-pointer border border-gray-300 p-0.5"
-                      title="Seleccionar color personalizado"
-                    />
-                    <span className="text-sm text-gray-500 font-mono">
-                      {config?.primary_color || '#10b981'}
-                    </span>
+                  {/* ── Secondary ── */}
+                  <div className="mb-6 pb-6 border-b border-gray-200">
+                    <h5 className="text-sm font-semibold text-gray-700 mb-1">Color Secundario</h5>
+                    <p className="text-xs text-gray-500 mb-4">Botones de importar, etiquetas de categoría, tags informativos.</p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="color"
+                        value={config?.secondary_color || '#60a5fa'}
+                        onChange={(e) => handleCustomSecondary(e.target.value)}
+                        className="w-10 h-10 rounded-lg cursor-pointer border border-gray-300 p-0.5"
+                      />
+                      <span className="text-sm text-gray-500 font-mono">
+                        {config?.secondary_color || '#60a5fa'}
+                      </span>
+                      <span
+                        className="px-3 py-1.5 text-sm font-medium rounded-lg"
+                        style={{ background: config?.secondary_color || '#60a5fa', color: getContrastColor(config?.secondary_color || '#60a5fa') }}
+                      >
+                        Vista previa
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* ── Tertiary ── */}
+                  <div className="mb-6">
+                    <h5 className="text-sm font-semibold text-gray-700 mb-1">Color Terciario</h5>
+                    <p className="text-xs text-gray-500 mb-4">Botones de nueva categoría, etiquetas especiales, acciones complementarias.</p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="color"
+                        value={config?.tertiary_color || '#c084fc'}
+                        onChange={(e) => handleCustomTertiary(e.target.value)}
+                        className="w-10 h-10 rounded-lg cursor-pointer border border-gray-300 p-0.5"
+                      />
+                      <span className="text-sm text-gray-500 font-mono">
+                        {config?.tertiary_color || '#c084fc'}
+                      </span>
+                      <span
+                        className="px-3 py-1.5 text-sm font-medium rounded-lg"
+                        style={{ background: config?.tertiary_color || '#c084fc', color: getContrastColor(config?.tertiary_color || '#c084fc') }}
+                      >
+                        Vista previa
+                      </span>
+                    </div>
                   </div>
 
                   {/* Live preview */}
                   <div className="bg-white rounded-lg border border-gray-200 p-4">
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">
-                      Vista previa
+                      Vista previa del esquema completo
                     </p>
                     <div className="flex flex-wrap items-center gap-3">
                       <button
-                        className="px-4 py-2 text-sm font-medium text-white rounded-lg shadow-sm"
-                        style={{ background: `linear-gradient(135deg, ${activeTheme.primary}, ${activeTheme.dark})` }}
+                        className="px-4 py-2 text-sm font-medium rounded-lg shadow-sm"
+                        style={{ background: `linear-gradient(135deg, ${activeTheme.primary}, ${activeTheme.dark})`, color: getContrastColor(activeTheme.primary) }}
                       >
-                        Guardar cambios
+                        Primario
+                      </button>
+                      <button
+                        className="px-4 py-2 text-sm font-medium rounded-lg shadow-sm"
+                        style={{ background: config?.secondary_color || '#60a5fa', color: getContrastColor(config?.secondary_color || '#60a5fa') }}
+                      >
+                        Secundario
+                      </button>
+                      <button
+                        className="px-4 py-2 text-sm font-medium rounded-lg shadow-sm"
+                        style={{ background: config?.tertiary_color || '#c084fc', color: getContrastColor(config?.tertiary_color || '#c084fc') }}
+                      >
+                        Terciario
                       </button>
                       <span
                         className="px-3 py-1.5 text-sm font-medium rounded-lg border"
                         style={{ background: activeTheme.bg, color: activeTheme.primary, borderColor: activeTheme.primary }}
                       >
-                        Seleccionado
-                      </span>
-                      <span
-                        className="px-3 py-1.5 text-sm font-medium rounded-lg"
-                        style={{ background: activeTheme.light, color: activeTheme.primary }}
-                      >
-                        Badge
+                        Badge activo
                       </span>
                       <div
-                        className="w-3 h-5 rounded-sm"
+                        className="w-3 h-8 rounded-sm"
                         style={{ background: activeTheme.primary }}
                         title="Borde activo del menú"
                       />

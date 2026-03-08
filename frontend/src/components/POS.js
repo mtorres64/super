@@ -21,8 +21,23 @@ import {
   Volume2,
   Printer,
   X,
-  RotateCcw
+  RotateCcw,
+  Tag
 } from 'lucide-react';
+
+const normalize = (str) =>
+  str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w\s]/g, '').toLowerCase();
+
+const TAB_COLORS = [
+  { bg: '#dbeafe', border: '#93c5fd', text: '#1e40af', activeBg: '#3b82f6' },
+  { bg: '#fce7f3', border: '#f9a8d4', text: '#9d174d', activeBg: '#ec4899' },
+  { bg: '#d1fae5', border: '#6ee7b7', text: '#065f46', activeBg: '#10b981' },
+  { bg: '#fef3c7', border: '#fcd34d', text: '#78350f', activeBg: '#f59e0b' },
+  { bg: '#ede9fe', border: '#c4b5fd', text: '#5b21b6', activeBg: '#8b5cf6' },
+  { bg: '#fee2e2', border: '#fca5a5', text: '#7f1d1d', activeBg: '#ef4444' },
+  { bg: '#e0f2fe', border: '#7dd3fc', text: '#0c4a6e', activeBg: '#0ea5e9' },
+  { bg: '#f0fdf4', border: '#86efac', text: '#14532d', activeBg: '#22c55e' },
+];
 
 const POS = () => {
   const [products, setProducts] = useState([]);
@@ -30,8 +45,9 @@ const POS = () => {
   const [config, setConfig] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [barcode, setBarcode] = useState('');
-  const [cart, setCart] = useState([]);
-  const [paymentMethod, setPaymentMethod] = useState('efectivo');
+  const [tabs, setTabs] = useState([{ id: 1, cart: [], paymentMethod: 'efectivo', colorIndex: 0 }]);
+  const [activeTabId, setActiveTabId] = useState(1);
+  const [nextTabId, setNextTabId] = useState(2);
   const [loading, setLoading] = useState(false);
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [scannerMode, setScannerMode] = useState('manual'); // 'manual' or 'camera'
@@ -43,7 +59,20 @@ const POS = () => {
   const [saleReceipt, setSaleReceipt] = useState(null);
   const [afipConfig, setAfipConfig] = useState(null);
   const [returnModal, setReturnModal] = useState(null); // { sale, returnedQty }
+  const [showPriceCheck, setShowPriceCheck] = useState(false);
+  const [priceCheckQuery, setPriceCheckQuery] = useState('');
+  const [priceCheckResult, setPriceCheckResult] = useState(null); // null | product | 'not_found'
   const { user } = useContext(AuthContext);
+
+  // Derived from tabs
+  const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
+  const cart = activeTab.cart;
+  const paymentMethod = activeTab.paymentMethod;
+  const setCart = (newCart) =>
+    setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, cart: newCart } : t));
+  const setPaymentMethod = (pm) =>
+    setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, paymentMethod: pm } : t));
+
   const barcodeInputRef = useRef(null);
   const lastKeyTime = useRef(0);
   const cartItemsRef = useRef(null);
@@ -231,7 +260,7 @@ const POS = () => {
   };
 
   const filteredProducts = products.filter(product =>
-    product.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    normalize(product.nombre).includes(normalize(searchTerm)) ||
     (product.codigo_barras && product.codigo_barras.includes(searchTerm))
   );
 
@@ -335,9 +364,13 @@ const POS = () => {
       const response = await axios.post(`${API}/sales`, saleData);
 
       playSuccessSound();
-      clearCart();
       fetchProducts();
       setSaleReceipt(response.data);
+      if (tabs.length > 1) {
+        closeSaleTab(activeTabId);
+      } else {
+        clearCart();
+      }
       if (config?.print_receipt_auto) {
         setTimeout(() => window.print(), 300);
       }
@@ -361,6 +394,39 @@ const POS = () => {
   const sessionDisabledStyle = {
     opacity: !sessionLoading && !currentSession ? 0.5 : 1,
     pointerEvents: !sessionLoading && !currentSession ? 'none' : 'auto',
+  };
+
+  const closePriceCheck = () => {
+    setShowPriceCheck(false);
+    setPriceCheckQuery('');
+    setPriceCheckResult(null);
+  };
+
+  const searchPriceCheck = (query = priceCheckQuery) => {
+    const q = query.trim();
+    if (!q) return;
+    const byBarcode = products.find(p => p.codigo_barras === q);
+    if (byBarcode) { setPriceCheckResult([byBarcode]); return; }
+    const byName = products.filter(p => normalize(p.nombre).includes(normalize(q)));
+    setPriceCheckResult(byName.length > 0 ? byName : 'not_found');
+  };
+
+  const addSaleTab = () => {
+    const newId = nextTabId;
+    setTabs(prev => [...prev, { id: newId, cart: [], paymentMethod: 'efectivo', colorIndex: prev.length % TAB_COLORS.length }]);
+    setActiveTabId(newId);
+    setNextTabId(prev => prev + 1);
+    if (barcodeInputRef.current) barcodeInputRef.current.focus();
+  };
+
+  const closeSaleTab = (tabId) => {
+    if (tabs.length === 1) return;
+    const idx = tabs.findIndex(t => t.id === tabId);
+    const newTabs = tabs.filter(t => t.id !== tabId);
+    setTabs(newTabs);
+    if (activeTabId === tabId) {
+      setActiveTabId(newTabs[Math.min(idx, newTabs.length - 1)].id);
+    }
   };
 
   const openReturnModal = async () => {
@@ -538,6 +604,13 @@ const POS = () => {
                 >
                   <Camera className="w-4 h-4" />
                 </button>
+                <button
+                  onClick={() => setShowPriceCheck(true)}
+                  className="btn bg-purple-100 text-purple-800 hover:bg-purple-200"
+                  title="Consultar precio"
+                >
+                  <Tag className="w-4 h-4" />
+                </button>
               </div>
             </div>
           </div>
@@ -589,6 +662,36 @@ const POS = () => {
 
       {/* Right Section - Cart */}
       <div className={`pos-cart ${mobileTab === 'cart' ? 'pos-tab-active' : ''}`} style={sessionDisabledStyle}>
+          {/* Sales Tabs Bar */}
+          <div className="sales-tabs-bar">
+            {tabs.map(tab => {
+              const tc = TAB_COLORS[tab.colorIndex % TAB_COLORS.length];
+              const isActive = tab.id === activeTabId;
+              return (
+              <button
+                key={tab.id}
+                className={`sales-tab ${isActive ? 'active' : ''}`}
+                onClick={() => setActiveTabId(tab.id)}
+                style={{
+                  background: isActive ? tc.activeBg : tc.bg,
+                  borderColor: isActive ? tc.activeBg : tc.border,
+                  color: isActive ? 'white' : tc.text,
+                }}
+              >
+                V{tab.id}
+                {tab.cart.length > 0 && <span className="sales-tab-count">{tab.cart.length}</span>}
+                {tabs.length > 1 && (
+                  <span
+                    className="sales-tab-close"
+                    onClick={(e) => { e.stopPropagation(); closeSaleTab(tab.id); }}
+                  >×</span>
+                )}
+              </button>
+              );
+            })}
+            <button className="sales-tab-add" onClick={addSaleTab} title="Nueva venta">+</button>
+          </div>
+
           <div className="cart-header">
             <div className="flex items-center justify-between">
               <h2 className="cart-title">
@@ -598,7 +701,7 @@ const POS = () => {
               <div className="flex gap-2">
                 <button
                   onClick={openReturnModal}
-                  className="btn btn-secondary btn-sm"
+                  className="btn btn-sm bg-purple-100 text-purple-800 hover:bg-purple-200"
                   title="Devolver última venta"
                 >
                   <RotateCcw className="w-4 h-4" />
@@ -900,6 +1003,81 @@ const POS = () => {
           onClose={() => setReturnModal(null)}
           onSuccess={fetchProducts}
         />
+      )}
+
+      {/* Price Check Modal */}
+      {showPriceCheck && (
+        <div className="price-check-overlay" onClick={closePriceCheck}>
+          <div className="price-check-modal" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                <Tag className="w-5 h-5 text-blue-600" />
+                Consulta de Precio
+              </h3>
+              <button onClick={closePriceCheck} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex gap-2 mb-4">
+              <input
+                type="text"
+                placeholder="Código de barras o nombre..."
+                className="form-input flex-1"
+                value={priceCheckQuery}
+                onChange={e => { setPriceCheckQuery(e.target.value); setPriceCheckResult(null); }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') searchPriceCheck();
+                  if (e.key === 'Escape') closePriceCheck();
+                }}
+                autoFocus
+              />
+              <button onClick={() => searchPriceCheck()} className="btn btn-primary">
+                <Search className="w-4 h-4" />
+              </button>
+            </div>
+            {priceCheckResult === 'not_found' && (
+              <div className="text-center py-4 text-red-500 font-medium">
+                Producto no encontrado
+              </div>
+            )}
+            {priceCheckResult && priceCheckResult !== 'not_found' && (
+              priceCheckResult.length === 1 ? (
+                <div className="price-check-result">
+                  <div className="price-check-name">{priceCheckResult[0].nombre}</div>
+                  <div className="price-check-price">
+                    {config?.currency_symbol || '$'}{priceCheckResult[0].precio.toFixed(2)}
+                    {priceCheckResult[0].tipo === 'por_peso' && <span className="text-lg"> /kg</span>}
+                  </div>
+                  <div className="price-check-details">
+                    <span>Stock: {priceCheckResult[0].stock}</span>
+                    <span>{getCategoryName(priceCheckResult[0].categoria_id)}</span>
+                  </div>
+                  {priceCheckResult[0].codigo_barras && (
+                    <div className="text-xs text-gray-400 mt-2">Cód: {priceCheckResult[0].codigo_barras}</div>
+                  )}
+                </div>
+              ) : (
+                <div className="price-check-list">
+                  <div className="text-xs text-gray-500 mb-2">{priceCheckResult.length} productos encontrados</div>
+                  {priceCheckResult.map(product => (
+                    <div key={product.id} className="price-check-list-item">
+                      <div className="price-check-list-info">
+                        <span className="price-check-list-name">{product.nombre}</span>
+                        <span className="price-check-list-meta">
+                          {getCategoryName(product.categoria_id)} · Stock: {product.stock}
+                        </span>
+                      </div>
+                      <span className="price-check-list-price">
+                        {config?.currency_symbol || '$'}{product.precio.toFixed(2)}
+                        {product.tipo === 'por_peso' && '/kg'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+          </div>
+        </div>
       )}
 
       {/* Barcode Scanner Modal */}

@@ -9,6 +9,20 @@
   --primary-darker: #047857;
   --primary-light: rgba(16, 185, 129, 0.1);
   --primary-bg: #ecfdf5;
+
+  --primary-text: white;
+
+  --secondary: #60a5fa;
+  --secondary-dark: #3b82f6;
+  --secondary-light: rgba(96, 165, 250, 0.1);
+  --secondary-bg: #eff6ff;
+  --secondary-text: white;
+
+  --tertiary: #c084fc;
+  --tertiary-dark: #a855f7;
+  --tertiary-light: rgba(192, 132, 252, 0.1);
+  --tertiary-bg: #faf5ff;
+  --tertiary-text: white;
 }
 
 * {
@@ -306,6 +320,176 @@ body {
   font-size: 0.875rem;
   color: #6b7280;
 }
+
+/* Price check modal */
+.price-check-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.price-check-modal {
+  background: white;
+  border-radius: 14px;
+  padding: 1.5rem;
+  width: 340px;
+  max-width: 92vw;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+}
+
+.price-check-result {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 10px;
+  padding: 1rem 1.2rem;
+  text-align: center;
+}
+
+.price-check-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1e3a5f;
+  margin-bottom: 0.4rem;
+}
+
+.price-check-price {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--primary);
+  line-height: 1.1;
+  margin-bottom: 0.5rem;
+}
+
+.price-check-details {
+  display: flex;
+  justify-content: center;
+  gap: 1.2rem;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.price-check-list {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.price-check-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid #f1f5f9;
+  gap: 0.5rem;
+}
+.price-check-list-item:last-child { border-bottom: none; }
+.price-check-list-item:nth-child(even) { background: #f8fafc; }
+
+.price-check-list-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.price-check-list-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.price-check-list-meta {
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
+.price-check-list-price {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--primary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Sales tabs bar */
+.sales-tabs-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  background: #f3f4f6;
+  border-bottom: 1px solid #e5e7eb;
+  overflow-x: auto;
+  flex-shrink: 0;
+  scrollbar-width: none;
+}
+.sales-tabs-bar::-webkit-scrollbar { display: none; }
+
+.sales-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid #d1d5db;
+  background: white;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #6b7280;
+  white-space: nowrap;
+  transition: all 0.15s;
+  line-height: 1.6;
+}
+.sales-tab:hover { border-color: var(--primary); color: var(--primary); }
+.sales-tab.active { background: var(--primary); border-color: var(--primary); color: white; }
+
+.sales-tab-count {
+  background: rgba(0,0,0,0.15);
+  border-radius: 9px;
+  padding: 0 5px;
+  font-size: 0.65rem;
+}
+.sales-tab.active .sales-tab-count { background: rgba(255,255,255,0.3); }
+
+.sales-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.7;
+  margin-left: 1px;
+}
+.sales-tab-close:hover { opacity: 1; background: rgba(0,0,0,0.2); }
+
+.sales-tab-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: 1px dashed #d1d5db;
+  background: transparent;
+  cursor: pointer;
+  color: #9ca3af;
+  font-size: 15px;
+  flex-shrink: 0;
+  transition: all 0.15s;
+  line-height: 1;
+}
+.sales-tab-add:hover { border-color: var(--primary); color: var(--primary); }
 
 /* Cart styles */
 .pos-cart {
