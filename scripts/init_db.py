@@ -467,7 +467,7 @@ async def seed_proveedores(db, empresa_id):
 async def seed_system_config(db):
     print("Creating system configuration...")
     defaults = [
-        {"key": "suscripcion_precio",      "value": 5000.0},
+        {"key": "suscripcion_precio",      "value": 50000.0},
         {"key": "suscripcion_plan_nombre", "value": "Plan Mensual"},
         {"key": "suscripcion_plan_tipo",   "value": "mensual"},
         {"key": "suscripcion_moneda",      "value": "ARS"},

@@ -40,7 +40,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 horas — duración de un turno de trabaj
 MP_ACCESS_TOKEN = os.environ.get('MP_ACCESS_TOKEN', '')
 APP_URL = os.environ.get('APP_URL', 'http://localhost:8000')
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
-SUSCRIPCION_PRECIO = float(os.environ.get('SUSCRIPCION_PRECIO', '5000'))
+SUSCRIPCION_PRECIO = float(os.environ.get('SUSCRIPCION_PRECIO', '50000'))
 SUSCRIPCION_PLAN_NOMBRE = os.environ.get('SUSCRIPCION_PLAN_NOMBRE', 'Plan Mensual')
 
 async def get_precio_suscripcion() -> float:
