@@ -148,6 +148,10 @@ class ProductType(str, Enum):
     CODIGO_BARRAS = "codigo_barras"
     POR_PESO = "por_peso"
 
+class ProductKind(str, Enum):
+    NORMAL = "normal"
+    COMBO = "combo"
+
 class CashSessionStatus(str, Enum):
     ABIERTA = "abierta"
     CERRADA = "cerrada"
@@ -337,6 +341,7 @@ class Configuration(BaseModel):
 
     # Receipt Settings
     print_receipt_auto: bool = False
+    show_receipt_after_sale: bool = True
     receipt_width: int = 80  # characters
 
     # Pagination Settings
@@ -373,6 +378,7 @@ class ConfigurationUpdate(BaseModel):
     time_format: Optional[str] = None
     language: Optional[str] = None
     print_receipt_auto: Optional[bool] = None
+    show_receipt_after_sale: Optional[bool] = None
     receipt_width: Optional[int] = None
     items_per_page: Optional[int] = None
     company_logo: Optional[str] = None
@@ -424,17 +430,24 @@ class CategoryCreate(BaseModel):
     nombre: str
     descripcion: Optional[str] = None
 
+class ComboItem(BaseModel):
+    product_id: str
+    cantidad: float = 1.0
+
 class Product(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     empresa_id: str
     nombre: str
     codigo_barras: Optional[str] = None
     tipo: ProductType
+    kind: ProductKind = ProductKind.NORMAL
     precio: float
     precio_por_peso: Optional[float] = None
     categoria_id: str
     stock: int = 0
     stock_minimo: int = 10
+    control_stock: bool = True
+    combo_items: List[ComboItem] = []
     activo: bool = True
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -442,20 +455,27 @@ class ProductCreate(BaseModel):
     nombre: str
     codigo_barras: Optional[str] = None
     tipo: ProductType
+    kind: ProductKind = ProductKind.NORMAL
     precio: float
     precio_por_peso: Optional[float] = None
     categoria_id: str
     stock: int = 0
     stock_minimo: int = 10
+    control_stock: bool = True
+    combo_items: List[ComboItem] = []
 
 class ProductUpdate(BaseModel):
     nombre: Optional[str] = None
     codigo_barras: Optional[str] = None
+    tipo: Optional[ProductType] = None
+    kind: Optional[ProductKind] = None
     precio: Optional[float] = None
     precio_por_peso: Optional[float] = None
     categoria_id: Optional[str] = None
     stock: Optional[int] = None
     stock_minimo: Optional[int] = None
+    control_stock: Optional[bool] = None
+    combo_items: Optional[List[ComboItem]] = None
     activo: Optional[bool] = None
 
 class SaleItem(BaseModel):
@@ -1105,7 +1125,11 @@ async def create_product(product_data: ProductCreate, user: User = Depends(requi
         if existing_product:
             raise HTTPException(status_code=400, detail="Barcode already exists")
 
-    product = Product(**product_data.dict(), empresa_id=user.empresa_id)
+    product_dict = product_data.dict()
+    # Combos never control their own stock
+    if product_dict.get("kind") == ProductKind.COMBO:
+        product_dict["control_stock"] = False
+    product = Product(**product_dict, empresa_id=user.empresa_id)
     await db.products.insert_one(product.dict())
     # Auto-sync: create branch_products for all active branches of this empresa
     branches = await db.branches.find({"activo": True, "empresa_id": user.empresa_id}).to_list(1000)
@@ -1304,8 +1328,20 @@ async def update_product(product_id: str, product_data: ProductUpdate, user: Use
     if not existing_product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    # Update fields
+    # Update fields (handle None-exclusive fields carefully)
     update_data = {k: v for k, v in product_data.dict().items() if v is not None}
+    # Explicitly include boolean and list fields even when falsy
+    if product_data.control_stock is not None:
+        update_data['control_stock'] = product_data.control_stock
+    if product_data.activo is not None:
+        update_data['activo'] = product_data.activo
+    if product_data.combo_items is not None:
+        update_data['combo_items'] = [ci.dict() for ci in product_data.combo_items]
+
+    # Determine final kind (could be updated or existing)
+    final_kind = update_data.get("kind") or existing_product.get("kind", "normal")
+    if final_kind == ProductKind.COMBO:
+        update_data["control_stock"] = False
 
     if update_data:
         await db.products.update_one({"id": product_id, "empresa_id": user.empresa_id}, {"$set": update_data})
@@ -1408,45 +1444,94 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
     validated_items = []
 
     for item in sale_data.items:
-        # Try branch-specific product first (if user has branch assigned)
         precio_unitario = None
         product_nombre = None
-        if user.branch_id:
-            branch_product = await db.branch_products.find_one({
-                "product_id": item.producto_id,
-                "branch_id": user.branch_id,
-                "empresa_id": user.empresa_id,
-                "activo": True
-            })
-            if branch_product:
-                if branch_product['stock'] < item.cantidad:
-                    product = await db.products.find_one({"id": item.producto_id, "empresa_id": user.empresa_id})
-                    raise HTTPException(status_code=400, detail=f"Stock insuficiente para {product['nombre']}")
-                precio_unitario = branch_product['precio']
-                if branch_product.get('precio_por_peso') and item.cantidad != int(item.cantidad):
-                    precio_unitario = branch_product['precio_por_peso']
-                await db.branch_products.update_one(
-                    {"product_id": item.producto_id, "branch_id": user.branch_id, "empresa_id": user.empresa_id},
-                    {"$inc": {"stock": -int(item.cantidad)}}
-                )
-                gp = await db.products.find_one({"id": item.producto_id, "empresa_id": user.empresa_id})
-                product_nombre = gp['nombre'] if gp else None
 
-        # Fall back to global product
-        if precio_unitario is None:
-            product = await db.products.find_one({"id": item.producto_id, "empresa_id": user.empresa_id, "activo": True})
-            if not product:
-                raise HTTPException(status_code=400, detail=f"Producto no encontrado")
-            if product['stock'] < item.cantidad:
-                raise HTTPException(status_code=400, detail=f"Stock insuficiente para {product['nombre']}")
-            precio_unitario = product['precio']
-            product_nombre = product['nombre']
-            if product.get('precio_por_peso') and item.cantidad != int(item.cantidad):
-                precio_unitario = product['precio_por_peso']
-            await db.products.update_one(
-                {"id": item.producto_id, "empresa_id": user.empresa_id},
-                {"$inc": {"stock": -int(item.cantidad)}}
-            )
+        # Always fetch global product to know kind/control_stock
+        global_product = await db.products.find_one({"id": item.producto_id, "empresa_id": user.empresa_id, "activo": True})
+        if not global_product:
+            raise HTTPException(status_code=400, detail="Producto no encontrado")
+
+        product_kind = global_product.get('kind', 'normal')
+        control_stock = global_product.get('control_stock', True)
+
+        if product_kind == 'combo':
+            # Resolve price from branch or global
+            if user.branch_id:
+                branch_product = await db.branch_products.find_one({
+                    "product_id": item.producto_id,
+                    "branch_id": user.branch_id,
+                    "empresa_id": user.empresa_id,
+                    "activo": True
+                })
+                if branch_product:
+                    precio_unitario = branch_product.get('precio_por_peso') or branch_product['precio']
+            if precio_unitario is None:
+                precio_unitario = global_product.get('precio_por_peso') or global_product['precio']
+            product_nombre = global_product['nombre']
+
+            # Deduct stock from each combo component
+            combo_items = global_product.get('combo_items', [])
+            for ci in combo_items:
+                comp = await db.products.find_one({"id": ci['product_id'], "empresa_id": user.empresa_id})
+                if not comp or not comp.get('control_stock', True):
+                    continue
+                comp_cantidad = ci['cantidad'] * item.cantidad
+                deducted = False
+                if user.branch_id:
+                    comp_bp = await db.branch_products.find_one({
+                        "product_id": ci['product_id'],
+                        "branch_id": user.branch_id,
+                        "empresa_id": user.empresa_id,
+                        "activo": True
+                    })
+                    if comp_bp:
+                        if comp_bp['stock'] < comp_cantidad:
+                            raise HTTPException(status_code=400, detail=f"Stock insuficiente para {comp['nombre']} (componente del combo)")
+                        await db.branch_products.update_one(
+                            {"product_id": ci['product_id'], "branch_id": user.branch_id, "empresa_id": user.empresa_id},
+                            {"$inc": {"stock": -int(comp_cantidad)}}
+                        )
+                        deducted = True
+                if not deducted:
+                    if comp['stock'] < comp_cantidad:
+                        raise HTTPException(status_code=400, detail=f"Stock insuficiente para {comp['nombre']} (componente del combo)")
+                    await db.products.update_one(
+                        {"id": ci['product_id'], "empresa_id": user.empresa_id},
+                        {"$inc": {"stock": -int(comp_cantidad)}}
+                    )
+
+        else:
+            # Normal product: try branch first
+            if user.branch_id:
+                branch_product = await db.branch_products.find_one({
+                    "product_id": item.producto_id,
+                    "branch_id": user.branch_id,
+                    "empresa_id": user.empresa_id,
+                    "activo": True
+                })
+                if branch_product:
+                    if control_stock and branch_product['stock'] < item.cantidad:
+                        raise HTTPException(status_code=400, detail=f"Stock insuficiente para {global_product['nombre']}")
+                    precio_unitario = branch_product.get('precio_por_peso') or branch_product['precio']
+                    if control_stock:
+                        await db.branch_products.update_one(
+                            {"product_id": item.producto_id, "branch_id": user.branch_id, "empresa_id": user.empresa_id},
+                            {"$inc": {"stock": -int(item.cantidad)}}
+                        )
+                    product_nombre = global_product['nombre']
+
+            # Fall back to global product
+            if precio_unitario is None:
+                if control_stock and global_product['stock'] < item.cantidad:
+                    raise HTTPException(status_code=400, detail=f"Stock insuficiente para {global_product['nombre']}")
+                precio_unitario = global_product.get('precio_por_peso') or global_product['precio']
+                product_nombre = global_product['nombre']
+                if control_stock:
+                    await db.products.update_one(
+                        {"id": item.producto_id, "empresa_id": user.empresa_id},
+                        {"$inc": {"stock": -int(item.cantidad)}}
+                    )
 
         # Calculate subtotal
         subtotal = item.cantidad * precio_unitario
@@ -1719,11 +1804,20 @@ async def get_dashboard_stats(user: User = Depends(get_current_user)):
     total_productos = await db.products.count_documents({"empresa_id": user.empresa_id, "activo": True})
 
     # Low stock from branch_products (real per-branch stock)
+    # Exclude combo products and products with control_stock=False
+    excluded_dash = await db.products.find(
+        {"empresa_id": user.empresa_id, "$or": [{"kind": "combo"}, {"control_stock": False}]},
+        {"id": 1}
+    ).to_list(100000)
+    excluded_ids_dash = [p["id"] for p in excluded_dash]
+
     bp_filter = {
         "empresa_id": user.empresa_id,
         "activo": True,
         "$expr": {"$lte": ["$stock", "$stock_minimo"]}
     }
+    if excluded_ids_dash:
+        bp_filter["product_id"] = {"$nin": excluded_ids_dash}
     if not is_admin_or_supervisor and user.branch_id:
         bp_filter["branch_id"] = user.branch_id
     elif is_admin_or_supervisor and user.rol == UserRole.SUPERVISOR and user.branch_id:
@@ -1766,11 +1860,20 @@ async def get_stock_alerts(
 ):
     is_admin = user.rol == UserRole.ADMIN
 
+    # Exclude combo products and products with control_stock=False
+    excluded_prods = await db.products.find(
+        {"empresa_id": user.empresa_id, "$or": [{"kind": "combo"}, {"control_stock": False}]},
+        {"id": 1}
+    ).to_list(100000)
+    excluded_ids = [p["id"] for p in excluded_prods]
+
     bp_filter = {
         "empresa_id": user.empresa_id,
         "activo": True,
         "$expr": {"$lte": ["$stock", "$stock_minimo"]}
     }
+    if excluded_ids:
+        bp_filter["product_id"] = {"$nin": excluded_ids}
     # Supervisor and cajero: filter to their branch
     if user.rol != UserRole.ADMIN and user.branch_id:
         bp_filter["branch_id"] = user.branch_id
@@ -1809,11 +1912,19 @@ async def export_stock_alerts(
     format: str = Query("xlsx"),
     user: User = Depends(get_current_user)
 ):
+    excluded_prods_exp = await db.products.find(
+        {"empresa_id": user.empresa_id, "$or": [{"kind": "combo"}, {"control_stock": False}]},
+        {"id": 1}
+    ).to_list(100000)
+    excluded_ids_exp = [p["id"] for p in excluded_prods_exp]
+
     bp_filter = {
         "empresa_id": user.empresa_id,
         "activo": True,
         "$expr": {"$lte": ["$stock", "$stock_minimo"]}
     }
+    if excluded_ids_exp:
+        bp_filter["product_id"] = {"$nin": excluded_ids_exp}
     if user.rol != UserRole.ADMIN and user.branch_id:
         bp_filter["branch_id"] = user.branch_id
 

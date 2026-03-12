@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
+import PulsLogo from './PulsLogo';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -91,8 +92,7 @@ export default function Landing() {
       {/* ── Navbar ─────────────────────────────── */}
       <header style={{ borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, background: 'white', zIndex: 50 }}>
         <div style={{ ...S.maxW(1200), padding: '0 1.5rem', display: 'flex', alignItems: 'center', height: 64, gap: 8 }}>
-          <Store style={{ width: 26, height: 26, color: 'var(--primary)' }} />
-          <span style={{ fontWeight: 700, fontSize: '1.15rem', color: '#111827', flex: 1 }}>SuperMarket POS</span>
+          <span style={{ flex: 1 }}><PulsLogo size="md" /></span>
           <Link to="/login" style={{ padding: '0.5rem 1.25rem', borderRadius: 8, border: '1.5px solid var(--primary)', color: 'var(--primary)', fontWeight: 600, fontSize: '0.875rem', textDecoration: 'none', marginRight: '0.5rem' }}>
             Ingresar
           </Link>
@@ -413,8 +413,7 @@ export default function Landing() {
       {/* ── Footer ──────────────────────────────── */}
       <footer style={{ background: '#111827', color: '#9ca3af', padding: '2rem 1.5rem', textAlign: 'center', fontSize: '0.85rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: '0.5rem' }}>
-          <Store style={{ width: 18, height: 18, color: 'var(--primary)' }} />
-          <span style={{ color: 'white', fontWeight: 600 }}>SuperMarket POS</span>
+          <PulsLogo size="sm" dark={true} />
         </div>
         <p>Sistema de gestión para comercios · {new Date().getFullYear()}</p>
       </footer>

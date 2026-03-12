@@ -3,7 +3,8 @@ import { Navigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { AuthContext, API } from '../App';
 import { toast } from 'sonner';
-import { Store, User, Lock, Building2, LogIn, UserPlus } from 'lucide-react';
+import { User, Lock, Building2, LogIn, UserPlus } from 'lucide-react';
+import PulsLogo from './PulsLogo';
 
 const Login = () => {
   const location = useLocation();
@@ -67,15 +68,12 @@ const Login = () => {
     <div className="login-container">
       <div className="login-card fade-in">
         <div className="login-header">
-          <div className="flex items-center justify-center mb-4">
-            <div className="w-16 h-16 bg-green-600 rounded-xl flex items-center justify-center">
-              <Store className="w-8 h-8 text-white" />
-            </div>
+          <div className="mb-4">
+            <PulsLogo variant="text" fullWidth />
           </div>
-          <h1 className="login-title">SuperMarket POS</h1>
-          <p className="login-subtitle">
-            {mode === 'login' ? 'Sistema de Gestión de Supermercado' : 'Registrar mi empresa'}
-          </p>
+          {mode === 'register' && (
+            <p className="login-subtitle">Registrar mi empresa</p>
+          )}
         </div>
 
         {mode === 'login' ? (
@@ -90,7 +88,7 @@ const Login = () => {
                 className="form-input"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@supermarket.com"
+                placeholder="tu@empresa.com"
                 required
               />
             </div>

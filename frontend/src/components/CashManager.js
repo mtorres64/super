@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
+import useModalClose from '../useModalClose';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { API, AuthContext } from '../App';
@@ -21,6 +22,8 @@ const CashManager = () => {
   const [closingCash, setClosingCash] = useState(false);
   const [showOpenModal, setShowOpenModal] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
+  const [openModalClosing, closeOpenModal] = useModalClose(() => setShowOpenModal(false));
+  const [closeModalClosing, closeCloseModal] = useModalClose(() => setShowCloseModal(false));
   const { user } = useContext(AuthContext);
   
   const [openForm, setOpenForm] = useState({
@@ -58,7 +61,7 @@ const CashManager = () => {
         observaciones: openForm.observaciones
       });
       setCurrentSession(response.data);
-      setShowOpenModal(false);
+      closeOpenModal();
       setOpenForm({ monto_inicial: '', observaciones: '' });
       toast.success('Caja abierta exitosamente');
     } catch (error) {
@@ -76,7 +79,7 @@ const CashManager = () => {
         observaciones: closeForm.observaciones
       });
       setCurrentSession(null);
-      setShowCloseModal(false);
+      closeCloseModal();
       setCloseForm({ monto_final: '', observaciones: '' });
       toast.success('Caja cerrada exitosamente');
       
@@ -310,11 +313,11 @@ const CashManager = () => {
 
       {/* Open Cash Modal */}
       {showOpenModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
+        <div className={`modal-overlay${openModalClosing ? ' closing' : ''}`}>
+          <div className={`modal-content${openModalClosing ? ' closing' : ''}`}>
             <div className="modal-header">
               <h3 className="modal-title">Abrir Caja</h3>
-              <button onClick={() => setShowOpenModal(false)} className="modal-close">
+              <button onClick={closeOpenModal} className="modal-close">
                 ×
               </button>
             </div>
@@ -349,7 +352,7 @@ const CashManager = () => {
 
               <div className="flex justify-end space-x-3 mt-6">
                 <button
-                  onClick={() => setShowOpenModal(false)}
+                  onClick={closeOpenModal}
                   className="btn btn-secondary"
                 >
                   Cancelar
@@ -379,11 +382,11 @@ const CashManager = () => {
 
       {/* Close Cash Modal */}
       {showCloseModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
+        <div className={`modal-overlay${closeModalClosing ? ' closing' : ''}`}>
+          <div className={`modal-content${closeModalClosing ? ' closing' : ''}`}>
             <div className="modal-header">
               <h3 className="modal-title">Cerrar Caja</h3>
-              <button onClick={() => setShowCloseModal(false)} className="modal-close">
+              <button onClick={closeCloseModal} className="modal-close">
                 ×
               </button>
             </div>
@@ -430,7 +433,7 @@ const CashManager = () => {
 
               <div className="flex justify-end space-x-3 mt-6">
                 <button
-                  onClick={() => setShowCloseModal(false)}
+                  onClick={closeCloseModal}
                   className="btn btn-secondary"
                 >
                   Cancelar

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { Camera, X, Scan, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
+import useModalClose from '../useModalClose';
 
 const BarcodeScanner = ({ onScan, onClose }) => {
   const [scanning, setScanning] = useState(false);
@@ -10,6 +11,7 @@ const BarcodeScanner = ({ onScan, onClose }) => {
   const [selectedCamera, setSelectedCamera] = useState(null);
   const html5QrcodeRef = useRef(null);
   const mountedRef = useRef(true);
+  const [closing, animatedClose] = useModalClose(onClose);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -162,13 +164,13 @@ const BarcodeScanner = ({ onScan, onClose }) => {
 
   const handleClose = () => {
     stopScanning();
-    onClose();
+    animatedClose();
   };
 
   if (cameraPermission === null) {
     return (
-      <div className="modal-overlay">
-        <div className="modal-content">
+      <div className={`modal-overlay${closing ? ' closing' : ''}`}>
+        <div className={`modal-content${closing ? ' closing' : ''}`}>
           <div className="modal-header">
             <h3 className="modal-title">Verificando Cámara...</h3>
             <button onClick={handleClose} className="modal-close">
@@ -189,8 +191,8 @@ const BarcodeScanner = ({ onScan, onClose }) => {
 
   if (cameraPermission === false) {
     return (
-      <div className="modal-overlay">
-        <div className="modal-content">
+      <div className={`modal-overlay${closing ? ' closing' : ''}`}>
+        <div className={`modal-content${closing ? ' closing' : ''}`}>
           <div className="modal-header">
             <h3 className="modal-title">Acceso a Cámara Requerido</h3>
             <button onClick={handleClose} className="modal-close">
@@ -222,7 +224,7 @@ const BarcodeScanner = ({ onScan, onClose }) => {
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content max-w-lg">
+      <div className={`modal-content max-w-lg${closing ? ' closing' : ''}`}>
         <div className="modal-header">
           <h3 className="modal-title">
             <Scan className="w-5 h-5 inline mr-2" />

@@ -3,6 +3,7 @@ import axios from 'axios';
 import { useLocation } from 'react-router-dom';
 import { API } from '../App';
 import Pagination from './Pagination';
+import useModalClose from '../useModalClose';
 import { toast } from 'sonner';
 import {
   Building2,
@@ -132,6 +133,10 @@ const BranchManagement = () => {
     setFormData({ nombre: '', direccion: '', telefono: '' });
   };
 
+  const [branchModalClosing, closeBranchModal] = useModalClose(closeModal);
+  const [bulkDeleteModalClosing, closeBulkDeleteModalAnim] = useModalClose(() => setShowBulkDeleteModal(false));
+  const [bulkMargenModalClosing, closeBulkMargenModal] = useModalClose(() => setShowBulkMargenModal(false));
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -143,7 +148,7 @@ const BranchManagement = () => {
         toast.success('Sucursal creada. Los productos se han sincronizado automáticamente.');
       }
       fetchBranches();
-      closeModal();
+      closeBranchModal();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error al guardar la sucursal');
     }
@@ -246,7 +251,7 @@ const BranchManagement = () => {
       }
       return next;
     });
-    setShowBulkMargenModal(false);
+    closeBulkMargenModal();
     setBulkMargenValor('');
     toast.success(`Margen aplicado a ${selectedRows.size} producto(s). Recuerda guardar los cambios.`);
   };
@@ -267,7 +272,7 @@ const BranchManagement = () => {
     }
     if (successCount > 0) toast.success(`${successCount} producto(s) eliminado(s) de la sucursal`);
     if (errorCount > 0) toast.error(`${errorCount} producto(s) con error al eliminar`);
-    setShowBulkDeleteModal(false);
+    closeBulkDeleteModalAnim();
     setSelectedRows(new Set());
     await fetchBranchProducts(selectedBranch.id);
     setBulkDeleting(false);
@@ -655,14 +660,14 @@ const BranchManagement = () => {
 
         {/* Bulk Delete Confirmation Modal */}
         {showBulkDeleteModal && (
-          <div className="modal-overlay">
-            <div className="modal-content max-w-md">
+          <div className={`modal-overlay${bulkDeleteModalClosing ? ' closing' : ''}`}>
+            <div className={`modal-content max-w-md${bulkDeleteModalClosing ? ' closing' : ''}`}>
               <div className="modal-header">
                 <h3 className="modal-title flex items-center gap-2">
                   <Trash2 className="w-5 h-5 text-red-600" />
                   Eliminar productos de la sucursal
                 </h3>
-                <button onClick={() => setShowBulkDeleteModal(false)} className="modal-close">
+                <button onClick={closeBulkDeleteModalAnim} className="modal-close">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -675,7 +680,7 @@ const BranchManagement = () => {
               <div className="flex justify-end space-x-3 mt-6">
                 <button
                   type="button"
-                  onClick={() => setShowBulkDeleteModal(false)}
+                  onClick={closeBulkDeleteModalAnim}
                   disabled={bulkDeleting}
                   className="btn btn-secondary"
                 >
@@ -700,14 +705,14 @@ const BranchManagement = () => {
 
         {/* Bulk Margen Modal */}
         {showBulkMargenModal && (
-          <div className="modal-overlay">
-            <div className="modal-content max-w-md">
+          <div className={`modal-overlay${bulkMargenModalClosing ? ' closing' : ''}`}>
+            <div className={`modal-content max-w-md${bulkMargenModalClosing ? ' closing' : ''}`}>
               <div className="modal-header">
                 <h3 className="modal-title flex items-center gap-2">
                   <Percent className="w-5 h-5 text-green-600" />
                   Cambio masivo de Margen
                 </h3>
-                <button onClick={() => setShowBulkMargenModal(false)} className="modal-close">
+                <button onClick={closeBulkMargenModal} className="modal-close">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -774,7 +779,7 @@ const BranchManagement = () => {
               </div>
 
               <div className="flex justify-end space-x-3 mt-6">
-                <button type="button" onClick={() => setShowBulkMargenModal(false)} className="btn btn-secondary">
+                <button type="button" onClick={closeBulkMargenModal} className="btn btn-secondary">
                   Cancelar
                 </button>
                 <button
@@ -885,13 +890,13 @@ const BranchManagement = () => {
 
       {/* Branch Modal */}
       {showModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
+        <div className={`modal-overlay${branchModalClosing ? ' closing' : ''}`}>
+          <div className={`modal-content${branchModalClosing ? ' closing' : ''}`}>
             <div className="modal-header">
               <h3 className="modal-title">
                 {editingBranch ? 'Editar Sucursal' : 'Nueva Sucursal'}
               </h3>
-              <button onClick={closeModal} className="modal-close">
+              <button onClick={closeBranchModal} className="modal-close">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -935,7 +940,7 @@ const BranchManagement = () => {
                 </div>
               </div>
               <div className="flex justify-end space-x-3 mt-6">
-                <button type="button" onClick={closeModal} className="btn btn-secondary">
+                <button type="button" onClick={closeBranchModal} className="btn btn-secondary">
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn-primary">

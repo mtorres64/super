@@ -19,7 +19,9 @@ import {
   Check,
   Upload,
   Wifi,
-  WifiOff
+  WifiOff,
+  Zap,
+  ZapOff
 } from 'lucide-react';
 
 /* ─── Color theme presets ─── */
@@ -135,6 +137,9 @@ const Settings = () => {
     try {
       const response = await axios.get(`${API}/config`);
       const data = response.data;
+      if (data.modal_animations === undefined || data.modal_animations === null) {
+        data.modal_animations = localStorage.getItem('modal_animations') !== 'false';
+      }
       setConfig(data);
       setTaxInput(data?.tax_rate != null ? String(data.tax_rate * 100) : '');
       // DB is the source of truth — apply whatever is saved there
@@ -149,6 +154,19 @@ const Settings = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (config === null) return;
+    const configValue = config?.modal_animations;
+    // If backend doesn't return the field, fall back to localStorage preference
+    const enabled = configValue === undefined || configValue === null
+      ? localStorage.getItem('modal_animations') !== 'false'
+      : configValue !== false;
+    document.body.classList.toggle('no-animations', !enabled);
+    if (configValue !== undefined && configValue !== null) {
+      localStorage.setItem('modal_animations', enabled ? 'true' : 'false');
+    }
+  }, [config]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -790,6 +808,33 @@ const Settings = () => {
                   </div>
                 </div>
 
+                {/* Animation Settings */}
+                <div className="bg-gray-50 rounded-lg p-6">
+                  <h4 className="font-medium text-gray-900 mb-4">Animaciones</h4>
+
+                  <div className="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-200">
+                    <div className="flex items-center">
+                      {config?.modal_animations !== false ? (
+                        <Zap className="w-5 h-5 text-yellow-500 mr-3" />
+                      ) : (
+                        <ZapOff className="w-5 h-5 text-gray-400 mr-3" />
+                      )}
+                      <div>
+                        <h4 className="font-medium text-gray-900">Animaciones de modales</h4>
+                        <p className="text-sm text-gray-500">Animación de entrada y salida en ventanas emergentes</p>
+                      </div>
+                    </div>
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={config?.modal_animations !== false}
+                        onChange={(e) => updateConfig('modal_animations', e.target.checked)}
+                      />
+                      <span className="slider"></span>
+                    </label>
+                  </div>
+                </div>
+
                 {/* Pagination Settings */}
                 <div className="bg-gray-50 rounded-lg p-6">
                   <h4 className="font-medium text-gray-900 mb-4">Configuración de Paginación</h4>
@@ -925,6 +970,21 @@ const Settings = () => {
                     <span className="slider"></span>
                   </label>
                 </div>
+
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <h4 className="font-medium text-gray-900">Mostrar Recibo al Finalizar Venta</h4>
+                    <p className="text-sm text-gray-500">Mostrar el recibo en pantalla después de cada venta</p>
+                  </div>
+                  <label className="switch">
+                    <input
+                      type="checkbox"
+                      checked={config?.show_receipt_after_sale ?? true}
+                      onChange={(e) => updateConfig('show_receipt_after_sale', e.target.checked)}
+                    />
+                    <span className="slider"></span>
+                  </label>
+                </div>
               </div>
 
               {/* Receipt Preview */}
@@ -940,7 +1000,7 @@ const Settings = () => {
                   <div className="border-t border-dashed my-2"></div>
                   <div>FACTURA: FAC-000123</div>
                   <div>FECHA: 25/12/2024 14:30</div>
-                  <div>CAJERO: Admin SuperMarket</div>
+                  <div>CAJERO: Admin PULS</div>
                   <div className="border-t border-dashed my-2"></div>
                   <div>Leche Entera 1L    x1    {config?.currency_symbol}1.25</div>
                   <div>Pan Integral       x2    {config?.currency_symbol}1.50</div>

@@ -2,6 +2,7 @@ import React, { useContext, useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { AuthContext, API } from '../App';
 import axios from 'axios';
+import PulsLogo from './PulsLogo';
 import {
   Store,
   LayoutDashboard,
@@ -124,18 +125,30 @@ const Sidebar = ({ isOpen, onClose }) => {
       </button>
 
       <div className="sidebar-header">
-        <div className="sidebar-title">
-          {config?.company_logo ? (
-            <img
-              src={config.company_logo}
-              alt="Company Logo"
-              className="w-8 h-8 object-contain"
-            />
-          ) : (
-            <Store className="w-6 h-6 text-green-600" />
-          )}
-          {config?.company_name || 'SuperMarket POS'}
-        </div>
+        {config?.company_name ? (
+          <div style={{ display: 'flex', alignItems: 'stretch', gap: 10 }}>
+            {config.company_logo && (
+              <img
+                src={config.company_logo}
+                alt="Logo"
+                style={{ width: 'auto', maxWidth: 44, objectFit: 'contain', borderRadius: 4, alignSelf: 'stretch' }}
+              />
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 2 }}>
+              <span style={{ fontWeight: 700, fontSize: '1rem', color: 'inherit', lineHeight: 1.2 }}>
+                {config.company_name}
+              </span>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                <span style={{ fontSize: '0.65rem', color: '#6b7280' }}>powered by</span>
+                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#10b981', fontFamily: "'Exo', sans-serif", letterSpacing: '0.05em' }}>PULS</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="sidebar-title">
+            <PulsLogo size="md" />
+          </div>
+        )}
       </div>
 
       <nav className="sidebar-nav">

@@ -3,6 +3,7 @@ import axios from 'axios';
 import { API } from '../App';
 import { toast } from 'sonner';
 import { RotateCcw, X } from 'lucide-react';
+import useModalClose from '../useModalClose';
 
 /**
  * Modal de devolución reutilizable.
@@ -31,6 +32,7 @@ const ReturnModal = ({ sale, returnedQty, onClose, onSuccess }) => {
 
   const [returnReason, setReturnReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [closing, handleClose] = useModalClose(onClose);
 
   const availableItems = sale.items.filter(item => {
     const available = item.cantidad - (returnedQty[item.producto_id] || 0);
@@ -60,7 +62,7 @@ const ReturnModal = ({ sale, returnedQty, onClose, onSuccess }) => {
         motivo: returnReason || null
       });
       toast.success(`Devolución ${response.data.numero_devolucion} procesada — $${response.data.total.toFixed(2)} devueltos al stock`);
-      onClose();
+      handleClose();
       onSuccess?.();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error al procesar la devolución');
@@ -76,14 +78,14 @@ const ReturnModal = ({ sale, returnedQty, onClose, onSuccess }) => {
   }, 0);
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-content" style={{ maxWidth: '560px', width: '100%' }}>
+    <div className={`modal-overlay${closing ? ' closing' : ''}`}>
+      <div className={`modal-content${closing ? ' closing' : ''}`} style={{ maxWidth: '560px', width: '100%' }}>
         <div className="modal-header">
           <h3 className="modal-title">
             <RotateCcw className="w-5 h-5 inline mr-2" />
             Devolución — {sale.numero_factura}
           </h3>
-          <button onClick={onClose} className="modal-close"><X className="w-4 h-4" /></button>
+          <button onClick={handleClose} className="modal-close"><X className="w-4 h-4" /></button>
         </div>
 
         <div className="p-4">
@@ -167,7 +169,7 @@ const ReturnModal = ({ sale, returnedQty, onClose, onSuccess }) => {
           )}
 
           <div className="flex justify-end gap-3">
-            <button onClick={onClose} className="btn btn-secondary">Cancelar</button>
+            <button onClick={handleClose} className="btn btn-secondary">Cancelar</button>
             <button
               onClick={handleSubmit}
               disabled={submitting || !Object.values(returnSelected).some(Boolean)}

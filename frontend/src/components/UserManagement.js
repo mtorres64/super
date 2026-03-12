@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '../App';
 import { toast } from 'sonner';
+import useModalClose from '../useModalClose';
 import {
   Plus,
   Edit,
@@ -80,6 +81,7 @@ const UserManagement = () => {
     setShowModal(false);
     resetForm();
   };
+  const [modalClosing, handleModalClose] = useModalClose(closeModal);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -104,7 +106,7 @@ const UserManagement = () => {
         toast.success('Usuario creado exitosamente');
       }
       fetchUsers();
-      closeModal();
+      handleModalClose();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error al guardar el usuario');
     }
@@ -240,13 +242,13 @@ const UserManagement = () => {
 
       {/* User Modal */}
       {showModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
+        <div className={`modal-overlay${modalClosing ? ' closing' : ''}`}>
+          <div className={`modal-content${modalClosing ? ' closing' : ''}`}>
             <div className="modal-header">
               <h3 className="modal-title">
                 {editingUser ? 'Editar Usuario' : 'Nuevo Usuario'}
               </h3>
-              <button onClick={closeModal} className="modal-close">
+              <button onClick={handleModalClose} className="modal-close">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -322,7 +324,7 @@ const UserManagement = () => {
               </div>
 
               <div className="flex justify-end space-x-3 mt-6">
-                <button type="button" onClick={closeModal} className="btn btn-secondary">
+                <button type="button" onClick={handleModalClose} className="btn btn-secondary">
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn-primary">

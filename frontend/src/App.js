@@ -31,6 +31,11 @@ const API = `${BACKEND_URL}/api`;
 // Context for authentication
 export const AuthContext = React.createContext();
 
+// Apply animation preference on startup
+if (localStorage.getItem('modal_animations') === 'false') {
+  document.body.classList.add('no-animations');
+}
+
 // Auth Provider
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -95,7 +100,7 @@ const Layout = ({ children }) => {
           <button className="hamburger-btn" onClick={() => setSidebarOpen(true)}>
             <Menu className="w-6 h-6" />
           </button>
-          <span className="text-sm font-semibold text-gray-700">SuperMarket POS</span>
+          <span className="text-sm font-semibold text-gray-700">PULS market·app</span>
           <div className="w-9" />
         </div>
         <main className="flex-1 overflow-auto">

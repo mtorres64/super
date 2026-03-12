@@ -330,6 +330,11 @@ body {
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  animation: overlay-in 0.5s ease both;
+}
+
+.price-check-overlay.closing {
+  animation: overlay-out 0.5s ease both;
 }
 
 .price-check-modal {
@@ -339,6 +344,12 @@ body {
   width: 340px;
   max-width: 92vw;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  animation: ticket-modal-bounce 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  transform-origin: center center;
+}
+
+.price-check-modal.closing {
+  animation: ticket-modal-exit 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
 
 .price-check-result {
@@ -748,6 +759,11 @@ body {
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  animation: overlay-in 0.5s ease both;
+}
+
+.modal-overlay.closing {
+  animation: overlay-out 0.5s ease both;
 }
 
 .modal-content {
@@ -758,6 +774,12 @@ body {
   max-width: 500px;
   max-height: 90vh;
   overflow-y: auto;
+  animation: ticket-modal-bounce 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  transform-origin: center center;
+}
+
+.modal-content.closing {
+  animation: ticket-modal-exit 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
 
 .modal-header {
@@ -1049,6 +1071,36 @@ body {
 /* =====================
    TICKET MODAL
    ===================== */
+@keyframes ticket-modal-bounce {
+  0%   { opacity: 0; transform: scale(0.3, 0.3); }
+  25%  { opacity: 1; transform: scale(0.75, 1.2); }
+  55%  { transform: scale(1.1, 0.88); }
+  80%  { transform: scale(0.96, 1.04); }
+  100% { opacity: 1; transform: scale(1, 1); }
+}
+
+@keyframes ticket-modal-exit {
+  0%   { opacity: 1; transform: scale(1, 1); }
+  20%  { transform: scale(0.96, 1.04); }
+  45%  { transform: scale(1.1, 0.88); }
+  75%  { opacity: 1; transform: scale(0.75, 1.2); }
+  100% { opacity: 0; transform: scale(0.3, 0.3); }
+}
+
+.ticket-modal-container.closing {
+  animation: ticket-modal-exit 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes overlay-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
 .ticket-modal-overlay {
   position: fixed;
   top: 0;
@@ -1060,6 +1112,11 @@ body {
   align-items: center;
   justify-content: center;
   z-index: 1100;
+  animation: overlay-in 0.5s ease both;
+}
+
+.ticket-modal-overlay.closing {
+  animation: overlay-out 0.5s ease both;
 }
 
 .ticket-modal-container {
@@ -1071,6 +1128,8 @@ body {
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: ticket-modal-bounce 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  transform-origin: center center;
 }
 
 .ticket-modal-actions {
@@ -1241,4 +1300,24 @@ body {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+/* =====================
+   DISABLE ANIMATIONS
+   ===================== */
+.no-animations .modal-overlay,
+.no-animations .modal-overlay.closing,
+.no-animations .modal-content,
+.no-animations .modal-content.closing,
+.no-animations .price-check-overlay,
+.no-animations .price-check-overlay.closing,
+.no-animations .price-check-modal,
+.no-animations .price-check-modal.closing,
+.no-animations .ticket-modal-overlay,
+.no-animations .ticket-modal-overlay.closing,
+.no-animations .ticket-modal-container,
+.no-animations .ticket-modal-container.closing {
+  animation: none !important;
+  opacity: 1 !important;
+  transform: none !important;
 }

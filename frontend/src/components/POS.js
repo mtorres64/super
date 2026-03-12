@@ -5,6 +5,7 @@ import { API, AuthContext } from '../App';
 import { toast } from 'sonner';
 import BarcodeScanner from './BarcodeScanner';
 import ReturnModal from './ReturnModal';
+import useModalClose from '../useModalClose';
 import Pagination from './Pagination';
 import {
   Search,
@@ -64,7 +65,16 @@ const POS = () => {
   const [priceCheckQuery, setPriceCheckQuery] = useState('');
   const [priceCheckResult, setPriceCheckResult] = useState(null); // null | product | 'not_found'
   const [branchName, setBranchName] = useState(null);
+  const [receiptClosing, setReceiptClosing] = useState(false);
   const { user } = useContext(AuthContext);
+
+  const closeReceipt = () => {
+    setReceiptClosing(true);
+    setTimeout(() => {
+      setSaleReceipt(null);
+      setReceiptClosing(false);
+    }, 200);
+  };
 
   // Derived from tabs
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
@@ -334,6 +344,13 @@ const POS = () => {
     ));
   };
 
+  const getEffectivePrice = (item) => {
+    if (item.tipo === 'por_peso' && item.precio_por_peso) {
+      return item.precio_por_peso;
+    }
+    return item.precio;
+  };
+
   const removeFromCart = (productId) => {
     setCart(cart.filter(item => item.id !== productId));
   };
@@ -347,7 +364,7 @@ const POS = () => {
   };
 
   const calculateSubtotal = () => {
-    return cart.reduce((sum, item) => sum + (item.precio * item.quantity), 0);
+    return cart.reduce((sum, item) => sum + (getEffectivePrice(item) * item.quantity), 0);
   };
 
   const calculateTax = () => {
@@ -371,8 +388,8 @@ const POS = () => {
         items: cart.map(item => ({
           producto_id: item.product_id || item.id,
           cantidad: item.quantity,
-          precio_unitario: item.precio,
-          subtotal: item.precio * item.quantity
+          precio_unitario: getEffectivePrice(item),
+          subtotal: getEffectivePrice(item) * item.quantity
         })),
         metodo_pago: paymentMethod
       };
@@ -381,13 +398,17 @@ const POS = () => {
 
       playSuccessSound();
       fetchProducts();
-      setSaleReceipt(response.data);
+      const receiptData = response.data;
+      if (config?.show_receipt_after_sale ?? true) {
+        setSaleReceipt(receiptData);
+      }
       if (tabs.length > 1) {
         closeSaleTab(activeTabId);
       } else {
         clearCart();
       }
       if (config?.print_receipt_auto) {
+        setSaleReceipt(receiptData);
         setTimeout(() => window.print(), 300);
       }
     } catch (error) {
@@ -417,6 +438,7 @@ const POS = () => {
     setPriceCheckQuery('');
     setPriceCheckResult(null);
   };
+  const [priceCheckClosing, closePriceCheckAnim] = useModalClose(closePriceCheck);
 
   const searchPriceCheck = (query = priceCheckQuery) => {
     const q = query.trim();
@@ -480,6 +502,33 @@ const POS = () => {
       setReturnModal({ sale: enrichedSale, returnedQty });
     } catch (error) {
       toast.error('Error al obtener la última venta');
+    }
+  };
+
+  const openLastTicket = async () => {
+    try {
+      const [salesResponse, productsResponse] = await Promise.all([
+        axios.get(`${API}/sales`),
+        axios.get(`${API}/products`)
+      ]);
+      const sales = salesResponse.data;
+      if (!sales || sales.length === 0) {
+        toast.error('No hay ventas registradas');
+        return;
+      }
+      const sale = sales[0];
+      const productNames = {};
+      productsResponse.data.forEach(p => { productNames[p.id] = p.nombre; });
+      const enrichedSale = {
+        ...sale,
+        items: sale.items.map(item => ({
+          ...item,
+          nombre: item.nombre || productNames[item.producto_id] || item.producto_id
+        }))
+      };
+      setSaleReceipt(enrichedSale);
+    } catch (error) {
+      toast.error('Error al obtener el último ticket');
     }
   };
 
@@ -650,7 +699,7 @@ const POS = () => {
                     >
                       <div className="product-name">{product.nombre}</div>
                       <div className="product-price">
-                        {config?.currency_symbol || '$'}{product.precio.toFixed(2)}
+                        {config?.currency_symbol || '$'}{(product.tipo === 'por_peso' && product.precio_por_peso ? product.precio_por_peso : product.precio).toFixed(2)}
                         {product.tipo === 'por_peso' && '/kg'}
                       </div>
                       <div className="product-stock">
@@ -690,7 +739,7 @@ const POS = () => {
       <div className={`pos-cart ${mobileTab === 'cart' ? 'pos-tab-active' : ''}`} style={sessionDisabledStyle}>
           {/* Sales Tabs Bar */}
           <div className="sales-tabs-bar">
-            {tabs.map(tab => {
+            {tabs.map((tab, tabIndex) => {
               const tc = TAB_COLORS[tab.colorIndex % TAB_COLORS.length];
               const isActive = tab.id === activeTabId;
               return (
@@ -704,7 +753,7 @@ const POS = () => {
                   color: isActive ? 'white' : tc.text,
                 }}
               >
-                V{tab.id}
+                V{tabIndex + 1}
                 {tab.cart.length > 0 && <span className="sales-tab-count">{tab.cart.length}</span>}
                 {tabs.length > 1 && (
                   <span
@@ -725,6 +774,14 @@ const POS = () => {
                 Carrito ({cart.length})
               </h2>
               <div className="flex gap-2">
+                <button
+                  onClick={openLastTicket}
+                  className="btn btn-sm"
+                  style={{ background: 'var(--secondary)', color: 'var(--secondary-text)' }}
+                  title="Ver último ticket"
+                >
+                  <Printer className="w-4 h-4" />
+                </button>
                 <button
                   onClick={openReturnModal}
                   className="btn btn-sm"
@@ -763,29 +820,35 @@ const POS = () => {
                   <div className="cart-item-info">
                     <div className="cart-item-name">{item.nombre}</div>
                     <div className="cart-item-price">
-                      {config?.currency_symbol || '$'}{item.precio.toFixed(2)} x {item.quantity} = 
-                      {config?.currency_symbol || '$'}{(item.precio * item.quantity).toFixed(2)}
+                      {config?.currency_symbol || '$'}{getEffectivePrice(item).toFixed(2)}{item.tipo === 'por_peso' ? '/kg' : ''} x {item.tipo === 'por_peso' ? `${item.quantity}kg` : item.quantity} =
+                      {config?.currency_symbol || '$'}{(getEffectivePrice(item) * item.quantity).toFixed(2)}
                     </div>
                   </div>
-                  
+
                   <div className="cart-item-controls">
                     <button
-                      onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                      onClick={() => updateQuantity(item.id, parseFloat((item.quantity - (item.tipo === 'por_peso' ? 0.1 : 1)).toFixed(3)))}
                       className="quantity-btn"
                     >
                       <Minus className="w-4 h-4" />
                     </button>
-                    
+
                     <input
                       type="number"
-                      min="1"
+                      min={item.tipo === 'por_peso' ? '0.01' : '1'}
+                      step={item.tipo === 'por_peso' ? '0.1' : '1'}
                       value={item.quantity}
-                      onChange={(e) => updateQuantity(item.id, parseInt(e.target.value) || 1)}
+                      onChange={(e) => {
+                        const val = item.tipo === 'por_peso'
+                          ? parseFloat(e.target.value) || 0.1
+                          : parseInt(e.target.value) || 1;
+                        updateQuantity(item.id, val);
+                      }}
                       className="quantity-input"
                     />
-                    
+
                     <button
-                      onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                      onClick={() => updateQuantity(item.id, parseFloat((item.quantity + (item.tipo === 'por_peso' ? 0.1 : 1)).toFixed(3)))}
                       className="quantity-btn"
                     >
                       <Plus className="w-4 h-4" />
@@ -893,8 +956,8 @@ const POS = () => {
 
       {/* Ticket Modal */}
       {saleReceipt && (
-        <div className="ticket-modal-overlay">
-          <div className="ticket-modal-container">
+        <div className={`ticket-modal-overlay${receiptClosing ? ' closing' : ''}`}>
+          <div className={`ticket-modal-container${receiptClosing ? ' closing' : ''}`}>
             <div className="ticket-modal-actions">
               <h3>Venta procesada</h3>
               <div className="ticket-modal-btns">
@@ -902,7 +965,7 @@ const POS = () => {
                   <Printer className="w-4 h-4" />
                   Imprimir Ticket
                 </button>
-                <button onClick={() => setSaleReceipt(null)} className="btn btn-secondary btn-sm">
+                <button onClick={closeReceipt} className="btn btn-secondary btn-sm">
                   <X className="w-4 h-4" />
                   Cerrar
                 </button>
@@ -1034,14 +1097,14 @@ const POS = () => {
 
       {/* Price Check Modal */}
       {showPriceCheck && (
-        <div className="price-check-overlay" onClick={closePriceCheck}>
-          <div className="price-check-modal" onClick={e => e.stopPropagation()}>
+        <div className={`price-check-overlay${priceCheckClosing ? ' closing' : ''}`} onClick={closePriceCheckAnim}>
+          <div className={`price-check-modal${priceCheckClosing ? ' closing' : ''}`} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                 <Tag className="w-5 h-5 text-blue-600" />
                 Consulta de Precio
               </h3>
-              <button onClick={closePriceCheck} className="text-gray-400 hover:text-gray-600">
+              <button onClick={closePriceCheckAnim} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1054,7 +1117,7 @@ const POS = () => {
                 onChange={e => { setPriceCheckQuery(e.target.value); setPriceCheckResult(null); }}
                 onKeyDown={e => {
                   if (e.key === 'Enter') searchPriceCheck();
-                  if (e.key === 'Escape') closePriceCheck();
+                  if (e.key === 'Escape') closePriceCheckAnim();
                 }}
                 autoFocus
               />
@@ -1072,7 +1135,7 @@ const POS = () => {
                 <div className="price-check-result">
                   <div className="price-check-name">{priceCheckResult[0].nombre}</div>
                   <div className="price-check-price">
-                    {config?.currency_symbol || '$'}{priceCheckResult[0].precio.toFixed(2)}
+                    {config?.currency_symbol || '$'}{(priceCheckResult[0].tipo === 'por_peso' && priceCheckResult[0].precio_por_peso ? priceCheckResult[0].precio_por_peso : priceCheckResult[0].precio).toFixed(2)}
                     {priceCheckResult[0].tipo === 'por_peso' && <span className="text-lg"> /kg</span>}
                   </div>
                   <div className="price-check-details">
@@ -1095,7 +1158,7 @@ const POS = () => {
                         </span>
                       </div>
                       <span className="price-check-list-price">
-                        {config?.currency_symbol || '$'}{product.precio.toFixed(2)}
+                        {config?.currency_symbol || '$'}{(product.tipo === 'por_peso' && product.precio_por_peso ? product.precio_por_peso : product.precio).toFixed(2)}
                         {product.tipo === 'por_peso' && '/kg'}
                       </span>
                     </div>

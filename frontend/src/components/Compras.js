@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import useModalClose from '../useModalClose';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { API } from '../App';
@@ -284,7 +285,7 @@ const Compras = () => {
         toast.success('Factura registrada');
       }
       fetchCompras();
-      closeCompraModal();
+      closeCompraModalAnim();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al guardar la factura');
     }
@@ -376,6 +377,9 @@ const Compras = () => {
     setProveedorForm(emptyProveedorForm);
   };
 
+  const [compraModalClosing, closeCompraModalAnim] = useModalClose(closeCompraModal);
+  const [proveedorModalClosing, closeProveedorModalAnim] = useModalClose(closeProveedorModal);
+
   const handleProveedorSubmit = async (e) => {
     e.preventDefault();
     if (!proveedorForm.nombre.trim()) {
@@ -398,7 +402,7 @@ const Compras = () => {
         toast.success('Proveedor creado');
       }
       fetchProveedores();
-      closeProveedorModal();
+      closeProveedorModalAnim();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al guardar el proveedor');
     }
@@ -661,9 +665,9 @@ const Compras = () => {
 
       {/* ── MODAL FACTURA (incluye confirmación de precios en el mismo overlay) ── */}
       {showCompraModal && (
-        <div className="modal-overlay" onClick={showPriceModal ? undefined : closeCompraModal}>
+        <div className={`modal-overlay${compraModalClosing ? ' closing' : ''}`} onClick={showPriceModal ? undefined : closeCompraModalAnim}>
           <div
-            className="modal-content"
+            className={`modal-content${compraModalClosing ? ' closing' : ''}`}
             style={{ maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto' }}
             onClick={e => e.stopPropagation()}
           >
@@ -676,7 +680,7 @@ const Compras = () => {
                 )}
               </h2>
               <button
-                onClick={showPriceModal ? () => setShowPriceModal(false) : closeCompraModal}
+                onClick={showPriceModal ? () => setShowPriceModal(false) : closeCompraModalAnim}
                 className="modal-close"
                 title={showPriceModal ? 'Volver al formulario' : 'Cerrar'}
               >
@@ -900,7 +904,7 @@ const Compras = () => {
               </div>
 
               <div className="modal-footer">
-                <button type="button" onClick={closeCompraModal} className="btn btn-secondary">
+                <button type="button" onClick={closeCompraModalAnim} className="btn btn-secondary">
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn-primary">
@@ -1050,9 +1054,9 @@ const Compras = () => {
 
       {/* ── MODAL PROVEEDOR ── */}
       {showProveedorModal && (
-        <div className="modal-overlay" onClick={closeProveedorModal}>
+        <div className={`modal-overlay${proveedorModalClosing ? ' closing' : ''}`} onClick={closeProveedorModalAnim}>
           <div
-            className="modal-content"
+            className={`modal-content${proveedorModalClosing ? ' closing' : ''}`}
             style={{ maxWidth: '480px' }}
             onClick={e => e.stopPropagation()}
           >
@@ -1060,7 +1064,7 @@ const Compras = () => {
               <h2 className="modal-title">
                 {editingProveedor ? 'Editar Proveedor' : 'Nuevo Proveedor'}
               </h2>
-              <button onClick={closeProveedorModal} className="modal-close">
+              <button onClick={closeProveedorModalAnim} className="modal-close">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1123,7 +1127,7 @@ const Compras = () => {
               </div>
 
               <div className="modal-footer mt-4">
-                <button type="button" onClick={closeProveedorModal} className="btn btn-secondary">
+                <button type="button" onClick={closeProveedorModalAnim} className="btn btn-secondary">
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn-primary">
