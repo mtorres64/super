@@ -9,8 +9,10 @@ const BarcodeScanner = ({ onScan, onClose }) => {
   const [cameraPermission, setCameraPermission] = useState(null);
   const [cameras, setCameras] = useState([]);
   const [selectedCamera, setSelectedCamera] = useState(null);
+  const [scannedCount, setScannedCount] = useState(0);
   const html5QrcodeRef = useRef(null);
   const mountedRef = useRef(true);
+  const lastScannedRef = useRef({ code: null, time: 0 });
   const [closing, animatedClose] = useModalClose(onClose);
 
   useEffect(() => {
@@ -102,18 +104,26 @@ const BarcodeScanner = ({ onScan, onClose }) => {
         config,
         (decodedText, decodedResult) => {
           if (!mountedRef.current) return;
-          
+
+          // Cooldown: ignorar si el mismo código fue escaneado hace menos de 2 segundos
+          const now = Date.now();
+          if (
+            lastScannedRef.current.code === decodedText &&
+            now - lastScannedRef.current.time < 2000
+          ) {
+            return;
+          }
+          lastScannedRef.current = { code: decodedText, time: now };
+
           console.log('Barcode scanned:', decodedText);
-          
+
           // Play success sound
           playSuccessSound();
-          
-          // Call parent callback
+
+          // Call parent callback (camera keeps running)
           onScan(decodedText);
-          
-          // Stop scanning
-          stopScanning();
-          
+          setScannedCount(prev => prev + 1);
+
           toast.success(`Código escaneado: ${decodedText}`);
         },
         (errorMessage) => {
@@ -245,14 +255,24 @@ const BarcodeScanner = ({ onScan, onClose }) => {
 
           {scanning ? (
             <div className="text-center">
-              <p className="text-sm text-gray-600 mb-4 flex items-center justify-center">
+              <p className="text-sm text-gray-600 mb-2 flex items-center justify-center">
                 <Volume2 className="w-4 h-4 mr-2" />
                 Apunta la cámara hacia el código de barras
               </p>
-              <button onClick={stopScanning} className="btn btn-secondary">
-                <X className="w-4 h-4" />
-                Detener Escaneo
-              </button>
+              {scannedCount > 0 && (
+                <p className="text-sm font-semibold text-green-600 mb-3">
+                  {scannedCount} producto{scannedCount !== 1 ? 's' : ''} escaneado{scannedCount !== 1 ? 's' : ''}
+                </p>
+              )}
+              <div className="flex justify-center space-x-3">
+                <button onClick={stopScanning} className="btn btn-secondary">
+                  <X className="w-4 h-4" />
+                  Pausar
+                </button>
+                <button onClick={handleClose} className="btn btn-primary">
+                  Finalizar
+                </button>
+              </div>
             </div>
           ) : (
             <div className="text-center">

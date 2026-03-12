@@ -86,6 +86,7 @@ const POS = () => {
     setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, paymentMethod: pm } : t));
 
   const barcodeInputRef = useRef(null);
+  const isMobile = () => window.innerWidth < 768;
   const lastKeyTime = useRef(0);
   const cartItemsRef = useRef(null);
 
@@ -107,8 +108,8 @@ const POS = () => {
     fetchAfipConfig();
     fetchCurrentSession();
     
-    // Focus barcode input on component mount
-    if (barcodeInputRef.current && config?.auto_focus_barcode !== false) {
+    // Focus barcode input on component mount (not on mobile to avoid keyboard popup)
+    if (barcodeInputRef.current && config?.auto_focus_barcode !== false && !isMobile()) {
       barcodeInputRef.current.focus();
     }
   }, []);
@@ -191,8 +192,8 @@ const POS = () => {
         setBarcode('');
       }
       
-      // Focus back to barcode input
-      if (barcodeInputRef.current && config?.auto_focus_barcode !== false) {
+      // Focus back to barcode input (not on mobile)
+      if (barcodeInputRef.current && config?.auto_focus_barcode !== false && !isMobile()) {
         barcodeInputRef.current.focus();
       }
     } catch (error) {
@@ -234,7 +235,7 @@ const POS = () => {
   const handleCameraScan = (scannedCode) => {
     setBarcode(scannedCode);
     searchProductByBarcode(scannedCode);
-    setShowBarcodeScanner(false);
+    // No cerramos el scanner para permitir escaneo en lotes
   };
 
   const playSuccessSound = () => {
@@ -357,8 +358,8 @@ const POS = () => {
 
   const clearCart = () => {
     setCart([]);
-    // Focus back to barcode input if auto-focus is enabled
-    if (barcodeInputRef.current && config?.auto_focus_barcode !== false) {
+    // Focus back to barcode input if auto-focus is enabled (not on mobile)
+    if (barcodeInputRef.current && config?.auto_focus_barcode !== false && !isMobile()) {
       barcodeInputRef.current.focus();
     }
   };
@@ -454,7 +455,7 @@ const POS = () => {
     setTabs(prev => [...prev, { id: newId, cart: [], paymentMethod: 'efectivo', colorIndex: prev.length % TAB_COLORS.length }]);
     setActiveTabId(newId);
     setNextTabId(prev => prev + 1);
-    if (barcodeInputRef.current) barcodeInputRef.current.focus();
+    if (barcodeInputRef.current && !isMobile()) barcodeInputRef.current.focus();
   };
 
   const closeSaleTab = (tabId) => {
@@ -552,7 +553,7 @@ const POS = () => {
 
       {/* Left Section */}
       <div className={`pos-left ${mobileTab === 'products' ? 'pos-tab-active' : ''}`}>
-        <div className="mb-6">
+        <div className="hidden md:block mb-6">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             Punto de Venta
           </h1>
@@ -567,7 +568,7 @@ const POS = () => {
         </div>
 
         {/* Cash Session Alert + Scanner Info */}
-        <div className="mb-6 flex flex-col md:flex-row gap-4">
+        <div className="hidden md:flex mb-6 flex-col md:flex-row gap-4">
         {sessionLoading ? (
           <div className="flex-1 bg-gray-50 border border-gray-200 p-4 rounded-lg">
             <div className="flex items-center">
