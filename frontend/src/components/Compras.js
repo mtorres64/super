@@ -531,9 +531,9 @@ const Compras = () => {
                     <th>N° Factura</th>
                     <th>Proveedor</th>
                     <th>Sucursal</th>
-                    <th className="text-right">Subtotal</th>
-                    <th className="text-right">Impuestos</th>
-                    <th className="text-right">Total</th>
+                    <th style={{ textAlign: 'right' }}>Subtotal</th>
+                    <th style={{ textAlign: 'right' }}>Impuestos</th>
+                    <th style={{ textAlign: 'right' }}>Total</th>
                     <th>Acciones</th>
                   </tr>
                 </thead>

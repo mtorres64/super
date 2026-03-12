@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '../App';
+import { formatAmount } from '../lib/utils';
 import { toast } from 'sonner';
 import LogoUploader from './LogoUploader';
 import {
@@ -511,9 +512,51 @@ const Settings = () => {
                 <div className="text-lg">
                   Producto: <span className="font-semibold">{config?.currency_symbol}10.00</span>
                   <br />
-                  Impuesto ({((config?.tax_rate ?? 0.12) * 100).toFixed(2)}%): <span className="font-semibold">{config?.currency_symbol}{(10 * (config?.tax_rate ?? 0.12)).toFixed(2)}</span>
+                  Impuesto ({((config?.tax_rate ?? 0.12) * 100).toFixed(2)}%): <span className="font-semibold">{config?.currency_symbol}{formatAmount(10 * (config?.tax_rate ?? 0.12))}</span>
                   <br />
-                  Total: <span className="font-semibold text-green-600">{config?.currency_symbol}{(10 * (1 + (config?.tax_rate ?? 0.12))).toFixed(2)}</span>
+                  Total: <span className="font-semibold text-green-600">{config?.currency_symbol}{formatAmount(10 * (1 + (config?.tax_rate ?? 0.12)))}</span>
+                </div>
+              </div>
+
+              {/* Payment Method Adjustments */}
+              <div>
+                <h4 className="text-base font-semibold text-gray-900 mb-1">Ajustes por Método de Pago</h4>
+                <p className="text-sm text-gray-500 mb-3">
+                  Ingresá un porcentaje negativo para descuento (ej: -5) o positivo para recargo (ej: 3). Se aplica sobre el total.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {[
+                    { key: 'efectivo', label: 'Efectivo' },
+                    { key: 'tarjeta', label: 'Tarjeta' },
+                    { key: 'transferencia', label: 'Transferencia' },
+                  ].map(({ key, label }) => {
+                    const adjustments = config?.payment_method_adjustments || {};
+                    const val = adjustments[key] ?? 0;
+                    return (
+                      <div key={key} className="form-group">
+                        <label className="form-label">{label}</label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="form-input pr-8"
+                            value={val}
+                            onChange={(e) => {
+                              const pct = parseFloat(e.target.value) || 0;
+                              updateConfig('payment_method_adjustments', {
+                                ...adjustments,
+                                [key]: pct,
+                              });
+                            }}
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">%</span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {val < 0 ? `Descuento de ${Math.abs(val)}%` : val > 0 ? `Recargo de ${val}%` : 'Sin ajuste'}
+                        </p>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -1006,8 +1049,8 @@ const Settings = () => {
                   <div>Pan Integral       x2    {config?.currency_symbol}1.50</div>
                   <div className="border-t border-dashed my-2"></div>
                   <div>SUBTOTAL:                {config?.currency_symbol}2.75</div>
-                  <div>IMPUESTO ({((config?.tax_rate ?? 0.12) * 100).toFixed(1)}%):          {config?.currency_symbol}{(2.75 * (config?.tax_rate ?? 0.12)).toFixed(2)}</div>
-                  <div className="font-bold">TOTAL:                   {config?.currency_symbol}{(2.75 * (1 + (config?.tax_rate ?? 0.12))).toFixed(2)}</div>
+                  <div>IMPUESTO ({((config?.tax_rate ?? 0.12) * 100).toFixed(1)}%):          {config?.currency_symbol}{formatAmount(2.75 * (config?.tax_rate ?? 0.12))}</div>
+                  <div className="font-bold">TOTAL:                   {config?.currency_symbol}{formatAmount(2.75 * (1 + (config?.tax_rate ?? 0.12)))}</div>
                   <div className="border-t border-dashed my-2"></div>
                   <div className="text-center">
                     {config?.receipt_footer_text || '¡Gracias por su compra!'}

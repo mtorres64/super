@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 import { Link, useLocation } from 'react-router-dom';
 import { API, AuthContext } from '../App';
+import { formatAmount } from '../lib/utils';
 import { toast } from 'sonner';
 import {
   DollarSign,
@@ -166,7 +167,7 @@ const Dashboard = () => {
               </div>
             </div>
             <div className="stat-value">
-              ${stats.ventas_hoy.total.toFixed(2)}
+              ${formatAmount(stats.ventas_hoy.total)}
             </div>
             <p className="text-sm text-gray-500 mt-2">
               {stats.ventas_hoy.cantidad} transacciones

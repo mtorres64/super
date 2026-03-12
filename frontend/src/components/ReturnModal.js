@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { API } from '../App';
+import { formatAmount } from '../lib/utils';
 import { toast } from 'sonner';
 import { RotateCcw, X } from 'lucide-react';
 import useModalClose from '../useModalClose';
@@ -61,7 +62,7 @@ const ReturnModal = ({ sale, returnedQty, onClose, onSuccess }) => {
         items,
         motivo: returnReason || null
       });
-      toast.success(`Devolución ${response.data.numero_devolucion} procesada — $${response.data.total.toFixed(2)} devueltos al stock`);
+      toast.success(`Devolución ${response.data.numero_devolucion} procesada — $${formatAmount(response.data.total)} devueltos al stock`);
       handleClose();
       onSuccess?.();
     } catch (error) {
@@ -125,7 +126,7 @@ const ReturnModal = ({ sale, returnedQty, onClose, onSuccess }) => {
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm text-gray-900 truncate">{item.nombre || item.producto_id}</div>
                     <div className="text-xs text-gray-500">
-                      ${item.precio_unitario.toFixed(2)} c/u · {item.cantidad} en venta
+                      ${formatAmount(item.precio_unitario)} c/u · {item.cantidad} en venta
                       {alreadyReturned > 0 && <span className="ml-1 text-orange-600">· {alreadyReturned} ya devueltos</span>}
                       {exhausted && <span className="ml-1 text-gray-400">· ya devuelto</span>}
                     </div>
@@ -164,7 +165,7 @@ const ReturnModal = ({ sale, returnedQty, onClose, onSuccess }) => {
 
           {total > 0 && (
             <div className="bg-blue-50 rounded-lg p-3 mb-4 text-sm text-blue-800">
-              <strong>Total a devolver: </strong>${total.toFixed(2)}
+              <strong>Total a devolver: </strong>${formatAmount(total)}
             </div>
           )}
 

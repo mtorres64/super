@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '../App';
+import { formatAmount } from '../lib/utils';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import {
@@ -204,15 +205,15 @@ const PurchasesReport = () => {
       // Resumen
       y = sectionTitle('RESUMEN', y);
       y = row('Total de compras', stats.totalCompras.toString(), y);
-      y = row('Total gastado', `$${stats.totalGastado.toFixed(2)}`, y, true);
-      y = row('Compra promedio', `$${stats.promedio.toFixed(2)}`, y);
+      y = row('Total gastado', `$${formatAmount(stats.totalGastado)}`, y, true);
+      y = row('Compra promedio', `$${formatAmount(stats.promedio)}`, y);
       y += 4;
 
       // Por proveedor
       if (Object.keys(stats.byProveedor).length > 0) {
         y = sectionTitle('DESGLOSE POR PROVEEDOR', y);
         Object.entries(stats.byProveedor).forEach(([, data]) => {
-          y = row(`${data.nombre} (${data.count} facturas)`, `$${data.total.toFixed(2)}`, y);
+          y = row(`${data.nombre} (${data.count} facturas)`, `$${formatAmount(data.total)}`, y);
           if (y > 270) { pdf.addPage(); y = 20; }
         });
         y += 4;
@@ -222,7 +223,7 @@ const PurchasesReport = () => {
       if (branchFilter === 'all' && Object.keys(stats.byBranch).length > 1) {
         y = sectionTitle('COMPRAS POR SUCURSAL', y);
         Object.entries(stats.byBranch).forEach(([, data]) => {
-          y = row(`${data.nombre} (${data.count} compras)`, `$${data.total.toFixed(2)}`, y);
+          y = row(`${data.nombre} (${data.count} compras)`, `$${formatAmount(data.total)}`, y);
         });
         y += 4;
       }
@@ -254,7 +255,7 @@ const PurchasesReport = () => {
         pdf.text(getBranchName(compra.sucursal_id), margin + 72, y + 3);
         pdf.text(getProveedorName(compra.proveedor_id), margin + 105, y + 3);
         pdf.text(`${compra.items.length} prod.`, margin + 138, y + 3);
-        pdf.text(`$${compra.total.toFixed(2)}`, colRight - 2, y + 3, { align: 'right' });
+        pdf.text(`$${formatAmount(compra.total)}`, colRight - 2, y + 3, { align: 'right' });
         y += 6;
       });
 
@@ -459,7 +460,7 @@ const PurchasesReport = () => {
             <div className="stat-title">Total Gastado</div>
             <div className="stat-icon"><DollarSign className="w-6 h-6" /></div>
           </div>
-          <div className="stat-value">${stats.totalGastado.toFixed(2)}</div>
+          <div className="stat-value">${formatAmount(stats.totalGastado)}</div>
           <p className="text-sm text-gray-500 mt-2">Inversión en compras</p>
         </div>
 
@@ -468,7 +469,7 @@ const PurchasesReport = () => {
             <div className="stat-title">Compra Promedio</div>
             <div className="stat-icon"><TrendingDown className="w-6 h-6" /></div>
           </div>
-          <div className="stat-value">${stats.promedio.toFixed(2)}</div>
+          <div className="stat-value">${formatAmount(stats.promedio)}</div>
           <p className="text-sm text-gray-500 mt-2">Por factura</p>
         </div>
       </div>
@@ -484,7 +485,7 @@ const PurchasesReport = () => {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="fecha" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} width={60} />
-                <Tooltip formatter={(value) => [`$${value.toFixed(2)}`, 'Total']} labelFormatter={(l) => `Fecha: ${l}`} />
+                <Tooltip formatter={(value) => [`$${formatAmount(value)}`, 'Total']} labelFormatter={(l) => `Fecha: ${l}`} />
                 <Bar dataKey="total" fill="#ea580c" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -503,7 +504,7 @@ const PurchasesReport = () => {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
                   <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
                   <YAxis type="category" dataKey="nombre" tick={{ fontSize: 11 }} width={80} />
-                  <Tooltip formatter={(value) => [`$${value.toFixed(2)}`, 'Total']} />
+                  <Tooltip formatter={(value) => [`$${formatAmount(value)}`, 'Total']} />
                   <Bar dataKey="total" fill="#f97316" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -526,7 +527,7 @@ const PurchasesReport = () => {
                   <span className="font-medium text-gray-700">{data.nombre}</span>
                   <span className="text-sm text-gray-500">{data.count} compras</span>
                 </div>
-                <div className="text-2xl font-bold text-orange-600">${data.total.toFixed(2)}</div>
+                <div className="text-2xl font-bold text-orange-600">${formatAmount(data.total)}</div>
                 <div className="text-sm text-gray-500">
                   {stats.totalGastado > 0 ? ((data.total / stats.totalGastado) * 100).toFixed(1) : 0}% del total
                 </div>
@@ -550,7 +551,7 @@ const PurchasesReport = () => {
                   <span className="font-medium text-gray-700">{data.nombre}</span>
                   <span className="text-sm text-gray-500">{data.count} facturas</span>
                 </div>
-                <div className="text-2xl font-bold text-orange-600">${data.total.toFixed(2)}</div>
+                <div className="text-2xl font-bold text-orange-600">${formatAmount(data.total)}</div>
                 <div className="text-sm text-gray-500">
                   {stats.totalGastado > 0 ? ((data.total / stats.totalGastado) * 100).toFixed(1) : 0}% del total
                 </div>
@@ -581,10 +582,10 @@ const PurchasesReport = () => {
                 <th>Fecha</th>
                 <th>Sucursal</th>
                 <th>Proveedor</th>
-                <th>Items</th>
-                <th>Subtotal</th>
-                <th>Impuestos</th>
-                <th>Total</th>
+                <th style={{ textAlign: 'center' }}>Items</th>
+                <th style={{ textAlign: 'right' }}>Subtotal</th>
+                <th style={{ textAlign: 'right' }}>Impuestos</th>
+                <th style={{ textAlign: 'right' }}>Total</th>
               </tr>
             </thead>
             <tbody>
@@ -606,15 +607,15 @@ const PurchasesReport = () => {
                       {getProveedorName(compra.proveedor_id)}
                     </span>
                   </td>
-                  <td>
+                  <td className="text-center">
                     <span className="bg-gray-100 text-gray-800 px-2 py-1 rounded-full text-sm">
                       {compra.items.length} productos
                     </span>
                   </td>
-                  <td>${compra.subtotal.toFixed(2)}</td>
-                  <td>${compra.impuestos.toFixed(2)}</td>
-                  <td>
-                    <span className="font-semibold text-orange-600">${compra.total.toFixed(2)}</span>
+                  <td className="text-right">${formatAmount(compra.subtotal)}</td>
+                  <td className="text-right">${formatAmount(compra.impuestos)}</td>
+                  <td className="text-right">
+                    <span className="font-semibold text-orange-600">${formatAmount(compra.total)}</span>
                   </td>
                 </tr>
               ))}

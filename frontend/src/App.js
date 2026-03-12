@@ -36,6 +36,54 @@ if (localStorage.getItem('modal_animations') === 'false') {
   document.body.classList.add('no-animations');
 }
 
+const applyTheme = (token) => {
+  const root = document.documentElement;
+  const brightness = (hex) => {
+    const h = hex.replace('#','');
+    const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+    return (r*299 + g*587 + b*114) / 1000;
+  };
+  const contrast = (hex) => brightness(hex) > 155 ? '#1f2937' : 'white';
+  const darken = (hex, amt) => {
+    const h = hex.replace('#','');
+    const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+    return `#${[r-amt,g-amt,b-amt].map(v=>Math.max(0,v).toString(16).padStart(2,'0')).join('')}`;
+  };
+  const rgba = (hex, a) => {
+    const h = hex.replace('#','');
+    const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+    return `rgba(${r},${g},${b},${a})`;
+  };
+  const applyColorVar = (color, prefix) => {
+    root.style.setProperty(`--${prefix}`,       color);
+    root.style.setProperty(`--${prefix}-dark`,  darken(color, 20));
+    root.style.setProperty(`--${prefix}-light`, rgba(color, 0.1));
+    root.style.setProperty(`--${prefix}-bg`,    rgba(color, 0.05));
+    root.style.setProperty(`--${prefix}-text`,  contrast(color));
+  };
+  try {
+    const saved = localStorage.getItem('app_theme');
+    if (saved) {
+      const theme = JSON.parse(saved);
+      root.style.setProperty('--primary',        theme.primary);
+      root.style.setProperty('--primary-dark',   theme.dark);
+      root.style.setProperty('--primary-darker', theme.darker);
+      root.style.setProperty('--primary-light',  theme.light);
+      root.style.setProperty('--primary-bg',     theme.bg);
+      root.style.setProperty('--primary-text',   contrast(theme.primary));
+      if (theme.secondary) applyColorVar(theme.secondary, 'secondary');
+      if (theme.tertiary)  applyColorVar(theme.tertiary,  'tertiary');
+    }
+  } catch (_) {}
+  axios.get(`${API}/config`, {
+    headers: { Authorization: `Bearer ${token}` }
+  }).then(res => {
+    const data = res.data;
+    if (data?.secondary_color) applyColorVar(data.secondary_color, 'secondary');
+    if (data?.tertiary_color)  applyColorVar(data.tertiary_color,  'tertiary');
+  }).catch(() => {});
+};
+
 // Auth Provider
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -55,6 +103,8 @@ export const AuthProvider = ({ children }) => {
           delete axios.defaults.headers.common['Authorization'];
         })
         .finally(() => setLoading(false));
+      // Aplicar colores configurados al tener sesión activa
+      applyTheme(token);
     } else {
       delete axios.defaults.headers.common['Authorization'];
       setLoading(false);
@@ -73,6 +123,24 @@ export const AuthProvider = ({ children }) => {
     setToken(null);
     localStorage.removeItem('token');
     delete axios.defaults.headers.common['Authorization'];
+    // Restaurar colores por defecto (verde) al cerrar sesión
+    const root = document.documentElement;
+    root.style.removeProperty('--primary');
+    root.style.removeProperty('--primary-dark');
+    root.style.removeProperty('--primary-darker');
+    root.style.removeProperty('--primary-light');
+    root.style.removeProperty('--primary-bg');
+    root.style.removeProperty('--primary-text');
+    root.style.removeProperty('--secondary');
+    root.style.removeProperty('--secondary-dark');
+    root.style.removeProperty('--secondary-light');
+    root.style.removeProperty('--secondary-bg');
+    root.style.removeProperty('--secondary-text');
+    root.style.removeProperty('--tertiary');
+    root.style.removeProperty('--tertiary-dark');
+    root.style.removeProperty('--tertiary-light');
+    root.style.removeProperty('--tertiary-bg');
+    root.style.removeProperty('--tertiary-text');
   };
 
   return (
@@ -135,61 +203,6 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
 };
 
 function App() {
-  // Apply saved color theme before first render, then sync secondary/tertiary from DB
-  useEffect(() => {
-    const root = document.documentElement;
-    const brightness = (hex) => {
-      const h = hex.replace('#','');
-      const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
-      return (r*299 + g*587 + b*114) / 1000;
-    };
-    const contrast = (hex) => brightness(hex) > 155 ? '#1f2937' : 'white';
-    const darken = (hex, amt) => {
-      const h = hex.replace('#','');
-      const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
-      return `#${[r-amt,g-amt,b-amt].map(v=>Math.max(0,v).toString(16).padStart(2,'0')).join('')}`;
-    };
-    const rgba = (hex, a) => {
-      const h = hex.replace('#','');
-      const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
-      return `rgba(${r},${g},${b},${a})`;
-    };
-    const applyColorVar = (color, prefix) => {
-      root.style.setProperty(`--${prefix}`,       color);
-      root.style.setProperty(`--${prefix}-dark`,  darken(color, 20));
-      root.style.setProperty(`--${prefix}-light`, rgba(color, 0.1));
-      root.style.setProperty(`--${prefix}-bg`,    rgba(color, 0.05));
-      root.style.setProperty(`--${prefix}-text`,  contrast(color));
-    };
-
-    try {
-      const saved = localStorage.getItem('app_theme');
-      if (saved) {
-        const theme = JSON.parse(saved);
-        root.style.setProperty('--primary',        theme.primary);
-        root.style.setProperty('--primary-dark',   theme.dark);
-        root.style.setProperty('--primary-darker', theme.darker);
-        root.style.setProperty('--primary-light',  theme.light);
-        root.style.setProperty('--primary-bg',     theme.bg);
-        root.style.setProperty('--primary-text',   contrast(theme.primary));
-        if (theme.secondary) applyColorVar(theme.secondary, 'secondary');
-        if (theme.tertiary)  applyColorVar(theme.tertiary,  'tertiary');
-      }
-    } catch (_) {}
-
-    // Sync secondary/tertiary from DB so they always match what's configured
-    const token = localStorage.getItem('token');
-    if (token) {
-      axios.get(`${API}/config`, {
-        headers: { Authorization: `Bearer ${token}` }
-      }).then(res => {
-        const data = res.data;
-        if (data?.secondary_color) applyColorVar(data.secondary_color, 'secondary');
-        if (data?.tertiary_color)  applyColorVar(data.tertiary_color,  'tertiary');
-      }).catch(() => {});
-    }
-  }, []);
-
   return (
     <div className="App">
       <AuthProvider>

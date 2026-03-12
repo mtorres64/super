@@ -13,6 +13,8 @@ const BarcodeScanner = ({ onScan, onClose }) => {
   const html5QrcodeRef = useRef(null);
   const mountedRef = useRef(true);
   const lastScannedRef = useRef({ code: null, time: 0 });
+  const onScanRef = useRef(onScan);
+  useEffect(() => { onScanRef.current = onScan; }, [onScan]);
   const [closing, animatedClose] = useModalClose(onClose);
 
   useEffect(() => {
@@ -121,7 +123,7 @@ const BarcodeScanner = ({ onScan, onClose }) => {
           playSuccessSound();
 
           // Call parent callback (camera keeps running)
-          onScan(decodedText);
+          onScanRef.current(decodedText);
           setScannedCount(prev => prev + 1);
 
           toast.success(`Código escaneado: ${decodedText}`);

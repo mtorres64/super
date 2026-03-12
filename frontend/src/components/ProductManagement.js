@@ -524,12 +524,12 @@ const ProductManagement = () => {
                 />
               </th>
               <th>Producto</th>
-              <th>Código</th>
-              <th>Categoría</th>
-              <th>Clase</th>
-              <th>Stock Mínimo</th>
-              <th>Estado</th>
-              <th>Acciones</th>
+              <th style={{ textAlign: 'center' }}>Código</th>
+              <th style={{ textAlign: 'center' }}>Categoría</th>
+              <th style={{ textAlign: 'center' }}>Clase</th>
+              <th style={{ textAlign: 'center' }}>Stock Mínimo</th>
+              <th style={{ textAlign: 'center' }}>Estado</th>
+              <th style={{ textAlign: 'center' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -553,18 +553,18 @@ const ProductManagement = () => {
                     </div>
                   </div>
                 </td>
-                <td>
+                <td className="text-center">
                   <span className="text-sm text-blue-600">
                     {product.codigo_barras || 'N/A'}
                   </span>
                 </td>
-                <td>
+                <td className="text-center">
                   <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
                     {getCategoryName(product.categoria_id)}
                   </span>
                 </td>
-                <td>
-                  <div className="flex flex-col gap-1">
+                <td className="text-center">
+                  <div className="flex flex-col gap-1 items-center">
                     {product.kind === 'combo' ? (
                       <span className="px-2 py-1 text-xs font-medium bg-purple-100 text-purple-800 rounded-full flex items-center gap-1 w-fit">
                         <Layers className="w-3 h-3" /> Combo
@@ -577,12 +577,12 @@ const ProductManagement = () => {
                     )}
                   </div>
                 </td>
-                <td>
+                <td className="text-center">
                   <span className="font-medium text-gray-900">
                     {product.stock_minimo}
                   </span>
                 </td>
-                <td>
+                <td className="text-center">
                   <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                     product.activo
                       ? 'bg-green-100 text-green-800'
@@ -591,7 +591,7 @@ const ProductManagement = () => {
                     {product.activo ? 'Activo' : 'Inactivo'}
                   </span>
                 </td>
-                <td align="center">
+                <td className="text-center">
                   <div className="">
                     <button
                       onClick={() => openModal(product)}

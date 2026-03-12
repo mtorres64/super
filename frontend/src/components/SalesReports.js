@@ -2,8 +2,10 @@ import React, { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 import { useSearchParams } from 'react-router-dom';
 import { API, AuthContext } from '../App';
+import { formatAmount } from '../lib/utils';
 import Pagination from './Pagination';
 import ReturnModal from './ReturnModal';
+import TicketModal from './TicketModal';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import {
@@ -51,6 +53,7 @@ const SalesReports = () => {
   const [customDateTo, setCustomDateTo] = useState('');
   const [returnModal, setReturnModal] = useState(null); // { sale, returnedQty }
   const [reprintSale, setReprintSale] = useState(null);
+  const [reprintReturns, setReprintReturns] = useState([]);
   const [retryingAfip, setRetryingAfip] = useState(null); // sale_id being retried
 
   useEffect(() => {
@@ -314,14 +317,14 @@ const SalesReports = () => {
       // Resumen
       y = sectionTitle('RESUMEN', y);
       y = row('Total de ventas', stats.totalSales.toString(), y);
-      y = row('Ingresos totales', `$${stats.totalRevenue.toFixed(2)}`, y, true);
-      y = row('Venta promedio', `$${stats.averageSale.toFixed(2)}`, y);
+      y = row('Ingresos totales', `$${formatAmount(stats.totalRevenue)}`, y, true);
+      y = row('Venta promedio', `$${formatAmount(stats.averageSale)}`, y);
       y += 4;
 
       // Métodos de pago
       y = sectionTitle('DESGLOSE POR MÉTODO DE PAGO', y);
       Object.entries(stats.paymentMethods).forEach(([method, data]) => {
-        y = row(`${getPaymentMethodLabel(method)} (${data.count} ventas)`, `$${data.total.toFixed(2)}`, y);
+        y = row(`${getPaymentMethodLabel(method)} (${data.count} ventas)`, `$${formatAmount(data.total)}`, y);
       });
       y += 4;
 
@@ -329,7 +332,7 @@ const SalesReports = () => {
       if (branchFilter === 'all' && Object.keys(stats.branchStats).length > 1) {
         y = sectionTitle('VENTAS POR SUCURSAL', y);
         Object.entries(stats.branchStats).forEach(([, data]) => {
-          y = row(`${data.nombre} (${data.count} ventas)`, `$${data.total.toFixed(2)}`, y);
+          y = row(`${data.nombre} (${data.count} ventas)`, `$${formatAmount(data.total)}`, y);
         });
         y += 4;
       }
@@ -360,8 +363,8 @@ const SalesReports = () => {
         pdf.text(formatDate(sale.fecha), margin + 35, y + 3);
         pdf.text(getBranchName(sale.branch_id), margin + 75, y + 3);
         pdf.text(`${sale.items.length} prod.`, margin + 115, y + 3);
-        pdf.text(`$${sale.subtotal.toFixed(2)}`, margin + 130, y + 3);
-        pdf.text(`$${sale.total.toFixed(2)}`, colRight - 2, y + 3, { align: 'right' });
+        pdf.text(`$${formatAmount(sale.subtotal)}`, margin + 130, y + 3);
+        pdf.text(`$${formatAmount(sale.total)}`, colRight - 2, y + 3, { align: 'right' });
         y += 6;
       });
 
@@ -601,7 +604,7 @@ const SalesReports = () => {
             <div className="stat-title">Ingresos Totales</div>
             <div className="stat-icon"><DollarSign className="w-6 h-6" /></div>
           </div>
-          <div className="stat-value">${stats.totalRevenue.toFixed(2)}</div>
+          <div className="stat-value">${formatAmount(stats.totalRevenue)}</div>
           <p className="text-sm text-gray-500 mt-2">Revenue generado</p>
         </div>
 
@@ -610,7 +613,7 @@ const SalesReports = () => {
             <div className="stat-title">Venta Promedio</div>
             <div className="stat-icon"><TrendingUp className="w-6 h-6" /></div>
           </div>
-          <div className="stat-value">${stats.averageSale.toFixed(2)}</div>
+          <div className="stat-value">${formatAmount(stats.averageSale)}</div>
           <p className="text-sm text-gray-500 mt-2">Por transacción</p>
         </div>
       </div>
@@ -626,7 +629,7 @@ const SalesReports = () => {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="fecha" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} width={60} />
-                <Tooltip formatter={(value) => [`$${value.toFixed(2)}`, 'Total']} labelFormatter={(l) => `Fecha: ${l}`} />
+                <Tooltip formatter={(value) => [`$${formatAmount(value)}`, 'Total']} labelFormatter={(l) => `Fecha: ${l}`} />
                 <Bar dataKey="total" fill="#16a34a" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -652,7 +655,7 @@ const SalesReports = () => {
                       <Cell key={i} fill={entry.fill} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
+                  <Tooltip formatter={(value) => `$${formatAmount(value)}`} />
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>
@@ -691,7 +694,7 @@ const SalesReports = () => {
                   <span className="font-medium text-gray-700">{data.nombre}</span>
                   <span className="text-sm text-gray-500">{data.count} ventas</span>
                 </div>
-                <div className="text-2xl font-bold text-green-600">${data.total.toFixed(2)}</div>
+                <div className="text-2xl font-bold text-green-600">${formatAmount(data.total)}</div>
                 <div className="text-sm text-gray-500">
                   {stats.totalRevenue > 0 ? ((data.total / stats.totalRevenue) * 100).toFixed(1) : 0}% del total
                 </div>
@@ -712,7 +715,7 @@ const SalesReports = () => {
                   <span className="font-medium text-gray-700">{getPaymentMethodLabel(method)}</span>
                   <span className="text-sm text-gray-500">{data.count} ventas</span>
                 </div>
-                <div className="text-2xl font-bold text-green-600">${data.total.toFixed(2)}</div>
+                <div className="text-2xl font-bold text-green-600">${formatAmount(data.total)}</div>
                 <div className="text-sm text-gray-500">
                   {stats.totalRevenue > 0 ? ((data.total / stats.totalRevenue) * 100).toFixed(1) : 0}% del total
                 </div>
@@ -747,10 +750,10 @@ const SalesReports = () => {
                 <th>Factura</th>
                 <th className="hidden lg:table-cell">Fecha</th>
                 <th className="hidden lg:table-cell">Sucursal</th>
-                <th>Items</th>
-                <th className="hidden lg:table-cell">Subtotal</th>
-                <th>Total</th>
-                <th>Método de Pago</th>
+                <th className="hidden lg:table-cell" style={{ textAlign: 'center' }}>Items</th>
+                <th className="hidden lg:table-cell" style={{ textAlign: 'right' }}>Subtotal</th>
+                <th style={{ textAlign: 'right' }}>Total</th>
+                <th style={{ textAlign: 'center' }}>Método de Pago</th>
                 <th className="hidden md:table-cell">Estado</th>
                 <th></th>
               </tr>
@@ -768,16 +771,16 @@ const SalesReports = () => {
                       {getBranchName(sale.branch_id)}
                     </span>
                   </td>
-                  <td>
+                  <td className="text-center">
                     <span className="bg-gray-100 text-gray-800 px-2 py-1 rounded-full text-sm">
                       {sale.items.length} productos
                     </span>
                   </td>
-                  <td className="hidden lg:table-cell">${sale.subtotal.toFixed(2)}</td>
-                  <td>
-                    <span className="font-semibold text-green-600">${sale.total.toFixed(2)}</span>
+                  <td className="hidden lg:table-cell text-right">${formatAmount(sale.subtotal)}</td>
+                  <td className="text-right">
+                    <span className="font-semibold text-green-600">${formatAmount(sale.total)}</span>
                   </td>
-                  <td>
+                  <td className="text-center">
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                       sale.metodo_pago === 'efectivo'
                         ? 'bg-green-100 text-green-800'
@@ -800,7 +803,17 @@ const SalesReports = () => {
                   <td>
                     <div className="flex items-center gap-1">
                       <button
-                        onClick={() => setReprintSale(sale)}
+                        onClick={async () => {
+                          setReprintSale(sale);
+                          if (sale.estado === 'devolucion_parcial') {
+                            try {
+                              const res = await axios.get(`${API}/sales/${sale.id}/returns`);
+                              setReprintReturns(res.data);
+                            } catch { setReprintReturns([]); }
+                          } else {
+                            setReprintReturns([]);
+                          }
+                        }}
                         className="btn btn-sm flex items-center gap-1"
                         style={{ background: 'var(--secondary)', color: 'var(--secondary-text)' }}
                         title="Reimprimir ticket"
@@ -836,133 +849,16 @@ const SalesReports = () => {
       </div>
 
       {/* Reprint Ticket Modal */}
-      {reprintSale && (
-        <div className="ticket-modal-overlay">
-          <div className="ticket-modal-container">
-            <div className="ticket-modal-actions">
-              <h3>Reimprimir Ticket</h3>
-              <div className="ticket-modal-btns">
-                <button onClick={printReprintTicket} className="btn btn-primary btn-sm">
-                  <Printer className="w-4 h-4" />
-                  Imprimir
-                </button>
-                <button onClick={() => setReprintSale(null)} className="btn btn-secondary btn-sm">
-                  <X className="w-4 h-4" />
-                  Cerrar
-                </button>
-              </div>
-            </div>
-
-            <div id="ticket-print-area">
-              {config?.company_logo && (
-                <img src={config.company_logo} alt="logo" className="ticket-logo" />
-              )}
-              <div className="ticket-company-name">{config?.company_name || 'Mi Empresa'}</div>
-              {config?.company_address && <div className="ticket-line">{config.company_address}</div>}
-              {config?.company_phone && <div className="ticket-line">Tel: {config.company_phone}</div>}
-              {config?.company_tax_id && <div className="ticket-line">CUIT: {config.company_tax_id}</div>}
-
-              <div className="ticket-separator">{'- '.repeat(16)}</div>
-
-              {/* Encabezado tipo comprobante */}
-              {reprintSale.afip_estado === 'autorizado' && reprintSale.tipo_comprobante ? (
-                <>
-                  <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '13px', letterSpacing: '1px', margin: '4px 0 2px' }}>
-                    {TIPO_CBTE_NOMBRES[reprintSale.tipo_comprobante] || 'FACTURA'}
-                  </div>
-                  <div style={{ textAlign: 'center', fontSize: '11px', marginBottom: '2px' }}>
-                    Pto.Vta: {String(afipConfig?.punto_venta || 1).padStart(4, '0')} &nbsp;|&nbsp; N°: {String(reprintSale.nro_comprobante_afip || 0).padStart(8, '0')}
-                  </div>
-                </>
-              ) : (
-                <div className="ticket-info-row">
-                  <span>Comprobante:</span>
-                  <span>{reprintSale.numero_factura}</span>
-                </div>
-              )}
-
-              <div className="ticket-info-row">
-                <span>Fecha:</span>
-                <span>{new Date(reprintSale.fecha).toLocaleString('es-AR')}</span>
-              </div>
-              {getCajeroName(reprintSale.cajero_id) && (
-                <div className="ticket-info-row">
-                  <span>Cajero:</span>
-                  <span>{getCajeroName(reprintSale.cajero_id)}</span>
-                </div>
-              )}
-              <div className="ticket-info-row">
-                <span>Pago:</span>
-                <span>{getPaymentMethodLabel(reprintSale.metodo_pago)}</span>
-              </div>
-
-              <div className="ticket-separator">{'- '.repeat(16)}</div>
-
-              <div className="ticket-items-header">
-                <span>PRODUCTO</span>
-                <span>TOTAL</span>
-              </div>
-              {reprintSale.items.map((item, idx) => (
-                <div key={idx} className="ticket-item">
-                  <div className="ticket-item-name">{item.nombre}</div>
-                  <div className="ticket-item-detail">
-                    <span>{item.cantidad} x {config?.currency_symbol || '$'}{item.precio_unitario.toFixed(2)}</span>
-                    <span>{config?.currency_symbol || '$'}{item.subtotal.toFixed(2)}</span>
-                  </div>
-                </div>
-              ))}
-
-              <div className="ticket-separator">{'- '.repeat(16)}</div>
-
-              <div className="ticket-total-row">
-                <span>Subtotal:</span>
-                <span>{config?.currency_symbol || '$'}{reprintSale.subtotal.toFixed(2)}</span>
-              </div>
-              {reprintSale.impuestos > 0 && (
-                <div className="ticket-total-row">
-                  <span>Impuestos ({((config?.tax_rate ?? 0) * 100).toFixed(0)}%):</span>
-                  <span>{config?.currency_symbol || '$'}{reprintSale.impuestos.toFixed(2)}</span>
-                </div>
-              )}
-              <div className="ticket-total-row ticket-total-final">
-                <span>TOTAL:</span>
-                <span>{config?.currency_symbol || '$'}{reprintSale.total.toFixed(2)}</span>
-              </div>
-
-              {/* CAE / AFIP */}
-              {reprintSale.cae && (
-                <>
-                  <div className="ticket-separator">{'- '.repeat(16)}</div>
-                  <div className="ticket-info-row">
-                    <span>CAE:</span>
-                    <span style={{ fontSize: '10px', letterSpacing: '0.5px' }}>{reprintSale.cae}</span>
-                  </div>
-                  <div className="ticket-info-row">
-                    <span>Venc. CAE:</span>
-                    <span>{reprintSale.cae_vencimiento
-                      ? `${reprintSale.cae_vencimiento.slice(0,4)}-${reprintSale.cae_vencimiento.slice(4,6)}-${reprintSale.cae_vencimiento.slice(6,8)}`
-                      : ''}</span>
-                  </div>
-                  <div className="ticket-info-row">
-                    <span>Comp. N°:</span>
-                    <span>{String(reprintSale.nro_comprobante_afip || '').padStart(8, '0')}</span>
-                  </div>
-                </>
-              )}
-              {reprintSale.afip_estado === 'contingencia' && (
-                <div style={{ textAlign: 'center', color: '#b45309', fontWeight: 'bold', fontSize: '10px', margin: '6px 0', border: '1px dashed #b45309', padding: '3px' }}>
-                  COMPROBANTE EN CONTINGENCIA
-                </div>
-              )}
-
-              <div className="ticket-separator">{'- '.repeat(16)}</div>
-              <div className="ticket-footer">
-                {config?.receipt_footer_text || '¡Gracias por su compra!'}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <TicketModal
+        sale={reprintSale}
+        returns={reprintReturns}
+        config={config}
+        afipConfig={afipConfig}
+        cajeroName={getCajeroName(reprintSale?.cajero_id)}
+        title="Reimprimir Ticket"
+        onClose={() => { setReprintSale(null); setReprintReturns([]); }}
+        onPrint={printReprintTicket}
+      />
 
       {/* Return Modal */}
       {returnModal && (

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { API } from '../App';
+import { formatAmount } from '../lib/utils';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import {
@@ -53,7 +54,7 @@ const CashReport = () => {
   };
 
   const formatCurrency = (amount) => {
-    return `$${amount.toFixed(2)}`;
+    return `$${formatAmount(amount)}`;
   };
 
   const handlePrint = () => {

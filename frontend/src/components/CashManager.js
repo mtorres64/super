@@ -3,6 +3,7 @@ import useModalClose from '../useModalClose';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { API, AuthContext } from '../App';
+import { formatAmount } from '../lib/utils';
 import { toast } from 'sonner';
 import { 
   DollarSign, 
@@ -87,8 +88,8 @@ const CashManager = () => {
       const diferencia = response.data.diferencia;
       if (diferencia !== 0) {
         const message = diferencia > 0 
-          ? `Sobrante: $${diferencia.toFixed(2)}`
-          : `Faltante: $${Math.abs(diferencia).toFixed(2)}`;
+          ? `Sobrante: $${formatAmount(diferencia)}`
+          : `Faltante: $${formatAmount(Math.abs(diferencia))}`;
         toast.info(message);
       }
     } catch (error) {
@@ -145,7 +146,7 @@ const CashManager = () => {
                     Abierta: {formatDate(currentSession.fecha_apertura)}
                   </p>
                   <p className="text-green-700">
-                    Monto inicial: ${currentSession.monto_inicial.toFixed(2)}
+                    Monto inicial: ${formatAmount(currentSession.monto_inicial)}
                   </p>
                 </div>
               </div>
@@ -172,7 +173,7 @@ const CashManager = () => {
                   </div>
                 </div>
                 <div className="stat-value">
-                  ${currentSession.monto_ventas.toFixed(2)}
+                  ${formatAmount(currentSession.monto_ventas)}
                 </div>
               </div>
 
@@ -184,7 +185,7 @@ const CashManager = () => {
                   </div>
                 </div>
                 <div className="stat-value">
-                  ${(currentSession.monto_inicial + currentSession.monto_ventas - currentSession.monto_retiros).toFixed(2)}
+                  ${formatAmount(currentSession.monto_inicial + currentSession.monto_ventas - currentSession.monto_retiros)}
                 </div>
               </div>
 
@@ -395,11 +396,11 @@ const CashManager = () => {
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                 <h4 className="font-medium text-blue-900 mb-2">Resumen de la sesión</h4>
                 <div className="space-y-1 text-sm text-blue-800">
-                  <p>Monto inicial: ${currentSession?.monto_inicial.toFixed(2)}</p>
-                  <p>Ventas del día: ${currentSession?.monto_ventas.toFixed(2)}</p>
-                  <p>Retiros: ${currentSession?.monto_retiros.toFixed(2)}</p>
+                  <p>Monto inicial: ${formatAmount(currentSession?.monto_inicial)}</p>
+                  <p>Ventas del día: ${formatAmount(currentSession?.monto_ventas)}</p>
+                  <p>Retiros: ${formatAmount(currentSession?.monto_retiros)}</p>
                   <p className="font-bold border-t border-blue-200 pt-1">
-                    Total esperado: ${((currentSession?.monto_inicial || 0) + (currentSession?.monto_ventas || 0) - (currentSession?.monto_retiros || 0)).toFixed(2)}
+                    Total esperado: ${formatAmount((currentSession?.monto_inicial || 0) + (currentSession?.monto_ventas || 0) - (currentSession?.monto_retiros || 0))}
                   </p>
                 </div>
               </div>

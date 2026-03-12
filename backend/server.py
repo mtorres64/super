@@ -355,6 +355,13 @@ class Configuration(BaseModel):
     secondary_color: Optional[str] = None
     tertiary_color: Optional[str] = None
 
+    # Payment Method Adjustments (percentage: -5 = 5% discount, +3 = 3% surcharge)
+    payment_method_adjustments: dict = Field(default_factory=lambda: {
+        "efectivo": 0.0,
+        "tarjeta": 0.0,
+        "transferencia": 0.0
+    })
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -385,6 +392,7 @@ class ConfigurationUpdate(BaseModel):
     primary_color: Optional[str] = None
     secondary_color: Optional[str] = None
     tertiary_color: Optional[str] = None
+    payment_method_adjustments: Optional[dict] = None
 
 class User(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -1559,7 +1567,12 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
     # Calculate totals
     subtotal = total_amount
     impuestos = total_amount * tax_rate
-    total = total_amount * (1 + tax_rate)
+    base_total = total_amount * (1 + tax_rate)
+    # Apply payment method adjustment
+    adjustments = (config.get('payment_method_adjustments') or {}) if config else {}
+    adjustment_pct = adjustments.get(sale_data.metodo_pago.value, 0.0)
+    adjustment_amount = base_total * (adjustment_pct / 100.0)
+    total = base_total + adjustment_amount
 
     # Create sale
     sale = Sale(
@@ -1679,6 +1692,7 @@ async def create_sale_return(sale_id: str, return_data: ReturnCreate, user: User
         total_return += subtotal
         return_items.append(SaleItem(
             producto_id=ri.producto_id,
+            nombre=original.nombre,
             cantidad=ri.cantidad,
             precio_unitario=original.precio_unitario,
             subtotal=subtotal

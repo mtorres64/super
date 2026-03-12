@@ -2,9 +2,11 @@ import React, { useState, useEffect, useContext, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { API, AuthContext } from '../App';
+import { formatAmount } from '../lib/utils';
 import { toast } from 'sonner';
 import BarcodeScanner from './BarcodeScanner';
 import ReturnModal from './ReturnModal';
+import TicketModal from './TicketModal';
 import useModalClose from '../useModalClose';
 import Pagination from './Pagination';
 import {
@@ -59,6 +61,7 @@ const POS = () => {
   const [sessionLoading, setSessionLoading] = useState(true);
   const [mobileTab, setMobileTab] = useState('products');
   const [saleReceipt, setSaleReceipt] = useState(null);
+  const [receiptReturns, setReceiptReturns] = useState([]);
   const [afipConfig, setAfipConfig] = useState(null);
   const [returnModal, setReturnModal] = useState(null); // { sale, returnedQty }
   const [showPriceCheck, setShowPriceCheck] = useState(false);
@@ -72,6 +75,7 @@ const POS = () => {
     setReceiptClosing(true);
     setTimeout(() => {
       setSaleReceipt(null);
+      setReceiptReturns([]);
       setReceiptClosing(false);
     }, 200);
   };
@@ -369,12 +373,19 @@ const POS = () => {
   };
 
   const calculateTax = () => {
-    const taxRate = config?.tax_rate ?? 0.12; // Use dynamic tax rate or default 12%
+    const taxRate = config?.tax_rate ?? 0.12;
     return calculateSubtotal() * taxRate;
   };
 
+  const calculatePaymentAdjustment = () => {
+    const adjustments = config?.payment_method_adjustments || {};
+    const pct = adjustments[paymentMethod] ?? 0;
+    if (pct === 0) return 0;
+    return (calculateSubtotal() + calculateTax()) * (pct / 100);
+  };
+
   const calculateTotal = () => {
-    return calculateSubtotal() + calculateTax();
+    return calculateSubtotal() + calculateTax() + calculatePaymentAdjustment();
   };
 
   const processSale = async () => {
@@ -528,6 +539,14 @@ const POS = () => {
         }))
       };
       setSaleReceipt(enrichedSale);
+      if (sale.estado === 'devolucion_parcial') {
+        try {
+          const ret = await axios.get(`${API}/sales/${sale.id}/returns`);
+          setReceiptReturns(ret.data);
+        } catch { setReceiptReturns([]); }
+      } else {
+        setReceiptReturns([]);
+      }
     } catch (error) {
       toast.error('Error al obtener el último ticket');
     }
@@ -595,13 +614,13 @@ const POS = () => {
             </div>
           </div>
         ) : (
-          <div className="flex-1 bg-green-50 border-l-4 border-green-400 p-4 rounded-lg">
+          <div className="flex-1 p-4 rounded-lg" style={{ background: 'var(--primary-bg)', borderLeft: '4px solid var(--primary)' }}>
             <div className="flex items-center">
-              <div className="text-green-600 mr-3">✅</div>
+              <div className="mr-3" style={{ color: 'var(--primary)' }}>✅</div>
               <div>
-                <h3 className="font-medium text-green-800">Caja Abierta</h3>
-                <p className="text-green-700">
-                  Sesión activa - Monto inicial: ${currentSession.monto_inicial.toFixed(2)}
+                <h3 className="font-medium" style={{ color: 'var(--primary-darker, var(--primary-dark))' }}>Caja Abierta</h3>
+                <p style={{ color: 'var(--primary-dark)' }}>
+                  Sesión activa - Monto inicial: ${formatAmount(currentSession.monto_inicial)}
                 </p>
               </div>
             </div>
@@ -700,7 +719,7 @@ const POS = () => {
                     >
                       <div className="product-name">{product.nombre}</div>
                       <div className="product-price">
-                        {config?.currency_symbol || '$'}{(product.tipo === 'por_peso' && product.precio_por_peso ? product.precio_por_peso : product.precio).toFixed(2)}
+                        {config?.currency_symbol || '$'}{formatAmount(product.tipo === 'por_peso' && product.precio_por_peso ? product.precio_por_peso : product.precio)}
                         {product.tipo === 'por_peso' && '/kg'}
                       </div>
                       <div className="product-stock">
@@ -821,8 +840,8 @@ const POS = () => {
                   <div className="cart-item-info">
                     <div className="cart-item-name">{item.nombre}</div>
                     <div className="cart-item-price">
-                      {config?.currency_symbol || '$'}{getEffectivePrice(item).toFixed(2)}{item.tipo === 'por_peso' ? '/kg' : ''} x {item.tipo === 'por_peso' ? `${item.quantity}kg` : item.quantity} =
-                      {config?.currency_symbol || '$'}{(getEffectivePrice(item) * item.quantity).toFixed(2)}
+                      {config?.currency_symbol || '$'}{formatAmount(getEffectivePrice(item))}{item.tipo === 'por_peso' ? '/kg' : ''} x {item.tipo === 'por_peso' ? `${item.quantity}kg` : item.quantity} =
+                      {config?.currency_symbol || '$'}{formatAmount(getEffectivePrice(item) * item.quantity)}
                     </div>
                   </div>
 
@@ -872,15 +891,30 @@ const POS = () => {
               <div className="cart-total">
                 <div className="total-row">
                   <span className="total-label">Subtotal:</span>
-                  <span className="total-value">{config?.currency_symbol || '$'}{calculateSubtotal().toFixed(2)}</span>
+                  <span className="total-value">{config?.currency_symbol || '$'}{formatAmount(calculateSubtotal())}</span>
                 </div>
                 <div className="total-row">
                   <span className="total-label">Impuestos ({((config?.tax_rate ?? 0.12) * 100).toFixed(1)}%):</span>
-                  <span className="total-value">{config?.currency_symbol || '$'}{calculateTax().toFixed(2)}</span>
+                  <span className="total-value">{config?.currency_symbol || '$'}{formatAmount(calculateTax())}</span>
                 </div>
+                {(() => {
+                  const adj = calculatePaymentAdjustment();
+                  const pct = (config?.payment_method_adjustments || {})[paymentMethod] ?? 0;
+                  if (pct === 0) return null;
+                  return (
+                    <div className="total-row" style={{ color: pct < 0 ? '#16a34a' : '#dc2626' }}>
+                      <span className="total-label">
+                        {pct < 0 ? `Descuento ${paymentMethod} (${Math.abs(pct)}%):` : `Recargo ${paymentMethod} (${pct}%):`}
+                      </span>
+                      <span className="total-value">
+                        {pct < 0 ? '-' : '+'}{config?.currency_symbol || '$'}{formatAmount(Math.abs(adj))}
+                      </span>
+                    </div>
+                  );
+                })()}
                 <div className="total-row total-final">
                   <span>Total:</span>
-                  <span>{config?.currency_symbol || '$'}{calculateTotal().toFixed(2)}</span>
+                  <span>{config?.currency_symbol || '$'}{formatAmount(calculateTotal())}</span>
                 </div>
               </div>
 
@@ -947,7 +981,7 @@ const POS = () => {
                 ) : (
                   <>
                     <CreditCard className="w-5 h-5" />
-                    Procesar Venta ({config?.currency_symbol || '$'}{calculateTotal().toFixed(2)})
+                    Procesar Venta ({config?.currency_symbol || '$'}{formatAmount(calculateTotal())})
                   </>
                 )}
               </button>
@@ -957,133 +991,17 @@ const POS = () => {
 
       {/* Ticket Modal */}
       {saleReceipt && (
-        <div className={`ticket-modal-overlay${receiptClosing ? ' closing' : ''}`}>
-          <div className={`ticket-modal-container${receiptClosing ? ' closing' : ''}`}>
-            <div className="ticket-modal-actions">
-              <h3>Venta procesada</h3>
-              <div className="ticket-modal-btns">
-                <button onClick={printTicket} className="btn btn-primary btn-sm">
-                  <Printer className="w-4 h-4" />
-                  Imprimir Ticket
-                </button>
-                <button onClick={closeReceipt} className="btn btn-secondary btn-sm">
-                  <X className="w-4 h-4" />
-                  Cerrar
-                </button>
-              </div>
-            </div>
-
-            <div id="ticket-print-area">
-              {config?.company_logo && (
-                <img src={config.company_logo} alt="logo" className="ticket-logo" />
-              )}
-              <div className="ticket-company-name">{config?.company_name || 'Mi Empresa'}</div>
-              {config?.company_address && <div className="ticket-line">{config.company_address}</div>}
-              {config?.company_phone && <div className="ticket-line">Tel: {config.company_phone}</div>}
-              {config?.company_tax_id && <div className="ticket-line">CUIT: {config.company_tax_id}</div>}
-
-              <div className="ticket-separator">{'- '.repeat(16)}</div>
-
-              {/* Encabezado tipo comprobante */}
-              {saleReceipt.afip_estado === 'autorizado' && saleReceipt.tipo_comprobante ? (
-                <>
-                  <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '13px', letterSpacing: '1px', margin: '4px 0 2px' }}>
-                    {TIPO_CBTE_NOMBRES[saleReceipt.tipo_comprobante] || 'FACTURA'}
-                  </div>
-                  <div style={{ textAlign: 'center', fontSize: '11px', marginBottom: '2px' }}>
-                    Pto.Vta: {String(afipConfig?.punto_venta || 1).padStart(4, '0')} &nbsp;|&nbsp; N°: {String(saleReceipt.nro_comprobante_afip || 0).padStart(8, '0')}
-                  </div>
-                </>
-              ) : (
-                <div className="ticket-info-row">
-                  <span>Comprobante:</span>
-                  <span>{saleReceipt.numero_factura}</span>
-                </div>
-              )}
-
-              <div className="ticket-info-row">
-                <span>Fecha:</span>
-                <span>{new Date(saleReceipt.fecha).toLocaleString('es-AR')}</span>
-              </div>
-              <div className="ticket-info-row">
-                <span>Cajero:</span>
-                <span>{user?.nombre}</span>
-              </div>
-              <div className="ticket-info-row">
-                <span>Pago:</span>
-                <span>
-                  {saleReceipt.metodo_pago === 'efectivo' ? 'Efectivo'
-                    : saleReceipt.metodo_pago === 'tarjeta' ? 'Tarjeta'
-                    : 'Transferencia'}
-                </span>
-              </div>
-
-              <div className="ticket-separator">{'- '.repeat(16)}</div>
-
-              <div className="ticket-items-header">
-                <span>PRODUCTO</span>
-                <span>TOTAL</span>
-              </div>
-              {saleReceipt.items.map((item, idx) => (
-                <div key={idx} className="ticket-item">
-                  <div className="ticket-item-name">{item.nombre}</div>
-                  <div className="ticket-item-detail">
-                    <span>{item.cantidad} x {config?.currency_symbol || '$'}{item.precio_unitario.toFixed(2)}</span>
-                    <span>{config?.currency_symbol || '$'}{item.subtotal.toFixed(2)}</span>
-                  </div>
-                </div>
-              ))}
-
-              <div className="ticket-separator">{'- '.repeat(16)}</div>
-
-              <div className="ticket-total-row">
-                <span>Subtotal:</span>
-                <span>{config?.currency_symbol || '$'}{saleReceipt.subtotal.toFixed(2)}</span>
-              </div>
-              {saleReceipt.impuestos > 0 && (
-                <div className="ticket-total-row">
-                  <span>Impuestos ({((config?.tax_rate ?? 0) * 100).toFixed(0)}%):</span>
-                  <span>{config?.currency_symbol || '$'}{saleReceipt.impuestos.toFixed(2)}</span>
-                </div>
-              )}
-              <div className="ticket-total-row ticket-total-final">
-                <span>TOTAL:</span>
-                <span>{config?.currency_symbol || '$'}{saleReceipt.total.toFixed(2)}</span>
-              </div>
-
-              {/* CAE / AFIP */}
-              {saleReceipt.cae && (
-                <>
-                  <div className="ticket-separator">{'- '.repeat(16)}</div>
-                  <div className="ticket-info-row">
-                    <span>CAE:</span>
-                    <span style={{ fontSize: '10px', letterSpacing: '0.5px' }}>{saleReceipt.cae}</span>
-                  </div>
-                  <div className="ticket-info-row">
-                    <span>Venc. CAE:</span>
-                    <span>{saleReceipt.cae_vencimiento
-                      ? `${saleReceipt.cae_vencimiento.slice(0,4)}-${saleReceipt.cae_vencimiento.slice(4,6)}-${saleReceipt.cae_vencimiento.slice(6,8)}`
-                      : ''}</span>
-                  </div>
-                  <div className="ticket-info-row">
-                    <span>Comp. N°:</span>
-                    <span>{String(saleReceipt.nro_comprobante_afip || '').padStart(8, '0')}</span>
-                  </div>
-                </>
-              )}
-              {saleReceipt.afip_estado === 'contingencia' && (
-                <div style={{ textAlign: 'center', color: '#b45309', fontWeight: 'bold', fontSize: '10px', margin: '6px 0', border: '1px dashed #b45309', padding: '3px' }}>
-                  COMPROBANTE EN CONTINGENCIA
-                </div>
-              )}
-
-              <div className="ticket-separator">{'- '.repeat(16)}</div>
-              <div className="ticket-footer">
-                {config?.receipt_footer_text || '¡Gracias por su compra!'}
-              </div>
-            </div>
-          </div>
-        </div>
+        <TicketModal
+          sale={saleReceipt}
+          returns={receiptReturns}
+          config={config}
+          afipConfig={afipConfig}
+          cajeroName={user?.nombre}
+          title="Venta procesada"
+          closing={receiptClosing}
+          onClose={closeReceipt}
+          onPrint={printTicket}
+        />
       )}
 
       {/* Return Modal */}
@@ -1136,7 +1054,7 @@ const POS = () => {
                 <div className="price-check-result">
                   <div className="price-check-name">{priceCheckResult[0].nombre}</div>
                   <div className="price-check-price">
-                    {config?.currency_symbol || '$'}{(priceCheckResult[0].tipo === 'por_peso' && priceCheckResult[0].precio_por_peso ? priceCheckResult[0].precio_por_peso : priceCheckResult[0].precio).toFixed(2)}
+                    {config?.currency_symbol || '$'}{formatAmount(priceCheckResult[0].tipo === 'por_peso' && priceCheckResult[0].precio_por_peso ? priceCheckResult[0].precio_por_peso : priceCheckResult[0].precio)}
                     {priceCheckResult[0].tipo === 'por_peso' && <span className="text-lg"> /kg</span>}
                   </div>
                   <div className="price-check-details">
@@ -1159,7 +1077,7 @@ const POS = () => {
                         </span>
                       </div>
                       <span className="price-check-list-price">
-                        {config?.currency_symbol || '$'}{(product.tipo === 'por_peso' && product.precio_por_peso ? product.precio_por_peso : product.precio).toFixed(2)}
+                        {config?.currency_symbol || '$'}{formatAmount(product.tipo === 'por_peso' && product.precio_por_peso ? product.precio_por_peso : product.precio)}
                         {product.tipo === 'por_peso' && '/kg'}
                       </span>
                     </div>
