@@ -696,7 +696,7 @@ const POS = () => {
                     <div
                       key={product.id}
                       className="product-card"
-                      onClick={() => addToCart(product)}
+                      onClick={() => { addToCart(product); if (isMobile()) playSuccessSound(); }}
                     >
                       <div className="product-name">{product.nombre}</div>
                       <div className="product-price">

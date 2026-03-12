@@ -105,11 +105,11 @@ const BarcodeScanner = ({ onScan, onClose }) => {
         (decodedText, decodedResult) => {
           if (!mountedRef.current) return;
 
-          // Cooldown: ignorar si el mismo código fue escaneado hace menos de 2 segundos
+          // Cooldown: ignorar si el mismo código fue escaneado hace menos de 600ms (evita doble-lectura accidental)
           const now = Date.now();
           if (
             lastScannedRef.current.code === decodedText &&
-            now - lastScannedRef.current.time < 2000
+            now - lastScannedRef.current.time < 600
           ) {
             return;
           }
