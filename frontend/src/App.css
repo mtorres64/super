@@ -169,6 +169,26 @@ body {
   background: #e5e7eb;
 }
 
+.btn-color-secondary {
+  background: var(--secondary);
+  color: var(--secondary-text);
+}
+
+.btn-color-secondary:hover {
+  background: var(--secondary-dark);
+  transform: translateY(-1px);
+}
+
+.btn-tertiary {
+  background: var(--tertiary);
+  color: var(--tertiary-text);
+}
+
+.btn-tertiary:hover {
+  background: var(--tertiary-dark);
+  transform: translateY(-1px);
+}
+
 .btn-danger {
   background: #ef4444;
   color: white;
@@ -195,6 +215,13 @@ body {
 .btn-sm {
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
+}
+
+.btn-icon-sm {
+  padding: 0.4rem;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
 }
 
 /* Dashboard styles */
@@ -842,6 +869,42 @@ body {
   justify-content: center;
   border-radius: 6px;
   transition: background 0.2s;
+  position: relative;
+}
+
+.nav-stock-badge {
+  margin-left: auto;
+  background: #ef4444;
+  color: white;
+  border-radius: 9999px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.hamburger-stock-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #ef4444;
+  color: white;
+  border-radius: 9999px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .hamburger-btn:hover {

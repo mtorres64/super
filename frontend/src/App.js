@@ -153,6 +153,24 @@ export const AuthProvider = ({ children }) => {
 // Layout component
 const Layout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { user } = React.useContext(AuthContext);
+  const [stockAlertCount, setStockAlertCount] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+    const fetchStockCount = () => {
+      axios.get(`${API}/dashboard/stats`)
+        .then(res => setStockAlertCount(res.data?.productos?.bajo_stock || 0))
+        .catch(() => {});
+    };
+    fetchStockCount();
+    const interval = setInterval(fetchStockCount, 5 * 60 * 1000);
+    window.addEventListener('stock-updated', fetchStockCount);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('stock-updated', fetchStockCount);
+    };
+  }, [user]);
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -162,11 +180,16 @@ const Layout = ({ children }) => {
           onClick={() => setSidebarOpen(false)}
         />
       )}
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} stockAlertCount={stockAlertCount} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="mobile-topbar">
           <button className="hamburger-btn" onClick={() => setSidebarOpen(true)}>
             <Menu className="w-6 h-6" />
+            {stockAlertCount > 0 && (
+              <span className="hamburger-stock-badge">
+                {stockAlertCount > 99 ? '99+' : stockAlertCount}
+              </span>
+            )}
           </button>
           <span className="text-sm font-semibold text-gray-700">PULS market·app</span>
           <div className="w-9" />

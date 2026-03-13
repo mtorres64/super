@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script para inicializar la base de datos con usuarios y datos de prueba.
+Script para inicializar la base de datos con datos de demo para un supermercado.
 Uso:
   python init_db.py          # Inicializa solo si las colecciones están vacías
   python init_db.py --reset  # Elimina todos los datos y reinicializa
@@ -23,93 +23,11 @@ from datetime import datetime, timezone, timedelta
 # Load environment variables
 load_dotenv(backend_path / '.env')
 
+EMPRESA_NOMBRE = "SuperMarket Demo"
 
-async def create_indexes(db):
-    """Crea índices para mejorar el rendimiento de las consultas."""
-    print("Creating indexes...")
-
-    # empresas
-    await db.empresas.create_index("nombre")
-
-    # users
-    await db.users.create_index("email", unique=True)
-    await db.users.create_index([("empresa_id", 1), ("rol", 1)])
-    await db.users.create_index([("empresa_id", 1), ("branch_id", 1)])
-
-    # products
-    await db.products.create_index(
-        [("empresa_id", 1), ("codigo_barras", 1)], unique=True, sparse=True
-    )
-    await db.products.create_index([("empresa_id", 1), ("categoria_id", 1)])
-    await db.products.create_index([("empresa_id", 1), ("activo", 1)])
-
-    # categories
-    await db.categories.create_index([("empresa_id", 1), ("nombre", 1)], unique=True)
-
-    # branches
-    await db.branches.create_index([("empresa_id", 1), ("activo", 1)])
-
-    # branch_products
-    await db.branch_products.create_index(
-        [("empresa_id", 1), ("product_id", 1), ("branch_id", 1)], unique=True
-    )
-    await db.branch_products.create_index([("empresa_id", 1), ("branch_id", 1)])
-
-    # sales
-    await db.sales.create_index([("empresa_id", 1), ("branch_id", 1), ("fecha", -1)])
-    await db.sales.create_index([("empresa_id", 1), ("cajero_id", 1)])
-    await db.sales.create_index([("empresa_id", 1), ("session_id", 1)])
-
-    # sale_returns
-    await db.sale_returns.create_index([("empresa_id", 1), ("sale_id", 1)])
-    await db.sale_returns.create_index([("empresa_id", 1), ("fecha", -1)])
-
-    # cash_sessions
-    await db.cash_sessions.create_index([("empresa_id", 1), ("user_id", 1), ("status", 1)])
-    await db.cash_sessions.create_index([("empresa_id", 1), ("branch_id", 1), ("status", 1)])
-
-    # cash_movements
-    await db.cash_movements.create_index([("empresa_id", 1), ("session_id", 1)])
-
-    # configuration
-    await db.configuration.create_index("empresa_id", unique=True)
-
-    # suscripciones
-    await db.suscripciones.create_index("empresa_id", unique=True)
-
-    # pagos_suscripcion
-    await db.pagos_suscripcion.create_index([("empresa_id", 1), ("fecha", -1)])
-    await db.pagos_suscripcion.create_index("mp_payment_id", sparse=True)
-
-    # proveedores
-    await db.proveedores.create_index([("empresa_id", 1), ("activo", 1)])
-    await db.proveedores.create_index([("empresa_id", 1), ("nombre", 1)])
-
-    # compras
-    await db.compras.create_index([("empresa_id", 1), ("fecha", -1)])
-    await db.compras.create_index([("empresa_id", 1), ("proveedor_id", 1)])
-
-    # afip_config
-    await db.afip_config.create_index("empresa_id", unique=True)
-
-    # system_config
-    await db.system_config.create_index("key", unique=True)
-
-    print("✅ Indexes created successfully")
-
-
-async def reset_database(db):
-    """Elimina todos los datos de la base de datos."""
-    collections = [
-        "empresas", "users", "categories", "products", "branches",
-        "branch_products", "sales", "sale_returns", "cash_sessions",
-        "cash_movements", "configuration", "suscripciones", "pagos_suscripcion",
-        "proveedores", "compras", "afip_config", "system_config",
-    ]
-    for col in collections:
-        await db[col].delete_many({})
-    print("🗑️  Database reset completed")
-
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def make_empresa(nombre):
     return {
@@ -175,15 +93,75 @@ def make_proveedor(nombre, ruc_cuit, email, telefono, direccion, empresa_id):
         "created_at": datetime.now(timezone.utc),
     }
 
+# ---------------------------------------------------------------------------
+# Indexes & reset
+# ---------------------------------------------------------------------------
+
+async def create_indexes(db):
+    """Crea índices para mejorar el rendimiento de las consultas."""
+    print("Creating indexes...")
+
+    await db.empresas.create_index("nombre")
+    await db.users.create_index("email", unique=True)
+    await db.users.create_index([("empresa_id", 1), ("rol", 1)])
+    await db.users.create_index([("empresa_id", 1), ("branch_id", 1)])
+    await db.products.create_index(
+        [("empresa_id", 1), ("codigo_barras", 1)], unique=True, sparse=True
+    )
+    await db.products.create_index([("empresa_id", 1), ("categoria_id", 1)])
+    await db.products.create_index([("empresa_id", 1), ("activo", 1)])
+    await db.categories.create_index([("empresa_id", 1), ("nombre", 1)], unique=True)
+    await db.branches.create_index([("empresa_id", 1), ("activo", 1)])
+    await db.branch_products.create_index(
+        [("empresa_id", 1), ("product_id", 1), ("branch_id", 1)], unique=True
+    )
+    await db.branch_products.create_index([("empresa_id", 1), ("branch_id", 1)])
+    await db.sales.create_index([("empresa_id", 1), ("branch_id", 1), ("fecha", -1)])
+    await db.sales.create_index([("empresa_id", 1), ("cajero_id", 1)])
+    await db.sales.create_index([("empresa_id", 1), ("session_id", 1)])
+    await db.sale_returns.create_index([("empresa_id", 1), ("sale_id", 1)])
+    await db.sale_returns.create_index([("empresa_id", 1), ("fecha", -1)])
+    await db.cash_sessions.create_index([("empresa_id", 1), ("user_id", 1), ("status", 1)])
+    await db.cash_sessions.create_index([("empresa_id", 1), ("branch_id", 1), ("status", 1)])
+    await db.cash_movements.create_index([("empresa_id", 1), ("session_id", 1)])
+    await db.configuration.create_index("empresa_id", unique=True)
+    await db.suscripciones.create_index("empresa_id", unique=True)
+    await db.pagos_suscripcion.create_index([("empresa_id", 1), ("fecha", -1)])
+    await db.pagos_suscripcion.create_index("mp_payment_id", sparse=True)
+    await db.proveedores.create_index([("empresa_id", 1), ("activo", 1)])
+    await db.proveedores.create_index([("empresa_id", 1), ("nombre", 1)])
+    await db.compras.create_index([("empresa_id", 1), ("fecha", -1)])
+    await db.compras.create_index([("empresa_id", 1), ("proveedor_id", 1)])
+    await db.afip_config.create_index("empresa_id", unique=True)
+    await db.system_config.create_index("key", unique=True)
+
+    print("✅ Indexes created successfully")
+
+
+async def reset_database(db):
+    """Elimina todos los datos de la base de datos."""
+    collections = [
+        "empresas", "users", "categories", "products", "branches",
+        "branch_products", "sales", "sale_returns", "cash_sessions",
+        "cash_movements", "configuration", "suscripciones", "pagos_suscripcion",
+        "proveedores", "compras", "afip_config", "system_config",
+    ]
+    for col in collections:
+        await db[col].delete_many({})
+    print("🗑️  Database reset completed")
+
+# ---------------------------------------------------------------------------
+# Seeds
+# ---------------------------------------------------------------------------
 
 async def seed_empresa(db):
-    print("Creating demo empresa...")
-    existing = await db.empresas.find_one({"nombre": "SuperMarket Demo"})
+    print(f"Creating demo empresa: {EMPRESA_NOMBRE}...")
+    existing = await db.empresas.find_one({"nombre": EMPRESA_NOMBRE})
     if existing:
         print("ℹ️  Demo empresa already exists")
         return existing["id"]
 
-    empresa = make_empresa("SuperMarket Demo")
+    empresa = make_empresa(EMPRESA_NOMBRE)
     await db.empresas.insert_one(empresa)
     print(f"✅ Demo empresa created (id: {empresa['id']})")
     return empresa["id"]
@@ -191,8 +169,7 @@ async def seed_empresa(db):
 
 async def seed_users(db, empresa_id):
     print("Creating users...")
-    admin_exists = await db.users.find_one({"email": "admin@supermarket.com"})
-    if admin_exists:
+    if await db.users.find_one({"email": "admin@supermarket.com"}):
         print("ℹ️  Users already exist")
         return
 
@@ -213,15 +190,17 @@ async def seed_categories(db, empresa_id):
         return
 
     categories = [
-        make_category("Frutas y Verduras", "Productos frescos de temporada",         empresa_id),
-        make_category("Lácteos",           "Leche, quesos, yogurt y derivados",       empresa_id),
-        make_category("Panadería",         "Pan, pasteles y productos de panadería",  empresa_id),
-        make_category("Bebidas",           "Refrescos, jugos, agua y bebidas alcohólicas", empresa_id),
-        make_category("Enlatados",         "Conservas y productos enlatados",         empresa_id),
-        make_category("Carnes y Embutidos","Res, cerdo, pollo y embutidos",           empresa_id),
-        make_category("Higiene Personal",  "Cuidado personal y aseo",                 empresa_id),
-        make_category("Limpieza",          "Productos de limpieza del hogar",         empresa_id),
-        make_category("Snacks y Golosinas","Botanas, dulces y chocolates",            empresa_id),
+        make_category("Frutas y Verduras",  "Productos frescos de temporada",              empresa_id),
+        make_category("Lácteos",            "Leche, quesos, yogurt y derivados",           empresa_id),
+        make_category("Panadería",          "Pan, pasteles y productos de panadería",      empresa_id),
+        make_category("Bebidas",            "Refrescos, jugos, agua y bebidas alcohólicas",empresa_id),
+        make_category("Enlatados",          "Conservas y productos enlatados",             empresa_id),
+        make_category("Carnes y Embutidos", "Res, cerdo, pollo y embutidos",               empresa_id),
+        make_category("Higiene Personal",   "Cuidado personal y aseo",                     empresa_id),
+        make_category("Limpieza",           "Productos de limpieza del hogar",             empresa_id),
+        make_category("Snacks y Golosinas", "Botanas, dulces y chocolates",                empresa_id),
+        make_category("Almacén",            "Aceites, harinas, arroz, pastas y secos",     empresa_id),
+        make_category("Congelados",         "Alimentos congelados y pre-elaborados",       empresa_id),
     ]
     await db.categories.insert_many(categories)
     print("✅ Categories created successfully")
@@ -240,85 +219,139 @@ async def seed_products(db, empresa_id):
     c = {cat["nombre"]: cat["id"] for cat in cat_docs}
 
     products = [
-        # Frutas y Verduras (por_peso) — precio en ARS/kg
-        make_product("Manzana Red Delicious", "7790040000001", "por_peso", 1500.0,
+        # ── Frutas y Verduras (por_peso) ─────────────────────────────────
+        make_product("Manzana Red Delicious",  "7790040000001", "por_peso", 1500.0,
                      c["Frutas y Verduras"], empresa_id, stock=100, stock_minimo=20, precio_por_peso=1500.0),
-        make_product("Banana",                "7790040000002", "por_peso",  900.0,
+        make_product("Banana",                 "7790040000002", "por_peso",  900.0,
                      c["Frutas y Verduras"], empresa_id, stock=80,  stock_minimo=15, precio_por_peso=900.0),
-        make_product("Tomate Perita",         "7790040000003", "por_peso", 1200.0,
+        make_product("Tomate Perita",          "7790040000003", "por_peso", 1200.0,
                      c["Frutas y Verduras"], empresa_id, stock=60,  stock_minimo=12, precio_por_peso=1200.0),
-        make_product("Cebolla Blanca",        "7790040000004", "por_peso",  750.0,
+        make_product("Cebolla Blanca",         "7790040000004", "por_peso",  750.0,
                      c["Frutas y Verduras"], empresa_id, stock=70,  stock_minimo=15, precio_por_peso=750.0),
-        make_product("Papa",                  "7790040000005", "por_peso",  650.0,
+        make_product("Papa",                   "7790040000005", "por_peso",  650.0,
                      c["Frutas y Verduras"], empresa_id, stock=120, stock_minimo=25, precio_por_peso=650.0),
+        make_product("Naranja",                "7790040000006", "por_peso",  850.0,
+                     c["Frutas y Verduras"], empresa_id, stock=90,  stock_minimo=18, precio_por_peso=850.0),
+        make_product("Lechuga Criolla",        "7790040000007", "por_peso",  600.0,
+                     c["Frutas y Verduras"], empresa_id, stock=40,  stock_minimo=10, precio_por_peso=600.0),
+        make_product("Zanahoria",              "7790040000008", "por_peso",  500.0,
+                     c["Frutas y Verduras"], empresa_id, stock=80,  stock_minimo=15, precio_por_peso=500.0),
 
-        # Lácteos
-        make_product("Leche La Serenísima Entera 1L",   "7790045001230", "codigo_barras", 1900.0,
+        # ── Lácteos ──────────────────────────────────────────────────────
+        make_product("Leche La Serenísima Entera 1L",    "7790045001230", "codigo_barras", 1900.0,
                      c["Lácteos"], empresa_id, stock=60, stock_minimo=12),
-        make_product("Queso Cremoso Finlandia 300g",    "7790045001231", "codigo_barras", 4800.0,
+        make_product("Leche La Serenísima Descremada 1L","7790045001235", "codigo_barras", 2050.0,
+                     c["Lácteos"], empresa_id, stock=40, stock_minimo=8),
+        make_product("Queso Cremoso Finlandia 300g",     "7790045001231", "codigo_barras", 4800.0,
                      c["Lácteos"], empresa_id, stock=30, stock_minimo=6),
-        make_product("Yogurt Natural Ser 190g",         "7790045001232", "codigo_barras", 1300.0,
+        make_product("Yogurt Natural Ser 190g",          "7790045001232", "codigo_barras", 1300.0,
                      c["Lácteos"], empresa_id, stock=40, stock_minimo=10),
-        make_product("Manteca La Paulina 200g",         "7790045001233", "codigo_barras", 3400.0,
+        make_product("Manteca La Paulina 200g",          "7790045001233", "codigo_barras", 3400.0,
                      c["Lácteos"], empresa_id, stock=25, stock_minimo=5),
-        make_product("Crema de Leche Sancor 200ml",     "7790045001234", "codigo_barras", 1800.0,
+        make_product("Crema de Leche Sancor 200ml",      "7790045001234", "codigo_barras", 1800.0,
                      c["Lácteos"], empresa_id, stock=30, stock_minimo=8),
 
-        # Panadería
-        make_product("Pan Lactal Bimbo Integral 500g",  "7790060001001", "codigo_barras", 2200.0,
+        # ── Panadería ────────────────────────────────────────────────────
+        make_product("Pan Lactal Bimbo Integral 500g",   "7790060001001", "codigo_barras", 2200.0,
                      c["Panadería"], empresa_id, stock=30, stock_minimo=5),
-        make_product("Pan Lactal Fargo Blanco 500g",    "7790060001002", "codigo_barras", 1900.0,
+        make_product("Pan Lactal Fargo Blanco 500g",     "7790060001002", "codigo_barras", 1900.0,
                      c["Panadería"], empresa_id, stock=25, stock_minimo=5),
-        make_product("Medialunas x6",                   "7790060001003", "codigo_barras", 2500.0,
+        make_product("Medialunas x6",                    "7790060001003", "codigo_barras", 2500.0,
                      c["Panadería"], empresa_id, stock=40, stock_minimo=8),
+        make_product("Facturas Surtidas x6",             "7790060001004", "codigo_barras", 3200.0,
+                     c["Panadería"], empresa_id, stock=30, stock_minimo=6),
 
-        # Bebidas
-        make_product("Coca Cola 500ml",                 "7790895000016", "codigo_barras", 1600.0,
+        # ── Bebidas ──────────────────────────────────────────────────────
+        make_product("Coca Cola 500ml",                  "7790895000016", "codigo_barras", 1600.0,
                      c["Bebidas"], empresa_id, stock=100, stock_minimo=20),
-        make_product("Agua Mineral Villavicencio 1.5L", "7790895000017", "codigo_barras",  900.0,
+        make_product("Coca Cola 2.25L",                  "7790895000020", "codigo_barras", 3200.0,
+                     c["Bebidas"], empresa_id, stock=60,  stock_minimo=15),
+        make_product("Agua Mineral Villavicencio 1.5L",  "7790895000017", "codigo_barras",  900.0,
                      c["Bebidas"], empresa_id, stock=150, stock_minimo=30),
-        make_product("Jugo Cepita Naranja 1L",          "7790895000018", "codigo_barras", 2600.0,
+        make_product("Jugo Cepita Naranja 1L",           "7790895000018", "codigo_barras", 2600.0,
                      c["Bebidas"], empresa_id, stock=40,  stock_minimo=10),
-        make_product("Cerveza Quilmes 340ml",            "7790895000019", "codigo_barras", 1900.0,
+        make_product("Cerveza Quilmes 340ml",             "7790895000019", "codigo_barras", 1900.0,
                      c["Bebidas"], empresa_id, stock=80,  stock_minimo=15),
+        make_product("Gatorade Naranja 500ml",           "7790895000021", "codigo_barras", 2100.0,
+                     c["Bebidas"], empresa_id, stock=50,  stock_minimo=10),
 
-        # Enlatados
-        make_product("Atún La Campagnola 170g",         "7790070001001", "codigo_barras", 2900.0,
+        # ── Enlatados ────────────────────────────────────────────────────
+        make_product("Atún La Campagnola 170g",          "7790070001001", "codigo_barras", 2900.0,
                      c["Enlatados"], empresa_id, stock=50, stock_minimo=10),
-        make_product("Tomate Perita Arcor 400g",        "7790070001002", "codigo_barras", 1400.0,
+        make_product("Tomate Perita Arcor 400g",         "7790070001002", "codigo_barras", 1400.0,
                      c["Enlatados"], empresa_id, stock=45, stock_minimo=8),
-        make_product("Porotos Negros Inca 400g",        "7790070001003", "codigo_barras", 1600.0,
+        make_product("Porotos Negros Inca 400g",         "7790070001003", "codigo_barras", 1600.0,
                      c["Enlatados"], empresa_id, stock=40, stock_minimo=8),
+        make_product("Choclo en Grano Arcor 300g",       "7790070001004", "codigo_barras", 1350.0,
+                     c["Enlatados"], empresa_id, stock=35, stock_minimo=6),
 
-        # Carnes y Embutidos — por_peso en ARS/kg
-        make_product("Pechuga de Pollo",                "7790080001001", "por_peso", 4800.0,
+        # ── Carnes y Embutidos ───────────────────────────────────────────
+        make_product("Pechuga de Pollo",                 "7790080001001", "por_peso", 4800.0,
                      c["Carnes y Embutidos"], empresa_id, stock=30, stock_minimo=5, precio_por_peso=4800.0),
-        make_product("Carne Picada Común",              "7790080001002", "por_peso", 6800.0,
+        make_product("Carne Picada Común",               "7790080001002", "por_peso", 6800.0,
                      c["Carnes y Embutidos"], empresa_id, stock=25, stock_minimo=5, precio_por_peso=6800.0),
-        make_product("Salchichas Viena Paladini x10",   "7790080001003", "codigo_barras", 3200.0,
+        make_product("Asado de Tira",                    "7790080001004", "por_peso", 9500.0,
+                     c["Carnes y Embutidos"], empresa_id, stock=20, stock_minimo=4, precio_por_peso=9500.0),
+        make_product("Salchichas Viena Paladini x10",    "7790080001003", "codigo_barras", 3200.0,
                      c["Carnes y Embutidos"], empresa_id, stock=35, stock_minimo=6),
+        make_product("Jamón Cocido Fargo 150g",          "7790080001005", "codigo_barras", 4100.0,
+                     c["Carnes y Embutidos"], empresa_id, stock=25, stock_minimo=5),
 
-        # Higiene Personal
-        make_product("Shampoo Pantene 400ml",           "7790090001001", "codigo_barras", 5800.0,
+        # ── Higiene Personal ─────────────────────────────────────────────
+        make_product("Shampoo Pantene 400ml",            "7790090001001", "codigo_barras", 5800.0,
                      c["Higiene Personal"], empresa_id, stock=30, stock_minimo=5),
-        make_product("Jabón Dove 90g",                  "7790090001002", "codigo_barras", 1400.0,
+        make_product("Jabón Dove 90g",                   "7790090001002", "codigo_barras", 1400.0,
                      c["Higiene Personal"], empresa_id, stock=60, stock_minimo=10),
-        make_product("Pasta Dental Colgate 90ml",       "7790090001003", "codigo_barras", 3200.0,
+        make_product("Pasta Dental Colgate 90ml",        "7790090001003", "codigo_barras", 3200.0,
                      c["Higiene Personal"], empresa_id, stock=40, stock_minimo=8),
+        make_product("Desodorante Rexona 150ml",         "7790090001004", "codigo_barras", 4500.0,
+                     c["Higiene Personal"], empresa_id, stock=35, stock_minimo=7),
+        make_product("Papel Higiénico Higienol x4",      "7790090001005", "codigo_barras", 3100.0,
+                     c["Higiene Personal"], empresa_id, stock=80, stock_minimo=15),
 
-        # Limpieza
-        make_product("Detergente Magistral 750ml",      "7790100001001", "codigo_barras", 3600.0,
+        # ── Limpieza ─────────────────────────────────────────────────────
+        make_product("Detergente Magistral 750ml",       "7790100001001", "codigo_barras", 3600.0,
                      c["Limpieza"], empresa_id, stock=35, stock_minimo=6),
-        make_product("Lavandina Ayudín 1L",             "7790100001002", "codigo_barras", 1100.0,
+        make_product("Lavandina Ayudín 1L",              "7790100001002", "codigo_barras", 1100.0,
                      c["Limpieza"], empresa_id, stock=40, stock_minimo=8),
+        make_product("Jabón en Polvo Skip 500g",         "7790100001003", "codigo_barras", 4800.0,
+                     c["Limpieza"], empresa_id, stock=30, stock_minimo=6),
+        make_product("Limpia Vidrios Flash 500ml",       "7790100001004", "codigo_barras", 2900.0,
+                     c["Limpieza"], empresa_id, stock=25, stock_minimo=5),
 
-        # Snacks y Golosinas
-        make_product("Papas Fritas Pringles 100g",      "7790110001001", "codigo_barras", 2200.0,
+        # ── Snacks y Golosinas ───────────────────────────────────────────
+        make_product("Papas Fritas Pringles 100g",       "7790110001001", "codigo_barras", 2200.0,
                      c["Snacks y Golosinas"], empresa_id, stock=70, stock_minimo=15),
-        make_product("Chocolate Milka 55g",             "7790110001002", "codigo_barras", 2400.0,
+        make_product("Chocolate Milka 55g",              "7790110001002", "codigo_barras", 2400.0,
                      c["Snacks y Golosinas"], empresa_id, stock=80, stock_minimo=15),
-        make_product("Galletitas Oreo 118g",            "7790110001003", "codigo_barras", 2800.0,
+        make_product("Galletitas Oreo 118g",             "7790110001003", "codigo_barras", 2800.0,
                      c["Snacks y Golosinas"], empresa_id, stock=55, stock_minimo=10),
+        make_product("Alfajor Milka",                    "7790110001004", "codigo_barras", 1500.0,
+                     c["Snacks y Golosinas"], empresa_id, stock=100, stock_minimo=20),
+        make_product("Chicles Trident Menta x14",        "7790110001005", "codigo_barras",  950.0,
+                     c["Snacks y Golosinas"], empresa_id, stock=60,  stock_minimo=12),
+
+        # ── Almacén ──────────────────────────────────────────────────────
+        make_product("Arroz Largo Fino Gallo 1kg",       "7790120001001", "codigo_barras", 2100.0,
+                     c["Almacén"], empresa_id, stock=60, stock_minimo=12),
+        make_product("Fideo Spaghetti Matarazzo 500g",   "7790120001002", "codigo_barras", 1600.0,
+                     c["Almacén"], empresa_id, stock=55, stock_minimo=10),
+        make_product("Aceite Girasol Natura 900ml",      "7790120001003", "codigo_barras", 5200.0,
+                     c["Almacén"], empresa_id, stock=40, stock_minimo=8),
+        make_product("Harina 000 Morixe 1kg",            "7790120001004", "codigo_barras", 1800.0,
+                     c["Almacén"], empresa_id, stock=50, stock_minimo=10),
+        make_product("Azúcar Ledesma 1kg",               "7790120001005", "codigo_barras", 2400.0,
+                     c["Almacén"], empresa_id, stock=45, stock_minimo=10),
+        make_product("Sal Fina Celusal 1kg",             "7790120001006", "codigo_barras",  700.0,
+                     c["Almacén"], empresa_id, stock=50, stock_minimo=10),
+
+        # ── Congelados ───────────────────────────────────────────────────
+        make_product("Pizza Napolitana McCain",          "7790130001001", "codigo_barras", 5500.0,
+                     c["Congelados"], empresa_id, stock=25, stock_minimo=5),
+        make_product("Empanadas Sureñas x12",            "7790130001002", "codigo_barras", 4800.0,
+                     c["Congelados"], empresa_id, stock=20, stock_minimo=4),
+        make_product("Helado Grido Vainilla 1L",         "7790130001003", "codigo_barras", 6200.0,
+                     c["Congelados"], empresa_id, stock=18, stock_minimo=4),
     ]
 
     await db.products.insert_many(products)
@@ -354,14 +387,12 @@ async def seed_branches(db, empresa_id):
     await db.branches.insert_many(branches)
     print("✅ Branches created successfully")
 
-    # Assign all users of this empresa to the main branch
     main_branch_id = branches[0]["id"]
     await db.users.update_many(
         {"empresa_id": empresa_id},
         {"$set": {"branch_id": main_branch_id}}
     )
 
-    # Create branch_products for every branch × product combination
     products = await db.products.find({"empresa_id": empresa_id}).to_list(None)
     branch_products = [
         {
@@ -396,7 +427,7 @@ async def seed_configuration(db, empresa_id):
     default_config = {
         "id": str(uuid.uuid4()),
         "empresa_id": empresa_id,
-        "company_name": "SuperMarket Demo",
+        "company_name": EMPRESA_NOMBRE,
         "company_address": "",
         "company_phone": "",
         "company_email": "",
@@ -438,7 +469,7 @@ async def seed_suscripcion(db, empresa_id):
         "plan_nombre": "Plan Trial",
         "precio": 0.0,
         "moneda": "ARS",
-        "status": "TRIAL",
+        "status": "trial",
         "fecha_inicio": now,
         "fecha_vencimiento": now + timedelta(days=30),
         "dia_facturacion": None,
@@ -456,9 +487,11 @@ async def seed_proveedores(db, empresa_id):
         return
 
     proveedores = [
-        make_proveedor("Distribuidora Central",   "20-12345678-9", "ventas@distcentral.com",  "+54 11 4567-8901", "Av. Industria 1000, Buenos Aires", empresa_id),
-        make_proveedor("Lácteos del Sur S.A.",    "30-98765432-1", "pedidos@lacteosdelsur.com","+54 11 2345-6789", "Ruta 2 km 45, La Plata",          empresa_id),
-        make_proveedor("Bebidas & Más",           "20-55566677-3", "contacto@bebidasmas.com",  "+54 11 3456-7890", "Calle Comercio 500, Rosario",     empresa_id),
+        make_proveedor("Distribuidora Central",   "20-12345678-9", "ventas@distcentral.com",   "+54 11 4567-8901", "Av. Industria 1000, Buenos Aires", empresa_id),
+        make_proveedor("Lácteos del Sur S.A.",    "30-98765432-1", "pedidos@lacteosdelsur.com", "+54 11 2345-6789", "Ruta 2 km 45, La Plata",          empresa_id),
+        make_proveedor("Bebidas & Más",           "20-55566677-3", "contacto@bebidasmas.com",   "+54 11 3456-7890", "Calle Comercio 500, Rosario",     empresa_id),
+        make_proveedor("Frigorífico Norte S.A.",  "30-44455566-7", "ventas@frigonorte.com",     "+54 11 5678-9012", "Av. Frigorífico 200, Lanús",       empresa_id),
+        make_proveedor("Alimentos del Plata",     "20-77788899-1", "info@alimentosplata.com",   "+54 11 6789-0123", "Calle Seca 300, Mar del Plata",    empresa_id),
     ]
     await db.proveedores.insert_many(proveedores)
     print(f"✅ {len(proveedores)} proveedores created successfully")
@@ -474,12 +507,13 @@ async def seed_system_config(db):
         {"key": "trial_dias",              "value": 30},
     ]
     for entry in defaults:
-        existing = await db.system_config.find_one({"key": entry["key"]})
-        if not existing:
+        if not await db.system_config.find_one({"key": entry["key"]}):
             await db.system_config.insert_one(entry)
-
     print("✅ System configuration created successfully")
 
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
 async def init_database(reset: bool = False):
     mongo_url = os.environ["MONGO_URL"]

@@ -2804,12 +2804,15 @@ async def owner_toggle_empresa(empresa_id: str, _=Depends(verify_owner_token)):
     new_status = not emp.get("activo", True)
     await db.empresas.update_one({"id": empresa_id}, {"$set": {"activo": new_status}})
     if not new_status:
+        # Guardar el status actual antes de suspender para poder restaurarlo
+        sus = await db.suscripciones.find_one({"empresa_id": empresa_id})
+        prev_status = sus.get("status") if sus else None
         await db.suscripciones.update_one(
             {"empresa_id": empresa_id},
-            {"$set": {"status": SuscripcionStatus.SUSPENDIDA}}
+            {"$set": {"status": SuscripcionStatus.SUSPENDIDA, "status_antes_suspension": prev_status}}
         )
     else:
-        # Al re-activar: restaurar según la fecha de vencimiento
+        # Al re-activar: restaurar el status anterior si no venció
         sus = await db.suscripciones.find_one({"empresa_id": empresa_id})
         if sus and sus.get("status") == SuscripcionStatus.SUSPENDIDA:
             vencimiento = sus.get("fecha_vencimiento")
@@ -2818,7 +2821,11 @@ async def owner_toggle_empresa(empresa_id: str, _=Depends(verify_owner_token)):
             if vencimiento and not vencimiento.tzinfo:
                 vencimiento = vencimiento.replace(tzinfo=timezone.utc)
             now = datetime.now(timezone.utc)
-            nuevo_status = SuscripcionStatus.ACTIVA if vencimiento and vencimiento > now else SuscripcionStatus.VENCIDA
+            if vencimiento and vencimiento > now:
+                status_previo = sus.get("status_antes_suspension")
+                nuevo_status = status_previo if status_previo in (SuscripcionStatus.TRIAL, SuscripcionStatus.ACTIVA) else SuscripcionStatus.ACTIVA
+            else:
+                nuevo_status = SuscripcionStatus.VENCIDA
             await db.suscripciones.update_one(
                 {"empresa_id": empresa_id},
                 {"$set": {"status": nuevo_status}}

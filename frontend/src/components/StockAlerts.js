@@ -11,7 +11,9 @@ import {
   Download,
   Printer,
   RefreshCw,
-  Package
+  Package,
+  PackagePlus,
+  SlidersHorizontal
 } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 20;
@@ -25,6 +27,8 @@ const StockAlerts = () => {
   const [loading, setLoading] = useState(true);
   const [exportingExcel, setExportingExcel] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [modal, setModal] = useState({ open: false, item: null, action: null, value: '' });
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetchAlerts(currentPage);
@@ -217,6 +221,36 @@ const StockAlerts = () => {
     }
   };
 
+  const openModal = (item, action) => {
+    setModal({ open: true, item, action, value: action === 'stock_minimo' ? String(item.stock_minimo) : '' });
+  };
+
+  const closeModal = () => setModal({ open: false, item: null, action: null, value: '' });
+
+  const handleSave = async () => {
+    const { item, action, value } = modal;
+    const numVal = parseInt(value, 10);
+    if (isNaN(numVal) || numVal < 0) {
+      toast.error('Ingresa un valor válido');
+      return;
+    }
+    setSaving(true);
+    try {
+      const updateData = action === 'stock_minimo'
+        ? { stock_minimo: numVal }
+        : { stock: item.stock + numVal };
+      await axios.put(`${API}/branch-products/${item.branch_product_id}`, updateData);
+      toast.success(action === 'stock_minimo' ? 'Stock mínimo actualizado' : 'Stock actualizado');
+      closeModal();
+      fetchAlerts(currentPage);
+      window.dispatchEvent(new CustomEvent('stock-updated'));
+    } catch {
+      toast.error('Error al actualizar');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const getDiffColor = (diff) => {
     if (diff < 0) return 'text-red-700 font-bold';
     return 'text-yellow-700 font-semibold';
@@ -313,6 +347,11 @@ const StockAlerts = () => {
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Estado
                     </th>
+                    {user?.rol === 'admin' && (
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Acciones
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -359,6 +398,26 @@ const StockAlerts = () => {
                             </span>
                           )}
                         </td>
+                        {user?.rol === 'admin' && (
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => openModal(item, 'stock')}
+                                className="btn btn-color-secondary btn-icon-sm"
+                                title="Agregar stock"
+                              >
+                                <PackagePlus className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => openModal(item, 'stock_minimo')}
+                                className="btn btn-tertiary btn-icon-sm"
+                                title="Modificar stock mínimo"
+                              >
+                                <SlidersHorizontal className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -377,6 +436,39 @@ const StockAlerts = () => {
           </>
         )}
       </div>
+
+      {modal.open && (
+        <div className="modal-overlay" onClick={closeModal}>
+          <div className="modal-content" style={{ maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">
+              {modal.action === 'stock_minimo' ? 'Modificar Stock Mínimo' : 'Agregar Stock'}
+            </h3>
+            <p className="text-sm text-gray-500 mb-4">{modal.item?.nombre}</p>
+            <div className="mb-5">
+              <label className="form-label">
+                {modal.action === 'stock_minimo'
+                  ? `Nuevo valor (actual: ${modal.item?.stock_minimo})`
+                  : `Cantidad a agregar (stock actual: ${modal.item?.stock})`}
+              </label>
+              <input
+                type="number"
+                min="0"
+                className="form-input"
+                value={modal.value}
+                onChange={e => setModal(m => ({ ...m, value: e.target.value }))}
+                autoFocus
+                onKeyDown={e => e.key === 'Enter' && handleSave()}
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={closeModal} className="btn btn-secondary">Cancelar</button>
+              <button onClick={handleSave} disabled={saving} className="btn btn-primary">
+                {saving ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

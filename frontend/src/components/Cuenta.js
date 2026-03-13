@@ -124,15 +124,16 @@ const Cuenta = () => {
     }
   };
 
-  const statusConf = suscripcion ? (STATUS_CONFIG[suscripcion.status] || STATUS_CONFIG.suspendida) : null;
+  const statusConf = suscripcion ? (STATUS_CONFIG[suscripcion.status?.toLowerCase()] || STATUS_CONFIG.suspendida) : null;
   const StatusIcon = statusConf?.icon || Clock;
 
+  const statusNorm = suscripcion?.status?.toLowerCase();
   const showAlert = suscripcion && (
-    suscripcion.status === 'vencida' ||
-    (suscripcion.status !== 'suspendida' && suscripcion.dias_restantes <= 7)
+    statusNorm === 'vencida' ||
+    (statusNorm !== 'suspendida' && suscripcion.dias_restantes <= 7)
   );
 
-  const accionLabel = suscripcion?.status === 'vencida' ? 'Reactivar' : 'Renovar';
+  const accionLabel = statusNorm === 'vencida' ? 'Reactivar' : 'Renovar';
 
   return (
     <div className="p-6">
@@ -155,13 +156,13 @@ const Cuenta = () => {
       {/* Alerta de vencimiento */}
       {showAlert && !loadingStatus && (
         <div className={`mb-5 p-4 rounded-lg flex items-start gap-3 ${
-          suscripcion.status === 'vencida'
+          statusNorm === 'vencida'
             ? 'bg-red-50 border border-red-200 text-red-800'
             : 'bg-yellow-50 border border-yellow-200 text-yellow-800'
         }`}>
           <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
           <div>
-            {suscripcion.status === 'vencida' ? (
+            {statusNorm === 'vencida' ? (
               <>
                 <p className="font-semibold">Tu suscripción ha vencido</p>
                 <p className="text-sm mt-0.5">Realizá un pago para continuar usando el sistema sin interrupciones.</p>
@@ -208,7 +209,7 @@ const Cuenta = () => {
                   <Calendar className="w-4 h-4 text-gray-400" />
                   {formatDate(suscripcion.fecha_vencimiento)}
                 </p>
-                {suscripcion.status !== 'suspendida' && suscripcion.status !== 'vencida' && (
+                {statusNorm !== 'suspendida' && statusNorm !== 'vencida' && (
                   <p className="text-xs text-gray-500 mt-0.5">
                     {suscripcion.dias_restantes > 0
                       ? `${suscripcion.dias_restantes} días restantes`
@@ -230,7 +231,7 @@ const Cuenta = () => {
         </div>
 
         {/* Selección de plan y botones de pago */}
-        {suscripcion && suscripcion.status !== 'suspendida' && (
+        {suscripcion && statusNorm !== 'suspendida' && (
           <div className="px-6 pb-6 pt-4 border-t border-gray-100">
             <p className="text-sm font-medium text-gray-700 mb-3">Elegí tu plan:</p>
             <div className="flex flex-wrap gap-4">

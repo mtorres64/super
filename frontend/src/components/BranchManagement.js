@@ -22,6 +22,7 @@ import {
   FileText,
   ChevronDown,
   Percent,
+  SlidersHorizontal,
   Trash2
 } from 'lucide-react';
 
@@ -44,6 +45,9 @@ const BranchManagement = () => {
   const [showBulkMargenModal, setShowBulkMargenModal] = useState(false);
   const [bulkMargenTipo, setBulkMargenTipo] = useState('establecer');
   const [bulkMargenValor, setBulkMargenValor] = useState('');
+  const [showBulkStockMinModal, setShowBulkStockMinModal] = useState(false);
+  const [bulkStockMinTipo, setBulkStockMinTipo] = useState('establecer');
+  const [bulkStockMinValor, setBulkStockMinValor] = useState('');
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -136,6 +140,7 @@ const BranchManagement = () => {
   const [branchModalClosing, closeBranchModal] = useModalClose(closeModal);
   const [bulkDeleteModalClosing, closeBulkDeleteModalAnim] = useModalClose(() => setShowBulkDeleteModal(false));
   const [bulkMargenModalClosing, closeBulkMargenModal] = useModalClose(() => setShowBulkMargenModal(false));
+  const [bulkStockMinModalClosing, closeBulkStockMinModal] = useModalClose(() => setShowBulkStockMinModal(false));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -256,6 +261,37 @@ const BranchManagement = () => {
     toast.success(`Margen aplicado a ${selectedRows.size} producto(s). Recuerda guardar los cambios.`);
   };
 
+  const applyBulkStockMin = () => {
+    const valor = parseInt(bulkStockMinValor, 10);
+    if (isNaN(valor) || valor < 0) {
+      toast.error('Ingresa un valor válido');
+      return;
+    }
+    setPendingChanges(prev => {
+      const next = { ...prev };
+      for (const productId of selectedRows) {
+        const product = branchProducts.find(p => p.product_id === productId);
+        if (!product) continue;
+        const current = prev[productId]?.stock_minimo !== undefined
+          ? prev[productId].stock_minimo
+          : (product.stock_minimo_sucursal || 0);
+        let newVal;
+        if (bulkStockMinTipo === 'establecer') {
+          newVal = valor;
+        } else if (bulkStockMinTipo === 'incrementar') {
+          newVal = Math.max(0, current + valor);
+        } else {
+          newVal = Math.max(0, current - valor);
+        }
+        next[productId] = { ...next[productId], stock_minimo: newVal };
+      }
+      return next;
+    });
+    closeBulkStockMinModal();
+    setBulkStockMinValor('');
+    toast.success(`Stock mínimo aplicado a ${selectedRows.size} producto(s). Recuerda guardar los cambios.`);
+  };
+
   const handleBulkDelete = async () => {
     setBulkDeleting(true);
     let successCount = 0;
@@ -297,7 +333,7 @@ const BranchManagement = () => {
             precio: changes.precio ?? product.precio_global,
             margen: changes.margen,
             stock: changes.stock ?? product.stock_global,
-            stock_minimo: 10
+            stock_minimo: changes.stock_minimo ?? 10
           });
         }
         successCount++;
@@ -475,6 +511,13 @@ const BranchManagement = () => {
               Margen
             </button>
             <button
+              onClick={() => { setBulkStockMinTipo('establecer'); setBulkStockMinValor(''); setShowBulkStockMinModal(true); }}
+              className="btn btn-secondary btn-sm"
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+              Stock Mín.
+            </button>
+            <button
               onClick={() => setShowBulkDeleteModal(true)}
               className="btn btn-sm bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
             >
@@ -516,6 +559,7 @@ const BranchManagement = () => {
                   <th className="text-center">Margen %</th>
                   <th className="text-center">Precio Sucursal</th>
                   <th className="text-center">Stock Sucursal</th>
+                  <th className="text-center">Stock Mínimo</th>
                   <th className="text-center">Activo</th>
                 </tr>
               </thead>
@@ -528,6 +572,9 @@ const BranchManagement = () => {
                   const currentStock = changes.stock !== undefined
                     ? changes.stock
                     : (product.stock_sucursal ?? product.stock_global);
+                  const currentStockMinimo = changes.stock_minimo !== undefined
+                    ? changes.stock_minimo
+                    : (product.stock_minimo_sucursal || 0);
                   const currentMargen = getProductCurrentMargen(product, changes);
                   const hasChange = pendingChanges[product.product_id] !== undefined;
                   const isSelected = selectedRows.has(product.product_id);
@@ -623,6 +670,15 @@ const BranchManagement = () => {
                         />
                       </td>
                       <td className="text-center">
+                        <input
+                          type="number"
+                          min="0"
+                          className={`w-20 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.stock_minimo !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200'}`}
+                          value={currentStockMinimo}
+                          onChange={(e) => handleProductFieldChange(product.product_id, 'stock_minimo', parseInt(e.target.value) || 0)}
+                        />
+                      </td>
+                      <td className="text-center">
                         <button
                           onClick={() => toggleBranchProductActive(product)}
                           disabled={!product.branch_product_id}
@@ -697,6 +753,83 @@ const BranchManagement = () => {
                   ) : (
                     <><Trash2 className="w-4 h-4" /> Eliminar</>
                   )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Stock Mínimo Modal */}
+        {showBulkStockMinModal && (
+          <div className={`modal-overlay${bulkStockMinModalClosing ? ' closing' : ''}`}>
+            <div className={`modal-content max-w-md${bulkStockMinModalClosing ? ' closing' : ''}`}>
+              <div className="modal-header">
+                <h3 className="modal-title flex items-center gap-2">
+                  <SlidersHorizontal className="w-5 h-5 text-green-600" />
+                  Cambio masivo de Stock Mínimo
+                </h3>
+                <button onClick={closeBulkStockMinModal} className="modal-close">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                Aplicar a <strong>{selectedRows.size} producto(s)</strong> seleccionado(s)
+              </div>
+
+              <div className="space-y-4">
+                <div className="form-group">
+                  <label className="form-label">Tipo de cambio</label>
+                  <div className="flex gap-2 mt-1">
+                    {[
+                      { value: 'establecer', label: 'Establecer' },
+                      { value: 'incrementar', label: 'Incrementar' },
+                      { value: 'decrementar', label: 'Decrementar' },
+                    ].map(opt => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setBulkStockMinTipo(opt.value)}
+                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-colors ${
+                          bulkStockMinTipo === opt.value
+                            ? 'bg-green-600 text-white border-green-600'
+                            : 'bg-white text-gray-600 border-gray-200 hover:border-green-300'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">
+                    {bulkStockMinTipo === 'establecer' ? 'Nuevo mínimo' : bulkStockMinTipo === 'incrementar' ? 'Incremento' : 'Decremento'}
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    className="form-input w-32 text-center mt-1"
+                    value={bulkStockMinValor}
+                    onChange={(e) => setBulkStockMinValor(e.target.value)}
+                    placeholder="0"
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 mt-6">
+                <button type="button" onClick={closeBulkStockMinModal} className="btn btn-secondary">
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={applyBulkStockMin}
+                  disabled={bulkStockMinValor === ''}
+                  className="btn btn-primary disabled:opacity-50"
+                >
+                  <SlidersHorizontal className="w-4 h-4" />
+                  Aplicar
                 </button>
               </div>
             </div>
