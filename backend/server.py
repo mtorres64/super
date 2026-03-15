@@ -1163,6 +1163,9 @@ async def create_product(product_data: ProductCreate, user: User = Depends(requi
 @api_router.get("/products", response_model=List[Product])
 async def get_products(user: User = Depends(get_current_user)):
     products = await db.products.find({"empresa_id": user.empresa_id, "activo": True}).to_list(1000)
+    for p in products:
+        if p.get('kind') != 'combo' and p.get('control_stock') is None:
+            p['control_stock'] = True
     return [Product(**prod) for prod in products]
 
 @api_router.get("/products/export")

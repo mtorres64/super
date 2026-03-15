@@ -36,6 +36,26 @@ if (localStorage.getItem('modal_animations') === 'false') {
   document.body.classList.add('no-animations');
 }
 
+const resetTheme = () => {
+  const root = document.documentElement;
+  root.style.removeProperty('--primary');
+  root.style.removeProperty('--primary-dark');
+  root.style.removeProperty('--primary-darker');
+  root.style.removeProperty('--primary-light');
+  root.style.removeProperty('--primary-bg');
+  root.style.removeProperty('--primary-text');
+  root.style.removeProperty('--secondary');
+  root.style.removeProperty('--secondary-dark');
+  root.style.removeProperty('--secondary-light');
+  root.style.removeProperty('--secondary-bg');
+  root.style.removeProperty('--secondary-text');
+  root.style.removeProperty('--tertiary');
+  root.style.removeProperty('--tertiary-dark');
+  root.style.removeProperty('--tertiary-light');
+  root.style.removeProperty('--tertiary-bg');
+  root.style.removeProperty('--tertiary-text');
+};
+
 const applyTheme = (token) => {
   const root = document.documentElement;
   const brightness = (hex) => {
@@ -101,6 +121,7 @@ export const AuthProvider = ({ children }) => {
           localStorage.removeItem('token');
           setToken(null);
           delete axios.defaults.headers.common['Authorization'];
+          resetTheme();
         })
         .finally(() => setLoading(false));
       // Aplicar colores configurados al tener sesión activa
@@ -124,23 +145,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token');
     delete axios.defaults.headers.common['Authorization'];
     // Restaurar colores por defecto (verde) al cerrar sesión
-    const root = document.documentElement;
-    root.style.removeProperty('--primary');
-    root.style.removeProperty('--primary-dark');
-    root.style.removeProperty('--primary-darker');
-    root.style.removeProperty('--primary-light');
-    root.style.removeProperty('--primary-bg');
-    root.style.removeProperty('--primary-text');
-    root.style.removeProperty('--secondary');
-    root.style.removeProperty('--secondary-dark');
-    root.style.removeProperty('--secondary-light');
-    root.style.removeProperty('--secondary-bg');
-    root.style.removeProperty('--secondary-text');
-    root.style.removeProperty('--tertiary');
-    root.style.removeProperty('--tertiary-dark');
-    root.style.removeProperty('--tertiary-light');
-    root.style.removeProperty('--tertiary-bg');
-    root.style.removeProperty('--tertiary-text');
+    resetTheme();
   };
 
   return (

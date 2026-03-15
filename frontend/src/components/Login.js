@@ -64,8 +64,17 @@ const Login = () => {
     setAdminNombre('');
   };
 
+  const GREEN = {
+    '--primary':        '#10b981',
+    '--primary-dark':   '#059669',
+    '--primary-darker': '#047857',
+    '--primary-light':  'rgba(16, 185, 129, 0.1)',
+    '--primary-bg':     '#ecfdf5',
+    '--primary-text':   'white',
+  };
+
   return (
-    <div className="login-container">
+    <div className="login-container" style={GREEN}>
       <div className="login-card fade-in">
         <div className="login-header">
           <div className="mb-4">
