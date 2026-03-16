@@ -52,6 +52,8 @@ const POS = () => {
   const [activeTabId, setActiveTabId] = useState(1);
   const [nextTabId, setNextTabId] = useState(2);
   const [loading, setLoading] = useState(false);
+  const [loadingLastTicket, setLoadingLastTicket] = useState(false);
+  const [loadingReturn, setLoadingReturn] = useState(false);
   const [productsLoading, setProductsLoading] = useState(true);
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [scannerMode, setScannerMode] = useState('manual'); // 'manual' or 'camera'
@@ -480,6 +482,7 @@ const POS = () => {
   };
 
   const openReturnModal = async () => {
+    setLoadingReturn(true);
     try {
       const [salesResponse, productsResponse] = await Promise.all([
         axios.get(`${API}/sales`),
@@ -514,10 +517,13 @@ const POS = () => {
       setReturnModal({ sale: enrichedSale, returnedQty });
     } catch (error) {
       toast.error('Error al obtener la última venta');
+    } finally {
+      setLoadingReturn(false);
     }
   };
 
   const openLastTicket = async () => {
+    setLoadingLastTicket(true);
     try {
       const [salesResponse, productsResponse] = await Promise.all([
         axios.get(`${API}/sales`),
@@ -549,6 +555,8 @@ const POS = () => {
       }
     } catch (error) {
       toast.error('Error al obtener el último ticket');
+    } finally {
+      setLoadingLastTicket(false);
     }
   };
 
@@ -811,16 +819,18 @@ const POS = () => {
                   className="btn btn-sm"
                   style={{ background: 'var(--secondary)', color: 'var(--secondary-text)' }}
                   title="Ver último ticket"
+                  disabled={loadingLastTicket}
                 >
-                  <Printer className="w-4 h-4" />
+                  {loadingLastTicket ? <div className="spinner w-4 h-4" /> : <Printer className="w-4 h-4" />}
                 </button>
                 <button
                   onClick={openReturnModal}
                   className="btn btn-sm"
                   style={{ background: 'var(--tertiary)', color: 'var(--tertiary-text)' }}
                   title="Devolver última venta"
+                  disabled={loadingReturn}
                 >
-                  <RotateCcw className="w-4 h-4" />
+                  {loadingReturn ? <div className="spinner w-4 h-4" /> : <RotateCcw className="w-4 h-4" />}
                 </button>
                 {cart.length > 0 && (
                   <button
