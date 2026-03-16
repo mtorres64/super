@@ -554,8 +554,20 @@ const POS = () => {
 
   return (
     <div className="pos-page">
-      {/* Tabs móvil: Productos / Carrito */}
-      <div className="pos-mobile-tabs">
+      {/* Vista móvil: caja cerrada */}
+      {!sessionLoading && !currentSession && (
+        <div className="md:hidden flex flex-col items-center justify-center" style={{ minHeight: '60vh', padding: '2rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🔒</div>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#b91c1c', marginBottom: '0.5rem' }}>Caja Cerrada</h2>
+          <p style={{ color: '#6b7280', marginBottom: '2rem' }}>Debes abrir una caja antes de realizar ventas.</p>
+          <Link to="/cash" className="btn btn-primary" style={{ fontSize: '1.1rem', padding: '0.75rem 2rem' }}>
+            Abrir Caja
+          </Link>
+        </div>
+      )}
+
+      {/* Tabs móvil: Productos / Carrito (solo si caja abierta) */}
+      <div className={`pos-mobile-tabs${!sessionLoading && !currentSession ? ' hidden' : ''}`}>
         <button
           className={`pos-tab-btn ${mobileTab === 'products' ? 'active' : ''}`}
           onClick={() => setMobileTab('products')}
@@ -571,7 +583,7 @@ const POS = () => {
       </div>
 
       {/* Left Section */}
-      <div className={`pos-left ${mobileTab === 'products' ? 'pos-tab-active' : ''}`}>
+      <div className={`pos-left ${mobileTab === 'products' ? 'pos-tab-active' : ''}${!sessionLoading && !currentSession ? ' hidden md:flex' : ''}`}>
         <div className="hidden md:block mb-6">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             Punto de Venta
@@ -756,7 +768,7 @@ const POS = () => {
       </div>
 
       {/* Right Section - Cart */}
-      <div className={`pos-cart ${mobileTab === 'cart' ? 'pos-tab-active' : ''}`} style={sessionDisabledStyle}>
+      <div className={`pos-cart ${mobileTab === 'cart' ? 'pos-tab-active' : ''}${!sessionLoading && !currentSession ? ' hidden md:flex' : ''}`} style={sessionDisabledStyle}>
           {/* Sales Tabs Bar */}
           <div className="sales-tabs-bar">
             {tabs.map((tab, tabIndex) => {

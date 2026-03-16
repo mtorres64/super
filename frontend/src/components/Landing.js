@@ -28,7 +28,7 @@ import {
 
 // ─── Fotos de Unsplash ───────────────────────────────────────────
 const PHOTOS = {
-  hero:      'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1800&q=80',
+  hero:      'https://images.unsplash.com/photo-1553413077-190dd305871c?auto=format&fit=crop&w=1800&q=80',
   pos:       'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=900&q=80',
   analytics: '/showcase_reportes.png',
   compras:   'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=900&q=80',
