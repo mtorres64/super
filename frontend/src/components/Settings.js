@@ -323,11 +323,11 @@ const Settings = () => {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            <SettingsIcon className="w-8 h-8 inline mr-3" />
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
+            <SettingsIcon className="w-6 h-6 sm:w-8 sm:h-8 inline mr-3" />
             Configuración del Sistema
           </h1>
           <p className="text-gray-600">
@@ -337,7 +337,7 @@ const Settings = () => {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="btn btn-primary"
+          className="btn btn-primary w-full sm:w-auto"
         >
           {saving ? (
             <>
@@ -355,19 +355,19 @@ const Settings = () => {
 
       <div className="bg-white rounded-lg shadow">
         {/* Tab Navigation */}
-        <div className="border-b border-gray-200">
-          <nav className="flex space-x-8 px-6">
+        <div className="border-b border-gray-200 overflow-x-auto">
+          <nav className="flex min-w-max space-x-1 px-3 sm:space-x-6 sm:px-6">
             {tabs.map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                className={`py-3 px-2 sm:py-4 sm:px-1 border-b-2 font-medium text-xs sm:text-sm transition-colors whitespace-nowrap ${
                   activeTab === tab.id
                     ? 'border-green-500 text-green-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700'
                 }`}
               >
-                <tab.icon className="w-4 h-4 inline mr-2" />
+                <tab.icon className="w-4 h-4 inline mr-1 sm:mr-2" />
                 {tab.label}
               </button>
             ))}
@@ -375,7 +375,7 @@ const Settings = () => {
         </div>
 
         {/* Tab Content */}
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {/* Company Information */}
           {activeTab === 'company' && (
             <div className="space-y-6">
@@ -722,7 +722,7 @@ const Settings = () => {
                     <p className="text-xs text-gray-500 mb-4">Botón principal, navegación activa, elementos destacados.</p>
 
                     {/* Preset swatches */}
-                    <div className="flex gap-3 mb-4">
+                    <div className="flex flex-wrap gap-3 mb-4">
                       {COLOR_THEMES.map(theme => {
                         const isActive = config?.primary_color === theme.primary;
                         return (
@@ -1033,27 +1033,78 @@ const Settings = () => {
               {/* Receipt Preview */}
               <div className="bg-gray-50 border rounded-lg p-4">
                 <h4 className="font-medium text-gray-900 mb-3">Vista previa del recibo</h4>
-                <div className="bg-white p-4 rounded border font-mono text-sm">
-                  <div className="text-center mb-2">
-                    <div className="font-bold">{config?.company_name || 'SUPERMERCADO'}</div>
-                    {config?.company_address && <div>{config.company_address}</div>}
-                    {config?.company_phone && <div>Tel: {config.company_phone}</div>}
-                    {config?.company_tax_id && <div>RUC: {config.company_tax_id}</div>}
-                  </div>
-                  <div className="border-t border-dashed my-2"></div>
-                  <div>FACTURA: FAC-000123</div>
-                  <div>FECHA: 25/12/2024 14:30</div>
-                  <div>CAJERO: Admin PULS</div>
-                  <div className="border-t border-dashed my-2"></div>
-                  <div>Leche Entera 1L    x1    {config?.currency_symbol}1.25</div>
-                  <div>Pan Integral       x2    {config?.currency_symbol}1.50</div>
-                  <div className="border-t border-dashed my-2"></div>
-                  <div>SUBTOTAL:                {config?.currency_symbol}2.75</div>
-                  <div>IMPUESTO ({((config?.tax_rate ?? 0.12) * 100).toFixed(1)}%):          {config?.currency_symbol}{formatAmount(2.75 * (config?.tax_rate ?? 0.12))}</div>
-                  <div className="font-bold">TOTAL:                   {config?.currency_symbol}{formatAmount(2.75 * (1 + (config?.tax_rate ?? 0.12)))}</div>
-                  <div className="border-t border-dashed my-2"></div>
-                  <div className="text-center">
-                    {config?.receipt_footer_text || '¡Gracias por su compra!'}
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <div id="ticket-print-area" style={{ width: '100%', maxWidth: '320px', background: 'white', padding: '16px', border: '1px solid #e5e7eb', borderRadius: '4px' }}>
+                    {config?.company_logo && (
+                      <img src={config.company_logo} alt="logo" className="ticket-logo" />
+                    )}
+                    <div className="ticket-company-name">{config?.company_name || 'Mi Empresa'}</div>
+                    {config?.company_address && <div className="ticket-line">{config.company_address}</div>}
+                    {config?.company_phone && <div className="ticket-line">Tel: {config.company_phone}</div>}
+                    {config?.company_tax_id && <div className="ticket-line">CUIT: {config.company_tax_id}</div>}
+
+                    <div className="ticket-separator">{'- '.repeat(16)}</div>
+
+                    <div className="ticket-info-row">
+                      <span>Comprobante:</span>
+                      <span>FAC-000123</span>
+                    </div>
+                    <div className="ticket-info-row">
+                      <span>Fecha:</span>
+                      <span>{new Date().toLocaleString('es-AR')}</span>
+                    </div>
+                    <div className="ticket-info-row">
+                      <span>Cajero:</span>
+                      <span>Admin</span>
+                    </div>
+                    <div className="ticket-info-row">
+                      <span>Pago:</span>
+                      <span>Efectivo</span>
+                    </div>
+
+                    <div className="ticket-separator">{'- '.repeat(16)}</div>
+
+                    <div className="ticket-items-header">
+                      <span>PRODUCTO</span>
+                      <span>TOTAL</span>
+                    </div>
+
+                    <div className="ticket-item">
+                      <div className="ticket-item-name">Leche Entera 1L</div>
+                      <div className="ticket-item-detail">
+                        <span>1 x {config?.currency_symbol || '$'}1.25</span>
+                        <span>{config?.currency_symbol || '$'}1.25</span>
+                      </div>
+                    </div>
+                    <div className="ticket-item">
+                      <div className="ticket-item-name">Pan Integral</div>
+                      <div className="ticket-item-detail">
+                        <span>2 x {config?.currency_symbol || '$'}0.75</span>
+                        <span>{config?.currency_symbol || '$'}1.50</span>
+                      </div>
+                    </div>
+
+                    <div className="ticket-separator">{'- '.repeat(16)}</div>
+
+                    <div className="ticket-total-row">
+                      <span>Subtotal:</span>
+                      <span>{config?.currency_symbol || '$'}2.75</span>
+                    </div>
+                    {(config?.tax_rate ?? 0.12) > 0 && (
+                      <div className="ticket-total-row">
+                        <span>Impuestos ({((config?.tax_rate ?? 0.12) * 100).toFixed(0)}%):</span>
+                        <span>{config?.currency_symbol || '$'}{formatAmount(2.75 * (config?.tax_rate ?? 0.12))}</span>
+                      </div>
+                    )}
+                    <div className="ticket-total-row ticket-total-final">
+                      <span>TOTAL:</span>
+                      <span>{config?.currency_symbol || '$'}{formatAmount(2.75 * (1 + (config?.tax_rate ?? 0.12)))}</span>
+                    </div>
+
+                    <div className="ticket-separator">{'- '.repeat(16)}</div>
+                    <div className="ticket-footer">
+                      {config?.receipt_footer_text || '¡Gracias por su compra!'}
+                    </div>
                   </div>
                 </div>
               </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
-import { Menu } from 'lucide-react';
+import { Menu, AlertTriangle } from 'lucide-react';
 import './App.css';
 
 // Components
@@ -109,13 +109,43 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
+  const [suscripcion, setSuscripcion] = useState(null);
+
+  const fetchSuscripcion = React.useCallback((currentToken) => {
+    const tkn = currentToken || localStorage.getItem('token');
+    if (!tkn) return;
+    axios.get(`${API}/auth/suscripcion`, {
+      headers: { Authorization: `Bearer ${tkn}` }
+    }).then(res => setSuscripcion(res.data)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      res => res,
+      err => {
+        if (err.response?.status === 401) {
+          setUser(null);
+          setToken(null);
+          setSuscripcion(null);
+          localStorage.removeItem('token');
+          delete axios.defaults.headers.common['Authorization'];
+          resetTheme();
+        }
+        return Promise.reject(err);
+      }
+    );
+    return () => axios.interceptors.response.eject(interceptor);
+  }, []);
 
   useEffect(() => {
     if (token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       // Restaurar usuario tras recarga de página
       axios.get(`${API}/auth/me`)
-        .then(res => setUser(res.data))
+        .then(res => {
+          setUser(res.data);
+          fetchSuscripcion(token);
+        })
         .catch(() => {
           // Token inválido o expirado
           localStorage.removeItem('token');
@@ -137,11 +167,13 @@ export const AuthProvider = ({ children }) => {
     setToken(accessToken);
     localStorage.setItem('token', accessToken);
     axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+    // fetchSuscripcion se llama desde el useEffect vía /auth/me, no directamente acá
   };
 
   const logout = () => {
     setUser(null);
     setToken(null);
+    setSuscripcion(null);
     localStorage.removeItem('token');
     delete axios.defaults.headers.common['Authorization'];
     // Restaurar colores por defecto (verde) al cerrar sesión
@@ -149,7 +181,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, token, login, logout, loading, suscripcion, refreshSuscripcion: fetchSuscripcion }}>
       {children}
     </AuthContext.Provider>
   );
@@ -158,7 +190,7 @@ export const AuthProvider = ({ children }) => {
 // Layout component
 const Layout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { user } = React.useContext(AuthContext);
+  const { user, suscripcion } = React.useContext(AuthContext);
   const [stockAlertCount, setStockAlertCount] = useState(0);
 
   useEffect(() => {
@@ -176,6 +208,10 @@ const Layout = ({ children }) => {
       window.removeEventListener('stock-updated', fetchStockCount);
     };
   }, [user]);
+
+  const enGracia = suscripcion?.en_gracia;
+  const graciaVenc = suscripcion?.gracia_vencimiento;
+  const diasGracia = suscripcion?.dias_restantes ?? 0;
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -199,6 +235,21 @@ const Layout = ({ children }) => {
           <span className="text-sm font-semibold text-gray-700">PULS market·app</span>
           <div className="w-9" />
         </div>
+        {enGracia && (
+          <div className="bg-amber-500 text-white px-4 py-2 flex items-center gap-2 text-sm font-medium shrink-0">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>
+              Tu suscripción venció.{' '}
+              {diasGracia > 0
+                ? `Tenés ${diasGracia} día${diasGracia !== 1 ? 's' : ''} de gracia para renovar`
+                : graciaVenc
+                  ? `El período de gracia vence hoy`
+                  : 'El período de gracia está por vencer'
+              }.{' '}
+              <a href="/cuenta" className="underline font-bold">Renovar ahora</a>
+            </span>
+          </div>
+        )}
         <main className="flex-1 overflow-auto">
           {children}
         </main>
@@ -207,9 +258,41 @@ const Layout = ({ children }) => {
   );
 };
 
+// Pantalla de suscripción bloqueada
+const SuscripcionBloqueada = ({ user }) => (
+  <Layout>
+    <div className="flex flex-col items-center justify-center h-full gap-6 p-8 text-center">
+      <div className="w-20 h-20 rounded-full bg-red-100 flex items-center justify-center">
+        <AlertTriangle className="w-10 h-10 text-red-600" />
+      </div>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Suscripción vencida</h1>
+        {user?.rol === 'admin' ? (
+          <>
+            <p className="text-gray-600 mb-4">
+              Tu suscripción ha vencido. Renovála para continuar usando el sistema.
+            </p>
+            <a
+              href="/cuenta"
+              className="btn btn-primary inline-flex items-center gap-2"
+            >
+              Ir a Mi Cuenta
+            </a>
+          </>
+        ) : (
+          <p className="text-gray-600">
+            La suscripción de esta cuenta ha vencido. Contactá al administrador para renovarla.
+          </p>
+        )}
+      </div>
+    </div>
+  </Layout>
+);
+
 // Protected Route component
-const ProtectedRoute = ({ children, allowedRoles = [] }) => {
-  const { user, loading } = React.useContext(AuthContext);
+const ProtectedRoute = ({ children, allowedRoles = [], skipSubscriptionCheck = false }) => {
+  const { user, loading, suscripcion } = React.useContext(AuthContext);
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -225,6 +308,16 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
 
   if (allowedRoles.length > 0 && !allowedRoles.includes(user.rol)) {
     return <Navigate to="/" />;
+  }
+
+  // Control de acceso por suscripción (saltar para /cuenta y /settings)
+  if (!skipSubscriptionCheck && suscripcion?.bloqueado) {
+    if (user.rol === 'admin' && location.pathname !== '/cuenta') {
+      return <Navigate to="/cuenta" />;
+    }
+    if (user.rol !== 'admin') {
+      return <SuscripcionBloqueada user={user} />;
+    }
   }
 
   return <Layout>{children}</Layout>;
@@ -321,7 +414,7 @@ function App() {
             <Route
               path="/cuenta"
               element={
-                <ProtectedRoute allowedRoles={['admin']}>
+                <ProtectedRoute allowedRoles={['admin']} skipSubscriptionCheck>
                   <Cuenta />
                 </ProtectedRoute>
               }

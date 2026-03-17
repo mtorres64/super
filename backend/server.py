@@ -62,18 +62,27 @@ def calcular_siguiente_vencimiento(dia_facturacion: int, meses: int, desde: date
     return datetime(anio, mes, dia, 0, 0, 0, tzinfo=tz)
 
 def _aplicar_renovacion(suscripcion: dict, meses: int, now: datetime):
-    """Calcula (base, nueva_fecha) respetando día de facturación fijo. No acumulativo."""
+    """Calcula (base, nueva_fecha) respetando día de facturación fijo. No acumulativo.
+    Durante el periodo de gracia (suscripción paga vencida hace <= GRACE_DAYS días),
+    usa la fecha de vencimiento como base para respetar el ciclo de facturación.
+    Ej: venció el 1, paga el día 10 (gracia) → renueva hasta el 1 del mes siguiente."""
     vencimiento = suscripcion["fecha_vencimiento"]
     if isinstance(vencimiento, str):
         vencimiento = datetime.fromisoformat(vencimiento)
     if not vencimiento.tzinfo:
         vencimiento = vencimiento.replace(tzinfo=timezone.utc)
-    base = vencimiento if vencimiento > now else now
+    fue_pagada = suscripcion.get("fue_pagada", False)
+    # Si fue paga y venció dentro del periodo de gracia, respetar el ciclo de facturación
+    if fue_pagada and vencimiento < now and (now - vencimiento).days <= GRACE_DAYS:
+        base = vencimiento
+    else:
+        base = vencimiento if vencimiento > now else now
     dia = suscripcion.get("dia_facturacion") or min(base.day, 28)
     nueva_fecha = calcular_siguiente_vencimiento(dia, meses, base)
     return base, nueva_fecha
 
 DIAS_ALERTA = [10, 5]
+GRACE_DAYS = 15  # Días de gracia para suscripciones pagas vencidas
 
 async def generar_alertas_vencimiento() -> int:
     """Genera notificaciones para suscripciones próximas a vencer. Retorna cantidad generadas."""
@@ -194,6 +203,7 @@ class Suscripcion(BaseModel):
     fecha_vencimiento: datetime
     dia_facturacion: Optional[int] = None
     plan_tipo: str = "mensual"
+    fue_pagada: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class PagoSuscripcion(BaseModel):
@@ -2164,30 +2174,69 @@ async def _get_or_create_suscripcion(empresa_id: str) -> dict:
         )
         await db.suscripciones.insert_one(suscripcion.dict())
         doc = suscripcion.dict()
-    # Auto-actualizar status a vencida si corresponde
+    # Normalizar vencimiento
     vencimiento = doc["fecha_vencimiento"]
     if isinstance(vencimiento, str):
         vencimiento = datetime.fromisoformat(vencimiento)
     if not vencimiento.tzinfo:
         vencimiento = vencimiento.replace(tzinfo=timezone.utc)
-    if doc["status"] in (SuscripcionStatus.TRIAL, SuscripcionStatus.ACTIVA) and vencimiento < datetime.now(timezone.utc):
-        await db.suscripciones.update_one(
-            {"empresa_id": empresa_id},
-            {"$set": {"status": SuscripcionStatus.VENCIDA}}
-        )
-        doc["status"] = SuscripcionStatus.VENCIDA
+    now = datetime.now(timezone.utc)
+    # Auto-actualizar status si corresponde
+    if vencimiento < now:
+        if doc["status"] == SuscripcionStatus.TRIAL:
+            # Trial vencido: sin periodo de gracia, bloqueo inmediato
+            await db.suscripciones.update_one(
+                {"empresa_id": empresa_id},
+                {"$set": {"status": SuscripcionStatus.VENCIDA}}
+            )
+            doc["status"] = SuscripcionStatus.VENCIDA
+        elif doc["status"] == SuscripcionStatus.ACTIVA:
+            # Suscripción paga: periodo de gracia de GRACE_DAYS días
+            gracia_fin = vencimiento + timedelta(days=GRACE_DAYS)
+            if now > gracia_fin:
+                # Gracia expirada → bloquear
+                await db.suscripciones.update_one(
+                    {"empresa_id": empresa_id},
+                    {"$set": {"status": SuscripcionStatus.VENCIDA}}
+                )
+                doc["status"] = SuscripcionStatus.VENCIDA
+            # else: dentro de gracia, mantener ACTIVA en DB
     return doc
+
+
+def _calcular_estado_suscripcion(doc: dict) -> dict:
+    """Calcula campos derivados de una suscripción: en_gracia, gracia_vencimiento, bloqueado, dias_restantes."""
+    now = datetime.now(timezone.utc)
+    vencimiento = doc["fecha_vencimiento"]
+    if isinstance(vencimiento, str):
+        vencimiento = datetime.fromisoformat(vencimiento)
+    if not vencimiento.tzinfo:
+        vencimiento = vencimiento.replace(tzinfo=timezone.utc)
+
+    en_gracia = False
+    gracia_vencimiento = None
+    if doc["status"] == SuscripcionStatus.ACTIVA and vencimiento < now:
+        gracia_vencimiento = vencimiento + timedelta(days=GRACE_DAYS)
+        en_gracia = True
+
+    if en_gracia:
+        dias_restantes = max(0, (gracia_vencimiento - now).days)
+    else:
+        dias_restantes = max(0, (vencimiento - now).days)
+
+    bloqueado = doc["status"] in (SuscripcionStatus.VENCIDA, SuscripcionStatus.SUSPENDIDA)
+    return {
+        "en_gracia": en_gracia,
+        "gracia_vencimiento": gracia_vencimiento,
+        "dias_restantes": dias_restantes,
+        "bloqueado": bloqueado,
+    }
 
 
 @api_router.get("/cuenta/status")
 async def get_cuenta_status(user: User = Depends(require_role([UserRole.ADMIN]))):
     doc = await _get_or_create_suscripcion(user.empresa_id)
-    vencimiento = doc["fecha_vencimiento"]
-    if isinstance(vencimiento, str):
-        vencimiento = datetime.fromisoformat(vencimiento)
-    if not vencimiento.tzinfo:
-        vencimiento = vencimiento.replace(tzinfo=timezone.utc)
-    dias_restantes = max(0, (vencimiento - datetime.now(timezone.utc)).days)
+    estado = _calcular_estado_suscripcion(doc)
     return {
         "id": doc["id"],
         "plan_nombre": doc["plan_nombre"],
@@ -2196,7 +2245,21 @@ async def get_cuenta_status(user: User = Depends(require_role([UserRole.ADMIN]))
         "status": doc["status"],
         "fecha_inicio": doc["fecha_inicio"],
         "fecha_vencimiento": doc["fecha_vencimiento"],
-        "dias_restantes": dias_restantes,
+        "fue_pagada": doc.get("fue_pagada", False),
+        **estado,
+    }
+
+
+@api_router.get("/auth/suscripcion")
+async def get_suscripcion_check(user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.CAJERO]))):
+    """Estado de suscripción para control de acceso. Accesible a todos los roles autenticados."""
+    doc = await _get_or_create_suscripcion(user.empresa_id)
+    estado = _calcular_estado_suscripcion(doc)
+    return {
+        "status": doc["status"],
+        "fecha_vencimiento": doc["fecha_vencimiento"],
+        "fue_pagada": doc.get("fue_pagada", False),
+        **estado,
     }
 
 
@@ -2417,6 +2480,7 @@ async def simular_pago_aprobado(
                 "status": SuscripcionStatus.ACTIVA,
                 "fecha_vencimiento": nueva_fecha,
                 "plan_tipo": plan_tipo,
+                "fue_pagada": True,
             }},
         )
     else:
@@ -2432,6 +2496,7 @@ async def simular_pago_aprobado(
             fecha_vencimiento=nueva_fecha,
             dia_facturacion=dia_facturacion,
             plan_tipo=plan_tipo,
+            fue_pagada=True,
         ).dict())
 
     # Registrar el pago simulado
@@ -2547,6 +2612,7 @@ async def mp_webhook(request: Request):
                     "status": SuscripcionStatus.ACTIVA,
                     "fecha_vencimiento": nueva_fecha,
                     "plan_tipo": plan_tipo_pago,
+                    "fue_pagada": True,
                 }}
             )
             # Actualizar periodo del pago registrado
@@ -2566,6 +2632,7 @@ async def mp_webhook(request: Request):
                 fecha_vencimiento=nueva_fecha,
                 dia_facturacion=dia_facturacion,
                 plan_tipo=plan_tipo_pago,
+                fue_pagada=True,
             )
             await db.suscripciones.insert_one(suscripcion_nueva.dict())
 

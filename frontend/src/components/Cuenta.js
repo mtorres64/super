@@ -124,16 +124,23 @@ const Cuenta = () => {
     }
   };
 
-  const statusConf = suscripcion ? (STATUS_CONFIG[suscripcion.status?.toLowerCase()] || STATUS_CONFIG.suspendida) : null;
-  const StatusIcon = statusConf?.icon || Clock;
-
   const statusNorm = suscripcion?.status?.toLowerCase();
+  const enGracia = suscripcion?.en_gracia;
+  const fuePagada = suscripcion?.fue_pagada;
+
+  const statusConf = suscripcion
+    ? (enGracia
+        ? { label: 'En período de gracia', color: 'bg-amber-100 text-amber-800', icon: Clock }
+        : (STATUS_CONFIG[suscripcion.status?.toLowerCase()] || STATUS_CONFIG.suspendida))
+    : null;
+  const StatusIcon = statusConf?.icon || Clock;
   const showAlert = suscripcion && (
     statusNorm === 'vencida' ||
-    (statusNorm !== 'suspendida' && suscripcion.dias_restantes <= 7)
+    enGracia ||
+    (statusNorm !== 'suspendida' && statusNorm !== 'vencida' && suscripcion.dias_restantes <= 7)
   );
 
-  const accionLabel = statusNorm === 'vencida' ? 'Reactivar' : 'Renovar';
+  const accionLabel = (statusNorm === 'vencida' || enGracia) ? 'Reactivar' : 'Renovar';
 
   return (
     <div className="p-6">
@@ -158,14 +165,37 @@ const Cuenta = () => {
         <div className={`mb-5 p-4 rounded-lg flex items-start gap-3 ${
           statusNorm === 'vencida'
             ? 'bg-red-50 border border-red-200 text-red-800'
-            : 'bg-yellow-50 border border-yellow-200 text-yellow-800'
+            : enGracia
+              ? 'bg-amber-50 border border-amber-300 text-amber-900'
+              : 'bg-yellow-50 border border-yellow-200 text-yellow-800'
         }`}>
           <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
           <div>
-            {statusNorm === 'vencida' ? (
+            {statusNorm === 'vencida' && !enGracia ? (
+              fuePagada ? (
+                <>
+                  <p className="font-semibold">Tu suscripción ha vencido</p>
+                  <p className="text-sm mt-0.5">El período de gracia también expiró. Realizá un pago para volver a operar.</p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold">Tu período de prueba ha vencido</p>
+                  <p className="text-sm mt-0.5">Elegí un plan y realizá tu primer pago para continuar usando el sistema.</p>
+                </>
+              )
+            ) : enGracia ? (
               <>
-                <p className="font-semibold">Tu suscripción ha vencido</p>
-                <p className="text-sm mt-0.5">Realizá un pago para continuar usando el sistema sin interrupciones.</p>
+                <p className="font-semibold">
+                  Tu suscripción venció — período de gracia activo
+                </p>
+                <p className="text-sm mt-0.5">
+                  Podés seguir operando por{' '}
+                  {suscripcion.dias_restantes > 0
+                    ? `${suscripcion.dias_restantes} día${suscripcion.dias_restantes !== 1 ? 's' : ''} más`
+                    : 'hoy'
+                  }.{' '}
+                  Si renovás ahora, tu ciclo se mantiene igual y la próxima fecha de pago no cambia.
+                </p>
               </>
             ) : (
               <>
@@ -209,11 +239,15 @@ const Cuenta = () => {
                   <Calendar className="w-4 h-4 text-gray-400" />
                   {formatDate(suscripcion.fecha_vencimiento)}
                 </p>
-                {statusNorm !== 'suspendida' && statusNorm !== 'vencida' && (
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {suscripcion.dias_restantes > 0
-                      ? `${suscripcion.dias_restantes} días restantes`
-                      : 'Vence hoy'}
+                {statusNorm !== 'suspendida' && (statusNorm !== 'vencida' || enGracia) && (
+                  <p className={`text-xs mt-0.5 ${enGracia ? 'text-amber-600 font-medium' : 'text-gray-500'}`}>
+                    {enGracia
+                      ? suscripcion.dias_restantes > 0
+                        ? `${suscripcion.dias_restantes} días de gracia restantes`
+                        : 'Gracia vence hoy'
+                      : suscripcion.dias_restantes > 0
+                        ? `${suscripcion.dias_restantes} días restantes`
+                        : 'Vence hoy'}
                   </p>
                 )}
               </div>
