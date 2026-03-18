@@ -3,48 +3,99 @@ import { Navigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { AuthContext, API } from '../App';
 import { toast } from 'sonner';
-import { User, Lock, Building2, LogIn, UserPlus, Mail, ShieldCheck, ArrowLeft, Send } from 'lucide-react';
+import {
+  User, Lock, Building2, LogIn, UserPlus, Mail, ShieldCheck,
+  ArrowLeft, Send, KeyRound, Eye, EyeOff,
+  CheckCircle, BarChart2, ShoppingCart, Package,
+} from 'lucide-react';
 import PulsLogo from './PulsLogo';
+
+const FEATURES = [
+  { icon: ShoppingCart, text: 'Punto de venta con escáner' },
+  { icon: Package,      text: 'Inventario y alertas de stock' },
+  { icon: BarChart2,    text: 'Reportes y exportación Excel' },
+  { icon: User,         text: 'Multi-sucursal y multi-usuario' },
+];
+
+// ── OTP block defined OUTSIDE Login to prevent remount on re-render ──────────
+const OtpBlock = ({ otpDigits, otpRefs, email, loading, otpCode,
+  onSubmit, onReenviar, backLabel, backAction,
+  handleOtpKeyDown, handleOtpChange, handleOtpPaste, onReenviarClick }) => (
+  <form onSubmit={onSubmit}>
+    <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
+      <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
+        <ShieldCheck style={{ width: 28, height: 28, color: '#10b981' }} />
+      </div>
+      <p style={{ color: '#374151', fontSize: '0.9rem', lineHeight: 1.6 }}>Enviamos un código de 4 dígitos a</p>
+      <p style={{ fontWeight: 700, color: '#111827', fontSize: '0.95rem' }}>{email}</p>
+      <p style={{ color: '#9ca3af', fontSize: '0.75rem', marginTop: 4 }}>Revisá también la carpeta de spam.</p>
+    </div>
+    <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', marginBottom: '1.5rem' }}>
+      {otpDigits.map((d, i) => (
+        <input key={i} ref={otpRefs[i]} type="text" inputMode="numeric" maxLength={1} value={d}
+          onChange={(e) => handleOtpChange(i, e.target.value)}
+          onKeyDown={(e) => handleOtpKeyDown(i, e)}
+          onPaste={i === 0 ? handleOtpPaste : undefined}
+          style={{ width: 56, height: 64, textAlign: 'center', fontSize: '1.75rem', fontWeight: 700,
+            border: `2px solid ${d ? '#10b981' : '#d1d5db'}`, borderRadius: 12, outline: 'none',
+            color: '#111827', background: d ? '#ecfdf5' : 'white', transition: 'border-color .15s, background .15s' }} />
+      ))}
+    </div>
+    <button type="submit" className="btn btn-primary btn-lg w-full" disabled={loading || otpCode.length < 4}>
+      {loading ? <><div className="spinner" />Verificando...</> : <><ShieldCheck className="w-4 h-4 inline mr-2" />Verificar código</>}
+    </button>
+    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem' }}>
+      <button type="button" onClick={backAction}
+        style={{ fontSize: '0.8rem', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+        <ArrowLeft style={{ width: 13, height: 13 }} />{backLabel}
+      </button>
+      <button type="button" onClick={() => onReenviarClick(onReenviar)} disabled={loading}
+        style={{ fontSize: '0.8rem', color: '#10b981', background: 'none', border: 'none', cursor: 'pointer' }}>
+        Reenviar código
+      </button>
+    </div>
+  </form>
+);
 
 const Login = () => {
   const location = useLocation();
   const initialMode = location.state?.mode === 'register' ? 'register' : 'login';
-  const [mode, setMode] = useState(initialMode); // 'login' | 'register'
-  const [step, setStep] = useState('datos');      // 'datos' | 'otp'
+  const [mode, setMode] = useState(initialMode);
+  const [step, setStep] = useState('datos');
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail]               = useState('');
+  const [password, setPassword]         = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [empresaNombre, setEmpresaNombre] = useState('');
-  const [adminNombre, setAdminNombre] = useState('');
+  const [adminNombre, setAdminNombre]   = useState('');
 
-  const [otpDigits, setOtpDigits] = useState(['', '', '', '']);
+  const [otpDigits, setOtpDigits]       = useState(['', '', '', '']);
+  const [resetToken, setResetToken]     = useState('');
+  const [nuevaPassword, setNuevaPassword] = useState('');
+  const [showNueva, setShowNueva]       = useState(false);
 
-  const [loading, setLoading] = useState(false);
-  const { user, login } = useContext(AuthContext);
-  const otpRefs = [useRef(), useRef(), useRef(), useRef()];
+  const [loading, setLoading]           = useState(false);
+  const { user, login }                 = useContext(AuthContext);
+  const otpRefs                         = [useRef(), useRef(), useRef(), useRef()];
 
   if (user) return <Navigate to="/dashboard" />;
 
   const otpCode = otpDigits.join('');
 
-  // ── Login ──────────────────────────────────────────────────────────────────
+  // ── Handlers ──────────────────────────────────────────────────────────────
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const response = await axios.post(`${API}/auth/login`, { email, password });
-      const { access_token, user: userData } = response.data;
-      login(userData, access_token);
-      toast.success(`¡Bienvenido, ${userData.nombre}!`);
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al iniciar sesión');
-    } finally {
-      setLoading(false);
-    }
+      const { data } = await axios.post(`${API}/auth/login`, { email, password });
+      login(data.user, data.access_token);
+      toast.success(`¡Bienvenido, ${data.user.nombre}!`);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al iniciar sesión');
+    } finally { setLoading(false); }
   };
 
-  // ── Paso 1: enviar OTP al correo ───────────────────────────────────────────
-  const handleEnviarOtp = async (e) => {
+  const handleEnviarOtpRegistro = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
@@ -52,292 +103,425 @@ const Login = () => {
       setStep('otp');
       toast.success('Código enviado a tu correo');
       setTimeout(() => otpRefs[0].current?.focus(), 100);
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al enviar el código');
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al enviar el código');
+    } finally { setLoading(false); }
   };
 
-  // ── Paso 2: verificar OTP y registrar ──────────────────────────────────────
   const handleVerificarYRegistrar = async (e) => {
     e.preventDefault();
-    if (otpCode.length < 4) {
-      toast.error('Ingresá los 4 dígitos del código');
+    if (otpCode.length < 4) { toast.error('Ingresá los 4 dígitos del código'); return; }
+    setLoading(true);
+    try {
+      const { data: otpData } = await axios.post(`${API}/auth/otp/verificar`, { email, codigo: otpCode });
+      const { data } = await axios.post(`${API}/auth/empresa/register`, {
+        empresa_nombre: empresaNombre, admin_nombre: adminNombre,
+        admin_email: email, admin_password: password, otp_token: otpData.verificacion_token,
+      });
+      login(data.user, data.access_token);
+      toast.success(`¡Empresa "${empresaNombre}" registrada! Bienvenido, ${data.user.nombre}.`);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al verificar o registrar');
+    } finally { setLoading(false); }
+  };
+
+  const handleEnviarReset = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await axios.post(`${API}/auth/password-reset/enviar`, { email });
+      setStep('otp');
+      toast.success('Si el correo está registrado, recibirás un código');
+      setTimeout(() => otpRefs[0].current?.focus(), 100);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al enviar el código');
+    } finally { setLoading(false); }
+  };
+
+  const handleVerificarReset = async (e) => {
+    e.preventDefault();
+    if (otpCode.length < 4) { toast.error('Ingresá los 4 dígitos del código'); return; }
+    setLoading(true);
+    try {
+      const { data } = await axios.post(`${API}/auth/password-reset/verificar`, { email, codigo: otpCode });
+      setResetToken(data.reset_token);
+      setStep('nueva');
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Código inválido o expirado');
+    } finally { setLoading(false); }
+  };
+
+  const handleCambiarPassword = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await axios.post(`${API}/auth/password-reset/cambiar`, { reset_token: resetToken, nueva_password: nuevaPassword });
+      toast.success('Contraseña actualizada. Ya podés iniciar sesión.');
+      goToLogin();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al cambiar la contraseña');
+    } finally { setLoading(false); }
+  };
+
+  // ── OTP ───────────────────────────────────────────────────────────────────
+  const handleOtpKeyDown = (i, e) => {
+    if (/^\d$/.test(e.key)) {
+      e.preventDefault();
+      const next = [...otpDigits];
+      next[i] = e.key;
+      setOtpDigits(next);
+      if (i < 3) otpRefs[i + 1].current?.focus();
       return;
     }
-    setLoading(true);
-    try {
-      const { data: otpData } = await axios.post(`${API}/auth/otp/verificar`, {
-        email,
-        codigo: otpCode,
-      });
-      const response = await axios.post(`${API}/auth/empresa/register`, {
-        empresa_nombre: empresaNombre,
-        admin_nombre: adminNombre,
-        admin_email: email,
-        admin_password: password,
-        otp_token: otpData.verificacion_token,
-      });
-      const { access_token, user: userData } = response.data;
-      login(userData, access_token);
-      toast.success(`¡Empresa "${empresaNombre}" registrada! Bienvenido, ${userData.nombre}.`);
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al verificar o registrar');
-    } finally {
-      setLoading(false);
+    if (e.key === 'Backspace') {
+      e.preventDefault();
+      const next = [...otpDigits];
+      if (next[i]) {
+        next[i] = '';
+        setOtpDigits(next);
+      } else if (i > 0) {
+        next[i - 1] = '';
+        setOtpDigits(next);
+        otpRefs[i - 1].current?.focus();
+      }
     }
   };
-
-  // ── OTP digit handlers ─────────────────────────────────────────────────────
-  const handleOtpDigit = (index, value) => {
-    if (!/^\d?$/.test(value)) return;
+  // Fallback para teclado mobile (no siempre dispara onKeyDown)
+  const handleOtpChange = (i, val) => {
+    const digit = val.replace(/\D/g, '').slice(-1);
+    if (!digit) return;
     const next = [...otpDigits];
-    next[index] = value;
+    next[i] = digit;
     setOtpDigits(next);
-    if (value && index < 3) otpRefs[index + 1].current?.focus();
+    if (i < 3) otpRefs[i + 1].current?.focus();
   };
-
-  const handleOtpKeyDown = (index, e) => {
-    if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
-      otpRefs[index - 1].current?.focus();
-    }
-  };
-
   const handleOtpPaste = (e) => {
-    const paste = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 4);
-    if (paste.length === 4) {
-      setOtpDigits(paste.split(''));
-      otpRefs[3].current?.focus();
-    }
+    const p = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 4);
+    if (p.length === 4) { setOtpDigits(p.split('')); otpRefs[3].current?.focus(); }
     e.preventDefault();
   };
-
-  const reenviarCodigo = async () => {
+  const reenviarCodigo = async (endpoint) => {
     setLoading(true);
     try {
-      await axios.post(`${API}/auth/otp/enviar`, { email });
+      await axios.post(`${API}/${endpoint}`, { email });
       toast.success('Nuevo código enviado al correo');
       setOtpDigits(['', '', '', '']);
       setTimeout(() => otpRefs[0].current?.focus(), 100);
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al reenviar el código');
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al reenviar');
+    } finally { setLoading(false); }
   };
 
-  // ── Switch mode ───────────────────────────────────────────────────────────
-  const switchMode = () => {
-    setMode(mode === 'login' ? 'register' : 'login');
-    setStep('datos');
-    setEmail('');
-    setPassword('');
-    setEmpresaNombre('');
-    setAdminNombre('');
-    setOtpDigits(['', '', '', '']);
+  // ── Nav ───────────────────────────────────────────────────────────────────
+  const goToLogin = () => {
+    setMode('login'); setStep('datos');
+    setEmail(''); setPassword(''); setEmpresaNombre(''); setAdminNombre('');
+    setOtpDigits(['', '', '', '']); setResetToken(''); setNuevaPassword('');
+    setShowPassword(false); setShowNueva(false);
   };
 
   const GREEN = {
-    '--primary':        '#10b981',
-    '--primary-dark':   '#059669',
-    '--primary-darker': '#047857',
-    '--primary-light':  'rgba(16, 185, 129, 0.1)',
-    '--primary-bg':     '#ecfdf5',
-    '--primary-text':   'white',
+    '--primary': '#10b981', '--primary-dark': '#059669', '--primary-darker': '#047857',
+    '--primary-light': 'rgba(16,185,129,0.1)', '--primary-bg': '#ecfdf5', '--primary-text': 'white',
   };
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="login-container" style={GREEN}>
-      <div className="login-card fade-in">
-        <div className="login-header">
-          <div className="mb-4">
-            <PulsLogo variant="text" fullWidth />
-          </div>
-          {mode === 'register' && (
-            <p className="login-subtitle">
-              {step === 'datos' ? 'Registrar mi empresa' : 'Verificar correo'}
-            </p>
-          )}
-        </div>
 
-        {/* ── LOGIN ────────────────────────────────────────────────────────── */}
-        {mode === 'login' && (
-          <form onSubmit={handleLogin}>
-            <div className="form-group">
-              <label className="form-label">
-                <User className="w-4 h-4 inline mr-2" />
-                Email
-              </label>
-              <input
-                type="email"
-                className="form-input"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="tu@empresa.com"
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">
-                <Lock className="w-4 h-4 inline mr-2" />
-                Contraseña
-              </label>
-              <input
-                type="password"
-                className="form-input"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-              />
-            </div>
-            <button type="submit" className="btn btn-primary btn-lg w-full" disabled={loading}>
-              {loading ? <><div className="spinner" />Iniciando sesión...</> : <><LogIn className="w-4 h-4 inline mr-2" />Iniciar Sesión</>}
-            </button>
-          </form>
-        )}
+      {/* ════════════════════════ LOGIN — split card ════════════════════════ */}
+      {mode === 'login' && (
+        <div className="login-card login-card--split fade-in">
 
-        {/* ── REGISTRO PASO 1: datos ────────────────────────────────────────── */}
-        {mode === 'register' && step === 'datos' && (
-          <form onSubmit={handleEnviarOtp}>
-            <div className="form-group">
-              <label className="form-label">
-                <Building2 className="w-4 h-4 inline mr-2" />
-                Nombre de la empresa
-              </label>
-              <input type="text" className="form-input" value={empresaNombre}
-                onChange={(e) => setEmpresaNombre(e.target.value)}
-                placeholder="Mi Supermercado S.A." required />
-            </div>
-            <div className="form-group">
-              <label className="form-label">
-                <User className="w-4 h-4 inline mr-2" />
-                Tu nombre (administrador)
-              </label>
-              <input type="text" className="form-input" value={adminNombre}
-                onChange={(e) => setAdminNombre(e.target.value)}
-                placeholder="Juan Pérez" required />
-            </div>
-            <div className="form-group">
-              <label className="form-label">
-                <Mail className="w-4 h-4 inline mr-2" />
-                Email
-              </label>
-              <input type="email" className="form-input" value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="juan@miempresa.com" required />
-            </div>
-            <div className="form-group">
-              <label className="form-label">
-                <Lock className="w-4 h-4 inline mr-2" />
-                Contraseña
-              </label>
-              <input type="password" className="form-input" value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••" required />
-            </div>
-            <p className="text-xs text-gray-500 mb-4">
-              Se creará una cuenta de administrador. Podrás agregar usuarios desde el sistema.
-            </p>
-            <button type="submit" className="btn btn-primary btn-lg w-full" disabled={loading}>
-              {loading
-                ? <><div className="spinner" />Enviando código...</>
-                : <><Send className="w-4 h-4 inline mr-2" />Enviar código de verificación</>}
-            </button>
-          </form>
-        )}
-
-        {/* ── REGISTRO PASO 2: OTP ──────────────────────────────────────────── */}
-        {mode === 'register' && step === 'otp' && (
-          <form onSubmit={handleVerificarYRegistrar}>
-            <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-              <div style={{
-                width: 56, height: 56, borderRadius: '50%',
-                background: 'var(--primary-light)', display: 'flex',
-                alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem',
-              }}>
-                <ShieldCheck style={{ width: 28, height: 28, color: '#10b981' }} />
-              </div>
-              <p style={{ color: '#374151', fontSize: '0.9rem', lineHeight: 1.6 }}>
-                Enviamos un código de 4 dígitos a
-              </p>
-              <p style={{ fontWeight: 700, color: '#111827', fontSize: '0.95rem' }}>{email}</p>
-              <p style={{ color: '#9ca3af', fontSize: '0.78rem', marginTop: '0.25rem' }}>
-                Revisá también la carpeta de spam.
+          {/* Panel izquierdo */}
+          <div className="login-panel-left">
+            <div style={{ position: 'relative', zIndex: 1 }}>
+              <PulsLogo size="lg" dark={false} />
+              <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.95rem', marginTop: '0.75rem', lineHeight: 1.6 }}>
+                El sistema de gestión que tu comercio necesita
               </p>
             </div>
 
-            {/* 4 cajas de dígitos */}
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', marginBottom: '1.5rem' }}>
-              {otpDigits.map((digit, i) => (
-                <input
-                  key={i}
-                  ref={otpRefs[i]}
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={1}
-                  value={digit}
-                  onChange={(e) => handleOtpDigit(i, e.target.value)}
-                  onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                  onPaste={i === 0 ? handleOtpPaste : undefined}
-                  style={{
-                    width: 56, height: 64,
-                    textAlign: 'center',
-                    fontSize: '1.75rem',
-                    fontWeight: 700,
-                    border: `2px solid ${digit ? '#10b981' : '#d1d5db'}`,
-                    borderRadius: 12,
-                    outline: 'none',
-                    color: '#111827',
-                    background: digit ? '#ecfdf5' : 'white',
-                    transition: 'border-color 0.15s, background 0.15s',
-                  }}
-                />
+            <ul className="login-features" style={{ listStyle: 'none', padding: 0, margin: '2rem 0', position: 'relative', zIndex: 1 }}>
+              {FEATURES.map(({ icon: Icon, text }) => (
+                <li key={text} style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'white', fontSize: '0.875rem', marginBottom: '0.85rem' }}>
+                  <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Icon style={{ width: 14, height: 14 }} />
+                  </span>
+                  {text}
+                </li>
               ))}
-            </div>
+            </ul>
 
-            <button type="submit" className="btn btn-primary btn-lg w-full"
-              disabled={loading || otpCode.length < 4}>
-              {loading
-                ? <><div className="spinner" />Verificando...</>
-                : <><ShieldCheck className="w-4 h-4 inline mr-2" />Verificar y crear cuenta</>}
-            </button>
+            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', position: 'relative', zIndex: 1 }}>
+              © {new Date().getFullYear()} PULS
+            </p>
+          </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem' }}>
+          {/* Panel derecho */}
+          <div className="login-panel-right">
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#111827', marginBottom: '0.35rem' }}>
+              Bienvenido de vuelta
+            </h2>
+            <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '2rem' }}>
+              Ingresá tus datos para continuar
+            </p>
+
+            <form onSubmit={handleLogin}>
+              <div className="form-group">
+                <label className="form-label">Email</label>
+                <div className="input-icon-wrap">
+                  <span className="input-icon"><Mail size={15} /></span>
+                  <input type="email" className="form-input" value={email}
+                    onChange={(e) => setEmail(e.target.value)} placeholder="tu@empresa.com" required />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Contraseña</label>
+                <div className="input-icon-wrap">
+                  <span className="input-icon"><Lock size={15} /></span>
+                  <input type={showPassword ? 'text' : 'password'} className="form-input"
+                    value={password} onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••" required style={{ paddingRight: '2.5rem' }} />
+                  <button type="button" className="input-icon-right" onClick={() => setShowPassword(!showPassword)}>
+                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ textAlign: 'right', marginBottom: '1.5rem', marginTop: '-0.75rem' }}>
+                <button type="button"
+                  onClick={() => { setMode('reset'); setStep('email'); setEmail(''); }}
+                  style={{ fontSize: '0.8rem', color: '#10b981', background: 'none', border: 'none', cursor: 'pointer' }}>
+                  ¿Olvidaste tu contraseña?
+                </button>
+              </div>
+
+              <button type="submit" className="btn btn-primary btn-lg w-full" disabled={loading}>
+                {loading
+                  ? <><div className="spinner" />Iniciando sesión...</>
+                  : 'Iniciar Sesión'}
+              </button>
+            </form>
+
+            <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #f3f4f6', textAlign: 'center' }}>
+              <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>¿No tenés cuenta? </span>
               <button type="button"
-                onClick={() => { setStep('datos'); setOtpDigits(['', '', '', '']); }}
-                style={{ fontSize: '0.8rem', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <ArrowLeft style={{ width: 13, height: 13 }} /> Cambiar datos
+                onClick={() => { setMode('register'); setStep('datos'); }}
+                style={{ fontSize: '0.875rem', color: '#10b981', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}>
+                Registrá tu empresa
               </button>
-              <button type="button" onClick={reenviarCodigo} disabled={loading}
-                style={{ fontSize: '0.8rem', color: '#10b981', background: 'none', border: 'none', cursor: 'pointer' }}>
-                Reenviar código
-              </button>
-            </div>
-          </form>
-        )}
-
-        <div className="mt-4 text-center">
-          <button type="button" onClick={switchMode}
-            className="text-sm text-green-600 hover:text-green-800 underline">
-            {mode === 'login'
-              ? '¿Eres nuevo? Registra tu empresa'
-              : '¿Ya tienes cuenta? Iniciar sesión'}
-          </button>
-        </div>
-
-        {mode === 'login' && (
-          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-            <h3 className="font-semibold text-sm text-gray-700 mb-2">Usuarios de prueba:</h3>
-            <div className="text-xs text-gray-600 space-y-1">
-              <p><strong>Admin:</strong> admin@supermarket.com / admin123</p>
-              <p><strong>Cajero:</strong> cajero@supermarket.com / cajero123</p>
-              <p><strong>Supervisor:</strong> supervisor@supermarket.com / super123</p>
             </div>
           </div>
-        )}
-      </div>
+
+        </div>
+      )}
+
+      {/* ════════════════════════ REGISTRO — split card ════════════════════ */}
+      {mode === 'register' && (
+        <div className="login-card login-card--split fade-in">
+
+          {/* Panel izquierdo */}
+          <div className="login-panel-left">
+            <div style={{ position: 'relative', zIndex: 1 }}>
+              <PulsLogo size="lg" dark={false} />
+              <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.95rem', marginTop: '0.75rem', lineHeight: 1.6 }}>
+                Empezá tu prueba gratuita hoy
+              </p>
+              <div style={{ marginTop: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: 6,
+                background: 'rgba(255,255,255,0.15)', borderRadius: 999, padding: '0.3rem 0.9rem',
+                fontSize: '0.8rem', color: 'white', fontWeight: 500 }}>
+                Sin tarjeta requerida
+              </div>
+            </div>
+
+            <ul className="login-features" style={{ listStyle: 'none', padding: 0, margin: '2rem 0', position: 'relative', zIndex: 1 }}>
+              {FEATURES.map(({ icon: Icon, text }) => (
+                <li key={text} style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'white', fontSize: '0.875rem', marginBottom: '0.85rem' }}>
+                  <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Icon style={{ width: 14, height: 14 }} />
+                  </span>
+                  {text}
+                </li>
+              ))}
+            </ul>
+
+            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', position: 'relative', zIndex: 1 }}>
+              © {new Date().getFullYear()} PULS
+            </p>
+          </div>
+
+          {/* Panel derecho */}
+          <div className="login-panel-right">
+            {step === 'datos' ? (
+              <>
+                <h2 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#111827', marginBottom: '0.35rem' }}>
+                  Crear cuenta
+                </h2>
+                <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1.75rem' }}>
+                  Completá los datos para registrar tu empresa
+                </p>
+                <form onSubmit={handleEnviarOtpRegistro}>
+                  <div className="form-group">
+                    <label className="form-label">Nombre de la empresa</label>
+                    <div className="input-icon-wrap">
+                      <span className="input-icon"><Building2 size={15} /></span>
+                      <input type="text" className="form-input" value={empresaNombre}
+                        onChange={(e) => setEmpresaNombre(e.target.value)} placeholder="Mi Supermercado S.A." required />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Tu nombre</label>
+                    <div className="input-icon-wrap">
+                      <span className="input-icon"><User size={15} /></span>
+                      <input type="text" className="form-input" value={adminNombre}
+                        onChange={(e) => setAdminNombre(e.target.value)} placeholder="Juan Pérez" required />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Email</label>
+                    <div className="input-icon-wrap">
+                      <span className="input-icon"><Mail size={15} /></span>
+                      <input type="email" className="form-input" value={email}
+                        onChange={(e) => setEmail(e.target.value)} placeholder="juan@miempresa.com" required />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Contraseña</label>
+                    <div className="input-icon-wrap">
+                      <span className="input-icon"><Lock size={15} /></span>
+                      <input type={showPassword ? 'text' : 'password'} className="form-input"
+                        value={password} onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••" required style={{ paddingRight: '2.5rem' }} />
+                      <button type="button" className="input-icon-right" onClick={() => setShowPassword(!showPassword)}>
+                        {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    </div>
+                  </div>
+                  <button type="submit" className="btn btn-primary btn-lg w-full" disabled={loading}>
+                    {loading
+                      ? <><div className="spinner" />Enviando código...</>
+                      : <><Send className="w-4 h-4 inline mr-2" />Enviar código de verificación</>}
+                  </button>
+                </form>
+              </>
+            ) : (
+              <OtpBlock
+                otpDigits={otpDigits} otpRefs={otpRefs} email={email}
+                loading={loading} otpCode={otpCode}
+                handleOtpKeyDown={handleOtpKeyDown} handleOtpChange={handleOtpChange}
+                handleOtpPaste={handleOtpPaste} onReenviarClick={reenviarCodigo}
+                onSubmit={handleVerificarYRegistrar}
+                onReenviar="auth/otp/enviar"
+                backLabel="Cambiar datos"
+                backAction={() => { setStep('datos'); setOtpDigits(['', '', '', '']); }}
+              />
+            )}
+
+            <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #f3f4f6', textAlign: 'center' }}>
+              <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>¿Ya tenés cuenta? </span>
+              <button type="button" onClick={goToLogin}
+                style={{ fontSize: '0.875rem', color: '#10b981', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}>
+                Iniciar sesión
+              </button>
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* ════════════════════════ RECUPERAR CONTRASEÑA ══════════════════════ */}
+      {mode === 'reset' && (
+        <div className="login-card fade-in" style={{ padding: 0, overflow: 'hidden', background: 'rgba(4, 80, 50, 0.72)' }}>
+
+          {/* Banner verde superior */}
+          {(() => {
+            const bannerInfo = {
+              email: { icon: Lock,        title: 'Recuperar contraseña',  sub: 'Te enviamos un código a tu correo' },
+              otp:   { icon: ShieldCheck, title: 'Verificar código',       sub: `Revisá el correo de ${email}` },
+              nueva: { icon: KeyRound,    title: 'Nueva contraseña',        sub: 'Código verificado correctamente' },
+            }[step];
+            const BannerIcon = bannerInfo.icon;
+            return (
+              <div style={{ background: 'linear-gradient(135deg, #059669 0%, #047857 100%)', padding: '2rem 2.5rem', textAlign: 'center' }}>
+                <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 0.75rem' }}>
+                  <BannerIcon style={{ width: 26, height: 26, color: 'white' }} />
+                </div>
+                <h2 style={{ color: 'white', fontWeight: 700, fontSize: '1.2rem', margin: '0 0 0.25rem' }}>{bannerInfo.title}</h2>
+                <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.82rem', margin: 0 }}>{bannerInfo.sub}</p>
+              </div>
+            );
+          })()}
+
+          {/* Contenido */}
+          <div style={{ padding: '2rem 2.5rem', background: 'rgba(255,255,255,0.92)', borderRadius: '0 0 20px 20px' }}>
+            {step === 'email' && (
+              <form onSubmit={handleEnviarReset}>
+                <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1.25rem', lineHeight: 1.6 }}>
+                  Ingresá el correo de tu cuenta y te enviamos un código para restablecer tu contraseña.
+                </p>
+                <div className="form-group">
+                  <label className="form-label">Email de la cuenta</label>
+                  <div className="input-icon-wrap">
+                    <span className="input-icon"><Mail size={15} /></span>
+                    <input type="email" className="form-input" value={email}
+                      onChange={(e) => setEmail(e.target.value)} placeholder="tu@empresa.com" required />
+                  </div>
+                </div>
+                <button type="submit" className="btn btn-primary btn-lg w-full" disabled={loading}>
+                  {loading ? <><div className="spinner" />Enviando...</> : <><Send className="w-4 h-4 inline mr-2" />Enviar código</>}
+                </button>
+              </form>
+            )}
+
+            {step === 'otp' && (
+              <OtpBlock
+                otpDigits={otpDigits} otpRefs={otpRefs} email={email}
+                loading={loading} otpCode={otpCode}
+                handleOtpKeyDown={handleOtpKeyDown} handleOtpChange={handleOtpChange}
+                handleOtpPaste={handleOtpPaste} onReenviarClick={reenviarCodigo}
+                onSubmit={handleVerificarReset}
+                onReenviar="auth/password-reset/enviar"
+                backLabel="Cambiar correo"
+                backAction={() => { setStep('email'); setOtpDigits(['', '', '', '']); }}
+              />
+            )}
+
+            {step === 'nueva' && (
+              <form onSubmit={handleCambiarPassword}>
+                <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1.25rem', lineHeight: 1.6 }}>
+                  Elegí una contraseña nueva para tu cuenta.
+                </p>
+                <div className="form-group">
+                  <label className="form-label">Nueva contraseña</label>
+                  <div className="input-icon-wrap">
+                    <span className="input-icon"><Lock size={15} /></span>
+                    <input type={showNueva ? 'text' : 'password'} className="form-input"
+                      value={nuevaPassword} onChange={(e) => setNuevaPassword(e.target.value)}
+                      placeholder="Mínimo 6 caracteres" required minLength={6} style={{ paddingRight: '2.5rem' }} />
+                    <button type="button" className="input-icon-right" onClick={() => setShowNueva(!showNueva)}>
+                      {showNueva ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                </div>
+                <button type="submit" className="btn btn-primary btn-lg w-full" disabled={loading}>
+                  {loading ? <><div className="spinner" />Guardando...</> : <><CheckCircle className="w-4 h-4 inline mr-2" />Cambiar contraseña</>}
+                </button>
+              </form>
+            )}
+
+            <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #f3f4f6', textAlign: 'center' }}>
+              <button type="button" onClick={goToLogin}
+                style={{ fontSize: '0.875rem', color: '#10b981', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}>
+                ← Volver al inicio de sesión
+              </button>
+            </div>
+          </div>
+
+        </div>
+      )}
+
     </div>
   );
 };

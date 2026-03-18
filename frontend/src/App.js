@@ -54,6 +54,7 @@ const resetTheme = () => {
   root.style.removeProperty('--tertiary-light');
   root.style.removeProperty('--tertiary-bg');
   root.style.removeProperty('--tertiary-text');
+  localStorage.removeItem('app_theme');
 };
 
 const applyTheme = (token) => {
@@ -163,6 +164,7 @@ export const AuthProvider = ({ children }) => {
   }, [token]);
 
   const login = (userData, accessToken) => {
+    resetTheme(); // limpiar tema de sesión anterior antes de cargar el nuevo
     setUser(userData);
     setToken(accessToken);
     localStorage.setItem('token', accessToken);

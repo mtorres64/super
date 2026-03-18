@@ -24,6 +24,7 @@ import asyncio
 import random
 import smtplib
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from afip import AfipService, encrypt_private_key, decrypt_private_key, extract_p12
 
 ROOT_DIR = Path(__file__).parent
@@ -199,25 +200,95 @@ class SuscripcionStatus(str, Enum):
     VENCIDA = "vencida"
     SUSPENDIDA = "suspendida"
 
-# --- Email OTP helpers ---
-def _send_email_otp_sync(destinatario: str, codigo: str):
-    msg = MIMEText(
-        f"Tu código de verificación para PULS es:\n\n"
-        f"  {codigo}\n\n"
-        f"Válido por 10 minutos. Si no solicitaste este código, ignorá este mensaje.",
-        "plain",
-        "utf-8",
+# --- Email helpers ---
+TD_DIGITO = (
+    '<td width="10"></td>'
+    '<td style="width:56px;height:64px;background:#ecfdf5;border:2px solid #10b981;'
+    'border-radius:12px;text-align:center;vertical-align:middle;'
+    'font-size:32px;font-weight:800;color:#065f46;">{d}</td>'
+)
+
+def _digitos_html(codigo: str) -> str:
+    partes = []
+    for d in codigo:
+        partes.append(TD_DIGITO.format(d=d))
+    return "".join(partes)
+
+def _anio() -> str:
+    return str(datetime.now().year)
+
+def _build_email_html(titulo: str, subtitulo: str, codigo: str, nota_pie: str) -> str:
+    return (
+        '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1"></head>'
+        '<body style="margin:0;padding:0;background:#f3f4f6;font-family:\'Segoe UI\',Arial,sans-serif;">'
+        '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:40px 0;">'
+        '<tr><td align="center">'
+        '<table width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;'
+        'overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">'
+        # Header
+        '<tr><td style="background:linear-gradient(135deg,#059669,#10b981);padding:36px 40px;text-align:center;">'
+        '<div style="font-size:28px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">PULS</div>'
+        '<div style="font-size:13px;color:rgba(255,255,255,0.8);margin-top:4px;">Sistema de gesti\u00f3n para comercios</div>'
+        '</td></tr>'
+        # Cuerpo
+        '<tr><td style="padding:40px 40px 32px;">'
+        '<p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#111827;">' + titulo + '</p>'
+        '<p style="margin:0 0 28px;font-size:15px;color:#6b7280;line-height:1.6;">' + subtitulo + '</p>'
+        '<table cellpadding="0" cellspacing="0" style="margin:0 auto 28px;"><tr>'
+        + _digitos_html(codigo) +
+        '</tr></table>'
+        '<p style="margin:0;font-size:13px;color:#9ca3af;text-align:center;">' + nota_pie + '</p>'
+        '</td></tr>'
+        # Footer
+        '<tr><td style="background:#f9fafb;padding:20px 40px;border-top:1px solid #e5e7eb;text-align:center;">'
+        '<p style="margin:0;font-size:12px;color:#9ca3af;">'
+        '\u00a9 ' + _anio() + ' PULS \u00b7 Sistema de gesti\u00f3n para comercios'
+        '</p></td></tr>'
+        '</table></td></tr></table></body></html>'
     )
-    msg["Subject"] = f"[PULS] Código de verificación: {codigo}"
-    msg["From"]    = SMTP_FROM
+
+def _smtp_send(destinatario: str, subject: str, plain: str, html: str):
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"]    = "PULS <{}>".format(SMTP_FROM)
     msg["To"]      = destinatario
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+    msg.attach(MIMEText(plain, "plain", "utf-8"))
+    msg.attach(MIMEText(html,  "html",  "utf-8"))
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
+        server.ehlo()
         server.starttls()
+        server.ehlo()
         server.login(SMTP_USER, SMTP_PASSWORD)
         server.sendmail(SMTP_FROM, [destinatario], msg.as_string())
 
+def _send_email_otp_sync(destinatario: str, codigo: str):
+    html = _build_email_html(
+        titulo="Verific\u00e1 tu correo",
+        subtitulo="Us\u00e1 el siguiente c\u00f3digo para completar el registro de tu empresa en PULS.<br>"
+                  "V\u00e1lido por <strong style=\"color:#111827;\">10 minutos</strong>.",
+        codigo=codigo,
+        nota_pie="Si no solicitaste este c\u00f3digo, pod\u00e9s ignorar este mensaje.",
+    )
+    plain = "Tu c\u00f3digo de verificaci\u00f3n para PULS es: {}\nV\u00e1lido por 10 minutos.".format(codigo)
+    _smtp_send(destinatario, "Tu c\u00f3digo de verificaci\u00f3n PULS: {}".format(codigo), plain, html)
+
+def _send_password_reset_sync(destinatario: str, codigo: str):
+    html = _build_email_html(
+        titulo="Recuperar contrase\u00f1a",
+        subtitulo="Recibimos una solicitud para restablecer la contrase\u00f1a de tu cuenta.<br>"
+                  "Us\u00e1 este c\u00f3digo. V\u00e1lido por <strong style=\"color:#111827;\">15 minutos</strong>.",
+        codigo=codigo,
+        nota_pie="Si no solicitaste este cambio, pod\u00e9s ignorar este mensaje. Tu contrase\u00f1a no se modificar\u00e1.",
+    )
+    plain = "C\u00f3digo para restablecer tu contrase\u00f1a de PULS: {}\nV\u00e1lido por 15 minutos.".format(codigo)
+    _smtp_send(destinatario, "Recuperar contrase\u00f1a PULS: {}".format(codigo), plain, html)
+
 async def send_email_otp(destinatario: str, codigo: str):
     await asyncio.to_thread(_send_email_otp_sync, destinatario, codigo)
+
+async def send_password_reset_email(destinatario: str, codigo: str):
+    await asyncio.to_thread(_send_password_reset_sync, destinatario, codigo)
 
 class OTPEnviar(BaseModel):
     email: str
@@ -1005,7 +1076,7 @@ async def otp_enviar(data: OTPEnviar):
     try:
         await send_email_otp(email, codigo)
     except Exception as e:
-        logging.error(f"Error enviando email OTP: {e}")
+        logging.exception("Error enviando email OTP")
         raise HTTPException(status_code=500, detail="No se pudo enviar el código. Verificá el correo e intentá de nuevo.")
 
     return {"ok": True, "mensaje": "Código enviado al correo"}
@@ -1113,6 +1184,100 @@ async def register(user_data: UserCreate, current_user: User = Depends(require_r
     await db.users.insert_one(user_doc)
 
     return user
+
+class PasswordResetEnviar(BaseModel):
+    email: str
+
+class PasswordResetVerificar(BaseModel):
+    email: str
+    codigo: str
+
+class PasswordResetCambiar(BaseModel):
+    reset_token: str
+    nueva_password: str
+
+@api_router.post("/auth/password-reset/enviar")
+async def password_reset_enviar(data: PasswordResetEnviar):
+    email_input = data.email.strip()
+    # Búsqueda case-insensitive para no depender de cómo se guardó el email
+    user_doc = await db.users.find_one({"email": {"$regex": f"^{email_input}$", "$options": "i"}})
+    # Siempre responder OK para no revelar si el email existe
+    if not user_doc:
+        return {"ok": True, "mensaje": "Si el correo está registrado, recibirás un código"}
+
+    # Usar el email exactamente como está guardado en la DB
+    email = user_doc["email"]
+
+    recientes = await db.password_resets.count_documents({
+        "email": email,
+        "expires_at": {"$gt": datetime.now(timezone.utc)},
+        "usado": False,
+    })
+    if recientes >= 3:
+        raise HTTPException(status_code=429, detail="Demasiados intentos. Esperá unos minutos.")
+
+    codigo = str(random.randint(1000, 9999))
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+    await db.password_resets.insert_one({
+        "email": email,
+        "codigo": codigo,
+        "expires_at": expires_at,
+        "usado": False,
+    })
+
+    try:
+        await send_password_reset_email(email, codigo)
+    except Exception as e:
+        logging.exception("Error enviando email de recuperación")
+        raise HTTPException(status_code=500, detail="No se pudo enviar el correo. Intentá de nuevo.")
+
+    return {"ok": True, "mensaje": "Si el correo está registrado, recibirás un código"}
+
+
+@api_router.post("/auth/password-reset/verificar")
+async def password_reset_verificar(data: PasswordResetVerificar):
+    email_input = data.email.strip()
+    doc = await db.password_resets.find_one({
+        "email": {"$regex": f"^{email_input}$", "$options": "i"},
+        "codigo": data.codigo,
+        "usado": False,
+        "expires_at": {"$gt": datetime.now(timezone.utc)},
+    })
+    if not doc:
+        raise HTTPException(status_code=400, detail="Código inválido o expirado")
+
+    await db.password_resets.update_one({"_id": doc["_id"]}, {"$set": {"usado": True}})
+
+    # Usar el email exactamente como está en el registro guardado
+    email = doc["email"]
+    token = jwt.encode(
+        {"type": "password_reset", "email": email, "exp": datetime.now(timezone.utc) + timedelta(minutes=15)},
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+    return {"ok": True, "reset_token": token}
+
+
+@api_router.post("/auth/password-reset/cambiar")
+async def password_reset_cambiar(data: PasswordResetCambiar):
+    try:
+        payload = jwt.decode(data.reset_token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "password_reset":
+            raise ValueError()
+        email = payload["email"]
+    except Exception:
+        raise HTTPException(status_code=400, detail="Token de recuperación inválido o expirado")
+
+    if len(data.nueva_password) < 6:
+        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 6 caracteres")
+
+    hashed = bcrypt.hash(data.nueva_password)
+    result = await db.users.update_one({"email": email}, {"$set": {"password": hashed}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    return {"ok": True, "mensaje": "Contraseña actualizada correctamente"}
+
 
 @api_router.post("/auth/login", response_model=Token)
 async def login(user_data: UserLogin):
