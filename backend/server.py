@@ -21,6 +21,9 @@ import pandas as pd
 import mercadopago
 import httpx
 import asyncio
+import random
+import smtplib
+from email.mime.text import MIMEText
 from afip import AfipService, encrypt_private_key, decrypt_private_key, extract_p12
 
 ROOT_DIR = Path(__file__).parent
@@ -43,6 +46,13 @@ FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 SUSCRIPCION_PRECIO = float(os.environ.get('SUSCRIPCION_PRECIO', '50000'))
 SUSCRIPCION_PLAN_NOMBRE = os.environ.get('SUSCRIPCION_PLAN_NOMBRE', 'Plan Mensual')
 
+# SMTP settings
+SMTP_HOST     = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
+SMTP_PORT     = int(os.environ.get('SMTP_PORT', '587'))
+SMTP_USER     = os.environ.get('SMTP_USER', '')
+SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', '')
+SMTP_FROM     = os.environ.get('SMTP_FROM', SMTP_USER)
+
 async def get_precio_suscripcion() -> float:
     doc = await db.system_config.find_one({"key": "suscripcion_precio"})
     return float(doc["value"]) if doc else SUSCRIPCION_PRECIO
@@ -50,6 +60,14 @@ async def get_precio_suscripcion() -> float:
 async def get_plan_nombre_suscripcion() -> str:
     doc = await db.system_config.find_one({"key": "suscripcion_plan_nombre"})
     return doc["value"] if doc else SUSCRIPCION_PLAN_NOMBRE
+
+async def get_whatsapp_numero() -> str:
+    doc = await db.system_config.find_one({"key": "whatsapp_numero"})
+    return doc["value"] if doc else "+5493815156095"
+
+async def get_trial_dias() -> int:
+    doc = await db.system_config.find_one({"key": "trial_dias"})
+    return int(doc["value"]) if doc else 15
 
 def calcular_siguiente_vencimiento(dia_facturacion: int, meses: int, desde: datetime) -> datetime:
     """Mismo día del mes, n meses hacia adelante. Clamped al último día del mes si es necesario."""
@@ -104,29 +122,32 @@ async def generar_alertas_vencimiento() -> int:
         periodo_ref = vencimiento.date().isoformat()
         plan_nombre = sus.get("plan_nombre", "Plan")
         status_label = "trial" if sus.get("status") == SuscripcionStatus.TRIAL else "suscripción"
-        for threshold in DIAS_ALERTA:
-            if dias_restantes <= threshold:
-                tipo = f"plan_por_vencer_{threshold}"
-                existing = await db.notificaciones.find_one({
-                    "empresa_id": empresa_id,
-                    "tipo": tipo,
-                    "periodo_ref": periodo_ref,
-                })
-                if not existing:
-                    dias_str = f"Quedan {max(0, dias_restantes)} días" if dias_restantes >= 0 else "Ya venció"
-                    notif = Notificacion(
-                        empresa_id=empresa_id,
-                        tipo=tipo,
-                        titulo=f"Tu {status_label} vence pronto",
-                        mensaje=(
-                            f"Tu {plan_nombre} vence el {vencimiento.strftime('%d/%m/%Y')}. "
-                            f"{dias_str}. Renovalo para continuar usando el sistema."
-                        ),
-                        dias_restantes=max(0, dias_restantes),
-                        periodo_ref=periodo_ref,
-                    )
-                    await db.notificaciones.insert_one(notif.dict())
-                    generadas += 1
+        # Usar solo el threshold más urgente que aplique
+        applicable = sorted([t for t in DIAS_ALERTA if dias_restantes <= t])
+        if not applicable:
+            continue
+        threshold = applicable[0]  # el más chico = más urgente
+        tipo = f"plan_por_vencer_{threshold}"
+        existing = await db.notificaciones.find_one({
+            "empresa_id": empresa_id,
+            "tipo": tipo,
+            "periodo_ref": periodo_ref,
+        })
+        if not existing:
+            dias_str = f"Quedan {max(0, dias_restantes)} días" if dias_restantes >= 0 else "Ya venció"
+            notif = Notificacion(
+                empresa_id=empresa_id,
+                tipo=tipo,
+                titulo=f"Tu {status_label} vence pronto",
+                mensaje=(
+                    f"Tu {plan_nombre} vence el {vencimiento.strftime('%d/%m/%Y')}. "
+                    f"{dias_str}. Renovalo para continuar usando el sistema."
+                ),
+                dias_restantes=max(0, dias_restantes),
+                periodo_ref=periodo_ref,
+            )
+            await db.notificaciones.insert_one(notif.dict())
+            generadas += 1
     return generadas
 
 # Owner (system admin) credentials
@@ -178,10 +199,38 @@ class SuscripcionStatus(str, Enum):
     VENCIDA = "vencida"
     SUSPENDIDA = "suspendida"
 
+# --- Email OTP helpers ---
+def _send_email_otp_sync(destinatario: str, codigo: str):
+    msg = MIMEText(
+        f"Tu código de verificación para PULS es:\n\n"
+        f"  {codigo}\n\n"
+        f"Válido por 10 minutos. Si no solicitaste este código, ignorá este mensaje.",
+        "plain",
+        "utf-8",
+    )
+    msg["Subject"] = f"[PULS] Código de verificación: {codigo}"
+    msg["From"]    = SMTP_FROM
+    msg["To"]      = destinatario
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        server.starttls()
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.sendmail(SMTP_FROM, [destinatario], msg.as_string())
+
+async def send_email_otp(destinatario: str, codigo: str):
+    await asyncio.to_thread(_send_email_otp_sync, destinatario, codigo)
+
+class OTPEnviar(BaseModel):
+    email: str
+
+class OTPVerificar(BaseModel):
+    email: str
+    codigo: str
+
 # --- Empresa models ---
 class Empresa(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     nombre: str
+    email_verificado: bool = False
     activo: bool = True
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -190,6 +239,7 @@ class EmpresaRegister(BaseModel):
     admin_nombre: str
     admin_email: str
     admin_password: str
+    otp_token: str
 
 # --- Subscription models ---
 class Suscripcion(BaseModel):
@@ -930,15 +980,76 @@ async def get_cash_sessions(user: User = Depends(get_current_user)):
     return [CashSession(**session) for session in sessions]
 
 # Auth routes
+@api_router.post("/auth/otp/enviar")
+async def otp_enviar(data: OTPEnviar):
+    email = data.email.strip().lower()
+
+    # Rate limiting: máx 3 códigos activos por email
+    recientes = await db.email_otps.count_documents({
+        "email": email,
+        "expires_at": {"$gt": datetime.now(timezone.utc)},
+        "usado": False,
+    })
+    if recientes >= 3:
+        raise HTTPException(status_code=429, detail="Demasiados intentos. Esperá unos minutos.")
+
+    codigo = str(random.randint(1000, 9999))
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+    await db.email_otps.insert_one({
+        "email": email,
+        "codigo": codigo,
+        "expires_at": expires_at,
+        "usado": False,
+    })
+
+    try:
+        await send_email_otp(email, codigo)
+    except Exception as e:
+        logging.error(f"Error enviando email OTP: {e}")
+        raise HTTPException(status_code=500, detail="No se pudo enviar el código. Verificá el correo e intentá de nuevo.")
+
+    return {"ok": True, "mensaje": "Código enviado al correo"}
+
+
+@api_router.post("/auth/otp/verificar")
+async def otp_verificar(data: OTPVerificar):
+    email = data.email.strip().lower()
+    otp_doc = await db.email_otps.find_one({
+        "email": email,
+        "codigo": data.codigo,
+        "usado": False,
+        "expires_at": {"$gt": datetime.now(timezone.utc)},
+    })
+    if not otp_doc:
+        raise HTTPException(status_code=400, detail="Código inválido o expirado")
+
+    await db.email_otps.update_one({"_id": otp_doc["_id"]}, {"$set": {"usado": True}})
+
+    token = jwt.encode(
+        {"type": "email_otp", "email": email, "exp": datetime.now(timezone.utc) + timedelta(minutes=15)},
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+    return {"ok": True, "verificacion_token": token}
+
+
 @api_router.post("/auth/empresa/register", response_model=Token)
 async def register_empresa(data: EmpresaRegister):
+    # Validar token OTP
+    try:
+        payload = jwt.decode(data.otp_token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "email_otp" or payload.get("email") != data.admin_email.strip().lower():
+            raise ValueError()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Token de verificación de correo inválido o expirado")
+
     # Check if admin email already exists
     existing_user = await db.users.find_one({"email": data.admin_email})
     if existing_user:
         raise HTTPException(status_code=400, detail="El email ya está registrado")
 
     # Create empresa
-    empresa = Empresa(nombre=data.empresa_nombre)
+    empresa = Empresa(nombre=data.empresa_nombre, email_verificado=True)
     await db.empresas.insert_one(empresa.dict())
 
     # Create admin user
@@ -957,10 +1068,10 @@ async def register_empresa(data: EmpresaRegister):
     config = Configuration(empresa_id=empresa.id, company_name=data.empresa_nombre)
     await db.configuration.insert_one(config.dict())
 
-    # Create trial subscription — vence el mismo día del mes siguiente
+    # Create trial subscription
     trial_inicio = datetime.now(timezone.utc)
     dia_facturacion = min(trial_inicio.day, 28)
-    trial_fin = calcular_siguiente_vencimiento(dia_facturacion, 1, trial_inicio)
+    trial_fin = trial_inicio + timedelta(days=await get_trial_dias())
     suscripcion = Suscripcion(
         empresa_id=empresa.id,
         plan_nombre=await get_plan_nombre_suscripcion(),
@@ -1012,6 +1123,11 @@ async def login(user_data: UserLogin):
 
     if not user_doc.get('activo', True):
         raise HTTPException(status_code=400, detail="User account is disabled")
+
+    # Verificar que el correo de la empresa esté verificado
+    empresa_doc = await db.empresas.find_one({"id": user_doc['empresa_id']})
+    if empresa_doc and not empresa_doc.get('email_verificado', True):
+        raise HTTPException(status_code=403, detail="Correo no verificado. Completá el registro de tu empresa.")
 
     # Create access token with empresa_id
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -2168,7 +2284,7 @@ async def _get_or_create_suscripcion(empresa_id: str) -> dict:
             precio=await get_precio_suscripcion(),
             status=SuscripcionStatus.TRIAL,
             fecha_inicio=now,
-            fecha_vencimiento=calcular_siguiente_vencimiento(dia_facturacion, 1, now),
+            fecha_vencimiento=now + timedelta(days=await get_trial_dias()),
             dia_facturacion=dia_facturacion,
             plan_tipo="mensual",
         )
@@ -2275,9 +2391,11 @@ async def get_cuenta_pagos(user: User = Depends(require_role([UserRole.ADMIN])))
 async def get_planes(user: User = Depends(require_role([UserRole.ADMIN]))):
     precio_mensual = await get_precio_suscripcion()
     nombre_base = await get_plan_nombre_suscripcion()
+    whatsapp = await get_whatsapp_numero()
     return {
         "mensual": {"plan_tipo": "mensual", "nombre": nombre_base, "precio": precio_mensual, "meses": 1},
         "anual":   {"plan_tipo": "anual",   "nombre": f"{nombre_base} Anual", "precio": precio_mensual * 11, "meses": 12},
+        "whatsapp_numero": whatsapp,
     }
 
 @api_router.get("/public/planes")
@@ -2287,6 +2405,7 @@ async def get_planes_public():
     return {
         "mensual": {"plan_tipo": "mensual", "nombre": nombre_base, "precio": precio_mensual, "meses": 1},
         "anual":   {"plan_tipo": "anual",   "nombre": f"{nombre_base} Anual", "precio": precio_mensual * 11, "meses": 12},
+        "trial_dias": await get_trial_dias(),
     }
 
 
@@ -2695,6 +2814,7 @@ async def owner_stats(_=Depends(verify_owner_token)):
     suspendidas = await db.suscripciones.count_documents({"status": SuscripcionStatus.SUSPENDIDA})
     pagos = await db.pagos_suscripcion.find({"estado": "approved"}).to_list(10000)
     total_recaudado = sum(p.get("monto", 0) for p in pagos)
+    alertas_sin_leer = await db.notificaciones.count_documents({"leida": False})
     return {
         "total_clientes": total,
         "activas": activas,
@@ -2702,6 +2822,7 @@ async def owner_stats(_=Depends(verify_owner_token)):
         "vencidas": vencidas,
         "suspendidas": suspendidas,
         "total_recaudado": total_recaudado,
+        "alertas_sin_leer": alertas_sin_leer,
     }
 
 def _calc_dias_restantes(suscripcion: dict) -> int:
@@ -2811,7 +2932,7 @@ async def owner_update_suscripcion(
                 precio=update.get("precio", SUSCRIPCION_PRECIO),
                 status=update.get("status", SuscripcionStatus.ACTIVA),
                 fecha_inicio=now,
-                fecha_vencimiento=update.get("fecha_vencimiento", now + timedelta(days=30)),
+                fecha_vencimiento=update.get("fecha_vencimiento", now + timedelta(days=await get_trial_dias())),
             )
             await db.suscripciones.insert_one(nueva.dict())
     return {"message": "Suscripción actualizada"}
@@ -2907,11 +3028,15 @@ async def owner_get_config(_=Depends(verify_owner_token)):
     return {
         "suscripcion_precio": await get_precio_suscripcion(),
         "suscripcion_plan_nombre": await get_plan_nombre_suscripcion(),
+        "whatsapp_numero": await get_whatsapp_numero(),
+        "trial_dias": await get_trial_dias(),
     }
 
 class OwnerConfigUpdate(BaseModel):
     suscripcion_precio: Optional[float] = None
     suscripcion_plan_nombre: Optional[str] = None
+    whatsapp_numero: Optional[str] = None
+    trial_dias: Optional[int] = None
 
 @owner_router.put("/config")
 async def owner_update_config(data: OwnerConfigUpdate, _=Depends(verify_owner_token)):
@@ -2925,6 +3050,18 @@ async def owner_update_config(data: OwnerConfigUpdate, _=Depends(verify_owner_to
         await db.system_config.update_one(
             {"key": "suscripcion_plan_nombre"},
             {"$set": {"value": data.suscripcion_plan_nombre}},
+            upsert=True,
+        )
+    if data.whatsapp_numero is not None:
+        await db.system_config.update_one(
+            {"key": "whatsapp_numero"},
+            {"$set": {"value": data.whatsapp_numero}},
+            upsert=True,
+        )
+    if data.trial_dias is not None:
+        await db.system_config.update_one(
+            {"key": "trial_dias"},
+            {"$set": {"value": data.trial_dias}},
             upsert=True,
         )
     return {"ok": True}
@@ -2968,6 +3105,22 @@ async def owner_generar_alertas(_=Depends(verify_owner_token)):
     """Genera manualmente alertas para suscripciones próximas a vencer."""
     generadas = await generar_alertas_vencimiento()
     return {"ok": True, "generadas": generadas}
+
+@owner_router.get("/pagos")
+async def owner_get_pagos(_=Depends(verify_owner_token)):
+    """Todos los pagos de suscripción ordenados por fecha descendente."""
+    pagos = await db.pagos_suscripcion.find({}).sort("fecha", -1).to_list(1000)
+    empresas_cache: dict = {}
+    result = []
+    for p in pagos:
+        eid = p.get("empresa_id", "")
+        if eid not in empresas_cache:
+            emp = await db.empresas.find_one({"id": eid})
+            empresas_cache[eid] = emp["nombre"] if emp else eid
+        pago_dict = {k: v for k, v in p.items() if k != "_id"}
+        pago_dict["empresa_nombre"] = empresas_cache[eid]
+        result.append(pago_dict)
+    return result
 
 # ─── Router AFIP/ARCA ─────────────────────────────────────────────────────────
 

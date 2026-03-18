@@ -418,13 +418,13 @@ async def seed_suscripcion(db, empresa_id):
         "moneda": "ARS",
         "status": "trial",
         "fecha_inicio": now,
-        "fecha_vencimiento": now + timedelta(days=30),
+        "fecha_vencimiento": now + timedelta(days=15),
         "dia_facturacion": None,
         "plan_tipo": "mensual",
         "created_at": now,
     }
     await db.suscripciones.insert_one(suscripcion)
-    print("✅ Demo subscription created (TRIAL - 30 days)")
+    print("✅ Demo subscription created (TRIAL - 15 days)")
 
 
 async def seed_proveedores(db, empresa_id):
@@ -451,7 +451,7 @@ async def seed_system_config(db):
         {"key": "suscripcion_plan_nombre", "value": "Plan Mensual"},
         {"key": "suscripcion_plan_tipo",   "value": "mensual"},
         {"key": "suscripcion_moneda",      "value": "ARS"},
-        {"key": "trial_dias",              "value": 30},
+        {"key": "trial_dias",              "value": 15},
     ]
     for entry in defaults:
         if not await db.system_config.find_one({"key": entry["key"]}):

@@ -53,7 +53,7 @@ const FEATURES = [
   { icon: Smartphone,   title: 'Diseño Responsive',        desc: 'Operá desde cualquier dispositivo: computadora de escritorio, tablet o celular sin instalar nada.' },
 ];
 
-const PLAN_FEATURES = [
+const PLAN_FEATURES_BASE = [
   'Sucursales ilimitadas',
   'Usuarios ilimitados',
   'Punto de venta con escáner y cámara',
@@ -64,7 +64,6 @@ const PLAN_FEATURES = [
   'Reportes y exportación Excel',
   'Notificaciones automáticas del sistema',
   'Soporte por email',
-  '30 días de prueba gratis',
 ];
 
 const S = {
@@ -85,6 +84,8 @@ export default function Landing() {
 
   const precioMensual = planes?.mensual?.precio ?? null;
   const precioAnual   = planes?.anual?.precio   ?? null;
+  const trialDias     = planes?.trial_dias      ?? 15;
+  const PLAN_FEATURES = [...PLAN_FEATURES_BASE, `${trialDias} días de prueba gratis`];
 
   const GREEN = {
     '--primary':        '#10b981',
@@ -100,12 +101,12 @@ export default function Landing() {
 
       {/* ── Navbar ─────────────────────────────── */}
       <header style={{ borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, background: 'white', zIndex: 50 }}>
-        <div style={{ ...S.maxW(1200), padding: '0 1.5rem', display: 'flex', alignItems: 'center', height: 64, gap: 8 }}>
-          <span style={{ flex: 1 }}><PulsLogo size="md" /></span>
-          <Link to="/login" style={{ padding: '0.5rem 1.25rem', borderRadius: 8, border: '1.5px solid #10b981', color: '#10b981', fontWeight: 600, fontSize: '0.875rem', textDecoration: 'none', marginRight: '0.5rem' }}>
+        <div style={{ ...S.maxW(1200), padding: '0 1rem', display: 'flex', alignItems: 'center', height: 64, gap: 8 }}>
+          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}><PulsLogo size="md" /></span>
+          <Link to="/login" style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1.5px solid #10b981', color: '#10b981', fontWeight: 600, fontSize: '0.875rem', textDecoration: 'none', flexShrink: 0, whiteSpace: 'nowrap' }}>
             Ingresar
           </Link>
-          <Link to="/login" state={{ mode: 'register' }} style={{ padding: '0.5rem 1.25rem', borderRadius: 8, background: '#10b981', color: 'white', fontWeight: 600, fontSize: '0.875rem', textDecoration: 'none' }}>
+          <Link to="/login" state={{ mode: 'register' }} style={{ padding: '0.5rem 1rem', borderRadius: 8, background: '#10b981', color: 'white', fontWeight: 600, fontSize: '0.875rem', textDecoration: 'none', flexShrink: 0, whiteSpace: 'nowrap' }}>
             Registrarse gratis
           </Link>
         </div>
@@ -135,7 +136,7 @@ export default function Landing() {
           </p>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
             <Link to="/login" state={{ mode: 'register' }} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'white', color: '#047857', padding: '0.9rem 2rem', borderRadius: 10, fontWeight: 700, fontSize: '1rem', textDecoration: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
-              Empezar gratis — 30 días <ArrowRight style={{ width: 18, height: 18 }} />
+              Empezar gratis — {trialDias} días <ArrowRight style={{ width: 18, height: 18 }} />
             </Link>
             <Link to="/login" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, border: '2px solid rgba(255,255,255,0.6)', color: 'white', padding: '0.9rem 2rem', borderRadius: 10, fontWeight: 600, fontSize: '1rem', textDecoration: 'none' }}>
               Ya tengo cuenta
@@ -152,7 +153,7 @@ export default function Landing() {
             { value: 'Tiempo real',    label: 'Stock y ventas al instante'    },
             { value: 'Sin límites',    label: 'Usuarios y productos'          },
             { value: 'Devoluciones',   label: 'Parciales y totales'           },
-            { value: '30 días',        label: 'Prueba gratuita sin tarjeta'   },
+            { value: `${trialDias} días`, label: 'Prueba gratuita sin tarjeta'   },
           ].map(({ value, label }) => (
             <div key={label}>
               <p style={{ fontWeight: 700, fontSize: '1.05rem', color: '#047857' }}>{value}</p>
@@ -301,7 +302,7 @@ export default function Landing() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '2rem' }}>
             {[
-              { n: '1', title: 'Registrá tu empresa',  desc: 'Creá tu cuenta en minutos. Solo necesitás el nombre de tu negocio y un correo electrónico. Los primeros 30 días son gratis.', photo: PHOTOS.step1, alt: 'Registrar empresa' },
+              { n: '1', title: 'Registrá tu empresa',  desc: `Creá tu cuenta en minutos. Solo necesitás el nombre de tu negocio y un correo electrónico. Los primeros ${trialDias} días son gratis.`, photo: PHOTOS.step1, alt: 'Registrar empresa' },
               { n: '2', title: 'Cargá tus productos',  desc: 'Importá tu catálogo desde Excel o CSV de manera masiva, o cargá los productos manualmente con precios y stock por sucursal.', photo: PHOTOS.step2, alt: 'Cargar productos' },
               { n: '3', title: 'Empezá a vender',      desc: 'Tu equipo ya puede operar el sistema desde el primer día. Seguí ventas, devoluciones y reportes en tiempo real.', photo: PHOTOS.step3, alt: 'Empezar a vender' },
             ].map(({ n, title, desc, photo, alt }) => (
@@ -322,66 +323,66 @@ export default function Landing() {
 
       {/* ── Pricing ─────────────────────────────── */}
       <section style={S.sectionPad}>
-        <div style={{ ...S.maxW(900), textAlign: 'center' }}>
+        <div style={{ ...S.maxW(780), textAlign: 'center' }}>
           <h2 style={{ fontSize: 'clamp(1.5rem, 3vw, 2.25rem)', fontWeight: 800, color: '#111827', marginBottom: '0.75rem' }}>
             Planes simples y transparentes
           </h2>
-          <p style={{ color: '#6b7280', marginBottom: '3rem' }}>Todo incluido en cada plan. Sin costos ocultos ni sorpresas.</p>
+          <p style={{ color: '#6b7280', marginBottom: '2.5rem' }}>Todo incluido. Sin costos ocultos ni sorpresas.</p>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem', alignItems: 'start' }}>
+          {/* Features únicas */}
+          <div style={{ background: 'white', border: '2px solid #e5e7eb', borderRadius: 20, padding: '2rem', boxShadow: '0 4px 16px rgba(0,0,0,0.06)', marginBottom: '2rem', textAlign: 'left' }}>
+            <p style={{ fontWeight: 700, color: '#111827', marginBottom: '1rem', textAlign: 'center', fontSize: '0.95rem' }}>
+              Todo esto incluido en cualquier plan
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.25rem 1.5rem' }}>
+              {PLAN_FEATURES.map(f => (
+                <div key={f} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.35rem 0', fontSize: '0.875rem', color: '#374151' }}>
+                  <CheckCircle style={{ width: 15, height: 15, color: '#10b981', flexShrink: 0 }} />
+                  {f}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Planes */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.25rem' }}>
 
             {/* Plan Mensual */}
-            <div style={{ background: 'white', border: '2px solid #e5e7eb', borderRadius: 20, padding: '2.25rem', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }}>
-              <div style={{ background: '#f3f4f6', color: '#374151', borderRadius: 999, padding: '0.3rem 1rem', fontSize: '0.8rem', fontWeight: 600, display: 'inline-block', marginBottom: '1.25rem' }}>
+            <div style={{ background: 'white', border: '2px solid #e5e7eb', borderRadius: 16, padding: '1.75rem', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }}>
+              <div style={{ background: '#f3f4f6', color: '#374151', borderRadius: 999, padding: '0.3rem 1rem', fontSize: '0.8rem', fontWeight: 600, display: 'inline-block', marginBottom: '1rem' }}>
                 Plan Mensual
               </div>
-              <div style={{ marginBottom: '0.5rem' }}>
-                <span style={{ fontSize: '0.9rem', color: '#6b7280', verticalAlign: 'top', marginTop: 6, display: 'inline-block' }}>$</span>
-                <span style={{ fontSize: '3rem', fontWeight: 800, color: '#111827', lineHeight: 1 }}>{formatCurrency(precioMensual)}</span>
-                <span style={{ color: '#6b7280', fontSize: '0.9rem' }}> ARS / mes</span>
+              <div style={{ marginBottom: '0.4rem' }}>
+                <span style={{ fontSize: '0.9rem', color: '#6b7280', verticalAlign: 'top', marginTop: 5, display: 'inline-block' }}>$</span>
+                <span style={{ fontSize: '2.6rem', fontWeight: 800, color: '#111827', lineHeight: 1 }}>{formatCurrency(precioMensual)}</span>
+                <span style={{ color: '#6b7280', fontSize: '0.875rem' }}> ARS / mes</span>
               </div>
-              <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1.75rem' }}>
-                Primeros 30 días gratis. Sin tarjeta requerida.
+              <p style={{ color: '#6b7280', fontSize: '0.8rem', marginBottom: '1.25rem' }}>
+                Primeros {trialDias} días gratis. Sin tarjeta requerida.
               </p>
-              <ul style={{ textAlign: 'left', marginBottom: '2rem', listStyle: 'none', padding: 0 }}>
-                {PLAN_FEATURES.map(f => (
-                  <li key={f} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.4rem 0', borderBottom: '1px solid #f3f4f6', fontSize: '0.875rem', color: '#374151' }}>
-                    <CheckCircle style={{ width: 15, height: 15, color: '#10b981', flexShrink: 0 }} />
-                    {f}
-                  </li>
-                ))}
-              </ul>
-              <Link to="/login" state={{ mode: 'register' }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#10b981', color: 'white', padding: '0.95rem', borderRadius: 10, fontWeight: 700, fontSize: '1rem', textDecoration: 'none' }}>
-                Empezar prueba gratis <ArrowRight style={{ width: 18, height: 18 }} />
+              <Link to="/login" state={{ mode: 'register' }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#10b981', color: 'white', padding: '0.85rem', borderRadius: 10, fontWeight: 700, fontSize: '0.95rem', textDecoration: 'none' }}>
+                Empezar prueba gratis <ArrowRight style={{ width: 16, height: 16 }} />
               </Link>
             </div>
 
             {/* Plan Anual */}
-            <div style={{ background: 'white', border: '2px solid #10b981', borderRadius: 20, padding: '2.25rem', boxShadow: '0 12px 40px rgba(16,185,129,0.15)', position: 'relative' }}>
+            <div style={{ background: 'white', border: '2px solid #10b981', borderRadius: 16, padding: '1.75rem', boxShadow: '0 12px 40px rgba(16,185,129,0.15)', position: 'relative' }}>
               <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', background: '#10b981', color: 'white', borderRadius: 999, padding: '0.3rem 1.1rem', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
                 ⭐ 1 mes gratis
               </div>
-              <div style={{ background: '#10b981', color: 'white', borderRadius: 999, padding: '0.3rem 1rem', fontSize: '0.8rem', fontWeight: 600, display: 'inline-block', marginBottom: '1.25rem' }}>
+              <div style={{ background: '#10b981', color: 'white', borderRadius: 999, padding: '0.3rem 1rem', fontSize: '0.8rem', fontWeight: 600, display: 'inline-block', marginBottom: '1rem' }}>
                 Plan Anual
               </div>
-              <div style={{ marginBottom: '0.5rem' }}>
-                <span style={{ fontSize: '0.9rem', color: '#6b7280', verticalAlign: 'top', marginTop: 6, display: 'inline-block' }}>$</span>
-                <span style={{ fontSize: '3rem', fontWeight: 800, color: '#111827', lineHeight: 1 }}>{formatCurrency(precioAnual)}</span>
-                <span style={{ color: '#6b7280', fontSize: '0.9rem' }}> ARS / año</span>
+              <div style={{ marginBottom: '0.4rem' }}>
+                <span style={{ fontSize: '0.9rem', color: '#6b7280', verticalAlign: 'top', marginTop: 5, display: 'inline-block' }}>$</span>
+                <span style={{ fontSize: '2.6rem', fontWeight: 800, color: '#111827', lineHeight: 1 }}>{formatCurrency(precioAnual)}</span>
+                <span style={{ color: '#6b7280', fontSize: '0.875rem' }}> ARS / año</span>
               </div>
-              <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1.75rem' }}>
+              <p style={{ color: '#6b7280', fontSize: '0.8rem', marginBottom: '1.25rem' }}>
                 Equivale a 11 meses — ahorras un mes completo.
               </p>
-              <ul style={{ textAlign: 'left', marginBottom: '2rem', listStyle: 'none', padding: 0 }}>
-                {PLAN_FEATURES.map(f => (
-                  <li key={f} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.4rem 0', borderBottom: '1px solid #f3f4f6', fontSize: '0.875rem', color: '#374151' }}>
-                    <CheckCircle style={{ width: 15, height: 15, color: '#10b981', flexShrink: 0 }} />
-                    {f}
-                  </li>
-                ))}
-              </ul>
-              <Link to="/login" state={{ mode: 'register' }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#10b981', color: 'white', padding: '0.95rem', borderRadius: 10, fontWeight: 700, fontSize: '1rem', textDecoration: 'none' }}>
-                Empezar prueba gratis <ArrowRight style={{ width: 18, height: 18 }} />
+              <Link to="/login" state={{ mode: 'register' }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#10b981', color: 'white', padding: '0.85rem', borderRadius: 10, fontWeight: 700, fontSize: '0.95rem', textDecoration: 'none' }}>
+                Empezar prueba gratis <ArrowRight style={{ width: 16, height: 16 }} />
               </Link>
             </div>
 
@@ -406,7 +407,7 @@ export default function Landing() {
             ¿Listo para transformar tu negocio?
           </h2>
           <p style={{ color: 'rgba(255,255,255,0.85)', marginBottom: '2rem', fontSize: '1rem', lineHeight: 1.7 }}>
-            Registrá tu empresa hoy y probá el sistema 30 días sin costo. Sin tarjeta, sin compromiso.
+            Registrá tu empresa hoy y probá el sistema {trialDias} días sin costo. Sin tarjeta, sin compromiso.
           </p>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
             <Link to="/login" state={{ mode: 'register' }} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'white', color: '#047857', padding: '0.9rem 2rem', borderRadius: 10, fontWeight: 700, fontSize: '1rem', textDecoration: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>

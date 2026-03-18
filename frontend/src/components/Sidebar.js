@@ -19,7 +19,7 @@ import {
   X
 } from 'lucide-react';
 
-const Sidebar = ({ isOpen, onClose, stockAlertCount = 0 }) => {
+const Sidebar = ({ isOpen, onClose, stockAlertCount = 0, notifCount = 0 }) => {
   const { user, logout } = useContext(AuthContext);
   const location = useLocation();
   const [config, setConfig] = useState(null);
@@ -161,9 +161,9 @@ const Sidebar = ({ isOpen, onClose, stockAlertCount = 0 }) => {
           >
             <Icon className="w-5 h-5" />
             {label}
-            {path === '/dashboard' && stockAlertCount > 0 && (
+            {path === '/dashboard' && notifCount > 0 && (
               <span className="nav-stock-badge">
-                {stockAlertCount > 99 ? '99+' : stockAlertCount}
+                {notifCount > 99 ? '99+' : notifCount}
               </span>
             )}
           </Link>

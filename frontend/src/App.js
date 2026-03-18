@@ -192,6 +192,7 @@ const Layout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, suscripcion } = React.useContext(AuthContext);
   const [stockAlertCount, setStockAlertCount] = useState(0);
+  const [notifCount, setNotifCount] = useState(0);
 
   useEffect(() => {
     if (!user) return;
@@ -209,6 +210,22 @@ const Layout = ({ children }) => {
     };
   }, [user]);
 
+  useEffect(() => {
+    if (!user) return;
+    const fetchNotifCount = () => {
+      axios.get(`${API}/notificaciones/count`)
+        .then(res => setNotifCount(res.data?.no_leidas || 0))
+        .catch(() => {});
+    };
+    fetchNotifCount();
+    const interval = setInterval(fetchNotifCount, 2 * 60 * 1000);
+    window.addEventListener('notif-updated', fetchNotifCount);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('notif-updated', fetchNotifCount);
+    };
+  }, [user]);
+
   const enGracia = suscripcion?.en_gracia;
   const graciaVenc = suscripcion?.gracia_vencimiento;
   const diasGracia = suscripcion?.dias_restantes ?? 0;
@@ -221,14 +238,14 @@ const Layout = ({ children }) => {
           onClick={() => setSidebarOpen(false)}
         />
       )}
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} stockAlertCount={stockAlertCount} />
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} stockAlertCount={stockAlertCount} notifCount={notifCount} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="mobile-topbar">
           <button className="hamburger-btn" onClick={() => setSidebarOpen(true)}>
             <Menu className="w-6 h-6" />
-            {stockAlertCount > 0 && (
+            {(stockAlertCount > 0 || notifCount > 0) && (
               <span className="hamburger-stock-badge">
-                {stockAlertCount > 99 ? '99+' : stockAlertCount}
+                {(stockAlertCount + notifCount) > 99 ? '99+' : (stockAlertCount + notifCount)}
               </span>
             )}
           </button>

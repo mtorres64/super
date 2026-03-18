@@ -66,6 +66,7 @@ const Notificaciones = () => {
       setNotificaciones(prev =>
         prev.map(n => n.id === id ? { ...n, leida: true } : n)
       );
+      window.dispatchEvent(new Event('notif-updated'));
     } catch {
       toast.error('Error al marcar notificación');
     }
@@ -77,6 +78,7 @@ const Notificaciones = () => {
       await axios.put(`${API}/notificaciones/leer-todas`);
       setNotificaciones(prev => prev.map(n => ({ ...n, leida: true })));
       toast.success('Todas las notificaciones marcadas como leídas');
+      window.dispatchEvent(new Event('notif-updated'));
     } catch {
       toast.error('Error al marcar notificaciones');
     } finally {
