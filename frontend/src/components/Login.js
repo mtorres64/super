@@ -433,7 +433,7 @@ const Login = () => {
 
       {/* ════════════════════════ RECUPERAR CONTRASEÑA ══════════════════════ */}
       {mode === 'reset' && (
-        <div className="login-card fade-in" style={{ padding: 0, overflow: 'hidden', background: 'rgba(4, 80, 50, 0.72)' }}>
+        <div className="login-card fade-in" style={{ padding: 0, overflow: 'hidden', background: 'rgba(4, 80, 50, 0.72)', borderRadius: 20, boxShadow: '0 32px 64px -12px rgba(0,0,0,0.25)' }}>
 
           {/* Banner verde superior */}
           {(() => {
