@@ -3438,11 +3438,13 @@ app.include_router(afip_router)
 
 origins = os.environ.get("CORS_ORIGINS", "")
 allow_origins = [o.strip() for o in origins.split(",") if o.strip()]
+is_wildcard = allow_origins == ["*"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
-    allow_credentials=True,
+    allow_origin_regex=r".*" if is_wildcard else None,
+    allow_credentials=not is_wildcard,
     allow_methods=["*"],
     allow_headers=["*"],
 )
