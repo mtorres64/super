@@ -22,9 +22,7 @@ import mercadopago
 import httpx
 import asyncio
 import random
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import resend
 from afip import AfipService, encrypt_private_key, decrypt_private_key, extract_p12
 
 ROOT_DIR = Path(__file__).parent
@@ -47,12 +45,9 @@ FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 SUSCRIPCION_PRECIO = float(os.environ.get('SUSCRIPCION_PRECIO', '50000'))
 SUSCRIPCION_PLAN_NOMBRE = os.environ.get('SUSCRIPCION_PLAN_NOMBRE', 'Plan Mensual')
 
-# SMTP settings
-SMTP_HOST     = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
-SMTP_PORT     = int(os.environ.get('SMTP_PORT', '587'))
-SMTP_USER     = os.environ.get('SMTP_USER', '')
-SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', '')
-SMTP_FROM     = os.environ.get('SMTP_FROM', SMTP_USER)
+# Resend settings
+resend.api_key = os.environ.get('RESEND_API_KEY', '')
+EMAIL_FROM = os.environ.get('EMAIL_FROM', 'PULS <onboarding@resend.dev>')
 
 async def get_precio_suscripcion() -> float:
     doc = await db.system_config.find_one({"key": "suscripcion_precio"})
@@ -248,19 +243,13 @@ def _build_email_html(titulo: str, subtitulo: str, codigo: str, nota_pie: str) -
         '</table></td></tr></table></body></html>'
     )
 
-def _smtp_send(destinatario: str, subject: str, plain: str, html: str):
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"]    = "PULS <{}>".format(SMTP_FROM)
-    msg["To"]      = destinatario
-    msg.attach(MIMEText(plain, "plain", "utf-8"))
-    msg.attach(MIMEText(html,  "html",  "utf-8"))
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
-        server.ehlo()
-        server.starttls()
-        server.ehlo()
-        server.login(SMTP_USER, SMTP_PASSWORD)
-        server.sendmail(SMTP_FROM, [destinatario], msg.as_string())
+def _resend_send(destinatario: str, subject: str, html: str):
+    resend.Emails.send({
+        "from": EMAIL_FROM,
+        "to": [destinatario],
+        "subject": subject,
+        "html": html,
+    })
 
 def _send_email_otp_sync(destinatario: str, codigo: str):
     html = _build_email_html(
@@ -270,8 +259,7 @@ def _send_email_otp_sync(destinatario: str, codigo: str):
         codigo=codigo,
         nota_pie="Si no solicitaste este c\u00f3digo, pod\u00e9s ignorar este mensaje.",
     )
-    plain = "Tu c\u00f3digo de verificaci\u00f3n para PULS es: {}\nV\u00e1lido por 10 minutos.".format(codigo)
-    _smtp_send(destinatario, "Tu c\u00f3digo de verificaci\u00f3n PULS: {}".format(codigo), plain, html)
+    _resend_send(destinatario, "Tu código de verificación PULS: {}".format(codigo), html)
 
 def _send_password_reset_sync(destinatario: str, codigo: str):
     html = _build_email_html(
@@ -281,14 +269,14 @@ def _send_password_reset_sync(destinatario: str, codigo: str):
         codigo=codigo,
         nota_pie="Si no solicitaste este cambio, pod\u00e9s ignorar este mensaje. Tu contrase\u00f1a no se modificar\u00e1.",
     )
-    plain = "C\u00f3digo para restablecer tu contrase\u00f1a de PULS: {}\nV\u00e1lido por 15 minutos.".format(codigo)
-    _smtp_send(destinatario, "Recuperar contrase\u00f1a PULS: {}".format(codigo), plain, html)
+    _resend_send(destinatario, "Recuperar contraseña PULS: {}".format(codigo), html)
 
 async def send_email_otp(destinatario: str, codigo: str):
     await asyncio.to_thread(_send_email_otp_sync, destinatario, codigo)
 
 async def send_password_reset_email(destinatario: str, codigo: str):
     await asyncio.to_thread(_send_password_reset_sync, destinatario, codigo)
+
 
 class OTPEnviar(BaseModel):
     email: str
