@@ -434,36 +434,6 @@ const ProductManagement = () => {
             />
           </div>
 
-          {/* Export dropdown */}
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={() => setShowExportMenu(prev => !prev)}
-              className="btn"
-              style={{ background: 'var(--primary)', color: 'var(--primary-text)' }}
-            >
-              <Download className="w-4 h-4" />
-              Exportar
-              <ChevronDown className="w-3 h-3 ml-1" />
-            </button>
-            {showExportMenu && (
-              <div className="absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
-                <button
-                  onClick={() => handleExport('csv')}
-                  className="flex items-center gap-2 w-full px-4 py-2 text-sm hover:bg-gray-50 rounded-t-lg"
-                >
-                  <FileText className="w-4 h-4 text-green-600" />
-                  CSV
-                </button>
-                <button
-                  onClick={() => handleExport('xlsx')}
-                  className="flex items-center gap-2 w-full px-4 py-2 text-sm hover:bg-gray-50 rounded-b-lg"
-                >
-                  <FileText className="w-4 h-4 text-blue-600" />
-                  Excel (XLSX)
-                </button>
-              </div>
-            )}
-          </div>
 
           {/* Import button */}
           <button

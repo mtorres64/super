@@ -46,7 +46,7 @@ SUSCRIPCION_PRECIO = float(os.environ.get('SUSCRIPCION_PRECIO', '50000'))
 SUSCRIPCION_PLAN_NOMBRE = os.environ.get('SUSCRIPCION_PLAN_NOMBRE', 'Plan Mensual')
 
 # Resend settings
-resend.api_key = os.environ.get('RESEND_API_KEY', '')
+resend.api_key = os.environ.get('APIRESEND_API_KEY', '')
 EMAIL_FROM = os.environ.get('EMAIL_FROM', 'PULS <onboarding@resend.dev>')
 
 async def get_precio_suscripcion() -> float:
