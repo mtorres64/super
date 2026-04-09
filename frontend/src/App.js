@@ -251,7 +251,7 @@ const Layout = ({ children }) => {
   const diasGracia = suscripcion?.dias_restantes ?? 0;
 
   return (
-    <div className="flex h-screen bg-gray-100">
+    <div className="flex h-screen bg-gray-50">
       {sidebarOpen && (
         <div
           className="sidebar-overlay overlay-visible"
@@ -333,8 +333,8 @@ const ProtectedRoute = ({ children, allowedRoles = [], skipSubscriptionCheck = f
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="animate-spin rounded-full h-7 w-7 border-2 border-gray-200 border-t-green-600"></div>
       </div>
     );
   }
