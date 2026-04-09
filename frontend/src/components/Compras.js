@@ -3,6 +3,7 @@ import useModalClose from '../useModalClose';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { API } from '../App';
+import { parseApiDate } from '../lib/utils';
 import { toast } from 'sonner';
 import {
   ShoppingBag,
@@ -432,7 +433,7 @@ const Compras = () => {
 
   const formatDate = (iso) => {
     if (!iso) return '—';
-    return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return parseApiDate(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
   const formatMoney = (val) => {
@@ -468,22 +469,20 @@ const Compras = () => {
         <div className="flex gap-0">
           <button
             onClick={() => setActiveTab('facturas')}
-            className={`flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'facturas'
-                ? 'border-green-500 text-green-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+            className="flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 transition-colors"
+            style={activeTab === 'facturas'
+              ? { borderColor: 'var(--primary)', color: 'var(--primary)' }
+              : { borderColor: 'transparent', color: '#6b7280' }}
           >
             <FileText className="w-4 h-4" />
             Facturas
           </button>
           <button
             onClick={() => setActiveTab('proveedores')}
-            className={`flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'proveedores'
-                ? 'border-green-500 text-green-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+            className="flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 transition-colors"
+            style={activeTab === 'proveedores'
+              ? { borderColor: 'var(--primary)', color: 'var(--primary)' }
+              : { borderColor: 'transparent', color: '#6b7280' }}
           >
             <Building2 className="w-4 h-4" />
             Proveedores
@@ -788,6 +787,24 @@ const Compras = () => {
                                   onBlur={() => setTimeout(() => setOpenAutocompleteIndex(null), 180)}
                                   placeholder={compraForm.sucursal_id ? 'Buscar producto...' : 'Descripción del artículo'}
                                 />
+                                {item.product_id && (
+                                  <div className="flex flex-wrap gap-3 mt-1 text-xs text-blue-700 items-center">
+                                    <span className="flex items-center gap-1">
+                                      <Package className="w-3 h-3" />
+                                      Costo anterior: {item.costo_actual != null ? `$${formatMoney(item.costo_actual)}` : 'sin datos'}
+                                    </span>
+                                    <span>Precio venta: ${formatMoney(item.precio_actual)}</span>
+                                    {item.margen_actual != null && (
+                                      <span>Margen: {item.margen_actual}%</span>
+                                    )}
+                                    {precioSugerido != null && costoNuevo > 0 && (
+                                      <span className="flex items-center gap-1 font-semibold text-green-700">
+                                        <TrendingUp className="w-3 h-3" />
+                                        Precio sugerido: ${formatMoney(precioSugerido)}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                               </td>
                               <td className="px-2 py-1">
                                 <input
@@ -826,30 +843,6 @@ const Compras = () => {
                                 )}
                               </td>
                             </tr>
-
-                            {/* Info row when a product is linked */}
-                            {item.product_id && (
-                              <tr className="bg-blue-50 border-t border-blue-100">
-                                <td colSpan={5} className="px-4 py-1.5">
-                                  <div className="flex flex-wrap gap-4 text-xs text-blue-800 items-center">
-                                    <span className="flex items-center gap-1">
-                                      <Package className="w-3 h-3" />
-                                      Costo anterior: {item.costo_actual != null ? `$${formatMoney(item.costo_actual)}` : 'sin datos'}
-                                    </span>
-                                    <span>Precio venta: ${formatMoney(item.precio_actual)}</span>
-                                    {item.margen_actual != null && (
-                                      <span>Margen: {item.margen_actual}%</span>
-                                    )}
-                                    {precioSugerido != null && costoNuevo > 0 && (
-                                      <span className="flex items-center gap-1 font-semibold text-green-700">
-                                        <TrendingUp className="w-3 h-3" />
-                                        Precio sugerido: ${formatMoney(precioSugerido)}
-                                      </span>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
                           </React.Fragment>
                         );
                       })}

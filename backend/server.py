@@ -22,7 +22,9 @@ import mercadopago
 import httpx
 import asyncio
 import random
-import resend
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from afip import AfipService, encrypt_private_key, decrypt_private_key, extract_p12
 
 ROOT_DIR = Path(__file__).parent
@@ -30,7 +32,7 @@ load_dotenv(ROOT_DIR / '.env')
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
+client = AsyncIOMotorClient(mongo_url, tz_aware=True)
 db = client[os.environ['DB_NAME']]
 
 # JWT settings
@@ -45,9 +47,12 @@ FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 SUSCRIPCION_PRECIO = float(os.environ.get('SUSCRIPCION_PRECIO', '50000'))
 SUSCRIPCION_PLAN_NOMBRE = os.environ.get('SUSCRIPCION_PLAN_NOMBRE', 'Plan Mensual')
 
-# Resend settings
-resend.api_key = os.environ.get('APIRESEND_API_KEY', '')
-EMAIL_FROM = os.environ.get('EMAIL_FROM', 'PULS <onboarding@resend.dev>')
+# SMTP settings
+SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
+SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
+SMTP_USER = os.environ.get('SMTP_USER', '')
+SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', '')
+EMAIL_FROM = os.environ.get('EMAIL_FROM', 'PULS <noreply@example.com>')
 
 async def get_precio_suscripcion() -> float:
     doc = await db.system_config.find_one({"key": "suscripcion_precio"})
@@ -243,13 +248,17 @@ def _build_email_html(titulo: str, subtitulo: str, codigo: str, nota_pie: str) -
         '</table></td></tr></table></body></html>'
     )
 
-def _resend_send(destinatario: str, subject: str, html: str):
-    resend.Emails.send({
-        "from": EMAIL_FROM,
-        "to": [destinatario],
-        "subject": subject,
-        "html": html,
-    })
+def _smtp_send(destinatario: str, subject: str, html: str):
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = subject
+    msg['From'] = EMAIL_FROM
+    msg['To'] = destinatario
+    msg.attach(MIMEText(html, 'html', 'utf-8'))
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        server.ehlo()
+        server.starttls()
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.sendmail(SMTP_USER, [destinatario], msg.as_string())
 
 def _send_email_otp_sync(destinatario: str, codigo: str):
     html = _build_email_html(
@@ -259,7 +268,7 @@ def _send_email_otp_sync(destinatario: str, codigo: str):
         codigo=codigo,
         nota_pie="Si no solicitaste este c\u00f3digo, pod\u00e9s ignorar este mensaje.",
     )
-    _resend_send(destinatario, "Tu código de verificación PULS: {}".format(codigo), html)
+    _smtp_send(destinatario,"Tu código de verificación PULS: {}".format(codigo), html)
 
 def _send_password_reset_sync(destinatario: str, codigo: str):
     html = _build_email_html(
@@ -269,7 +278,7 @@ def _send_password_reset_sync(destinatario: str, codigo: str):
         codigo=codigo,
         nota_pie="Si no solicitaste este cambio, pod\u00e9s ignorar este mensaje. Tu contrase\u00f1a no se modificar\u00e1.",
     )
-    _resend_send(destinatario, "Recuperar contraseña PULS: {}".format(codigo), html)
+    _smtp_send(destinatario,"Recuperar contraseña PULS: {}".format(codigo), html)
 
 async def send_email_otp(destinatario: str, codigo: str):
     await asyncio.to_thread(_send_email_otp_sync, destinatario, codigo)
@@ -610,14 +619,19 @@ class SaleItem(BaseModel):
     nombre: Optional[str] = None
     cantidad: float
     precio_unitario: float
-    subtotal: float
+    subtotal: Optional[float] = None
+    total: Optional[float] = None
+
+    @property
+    def total_item(self):
+        return self.subtotal or self.total or 0
 
 class Sale(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     empresa_id: str
     cajero_id: str
     branch_id: str
-    session_id: str
+    session_id: Optional[str] = None
     items: List[SaleItem]
     subtotal: float
     impuestos: float = 0.0
@@ -1143,6 +1157,19 @@ async def register_empresa(data: EmpresaRegister):
     )
     await db.suscripciones.insert_one(suscripcion.dict())
 
+    # Create default branch
+    default_branch = Branch(
+        empresa_id=empresa.id,
+        nombre="Sucursal Principal",
+        direccion="",
+    )
+    await db.branches.insert_one(default_branch.dict())
+
+    # Create default categories
+    for cat_nombre in ["General", "Alimentos", "Bebidas", "Limpieza"]:
+        category = Category(empresa_id=empresa.id, nombre=cat_nombre)
+        await db.categories.insert_one(category.dict())
+
     # Return token (auto-login)
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -1417,7 +1444,11 @@ async def create_product(product_data: ProductCreate, user: User = Depends(requi
     if product_dict.get("kind") == ProductKind.COMBO:
         product_dict["control_stock"] = False
     product = Product(**product_dict, empresa_id=user.empresa_id)
-    await db.products.insert_one(product.dict())
+    _cb = product_dict.get('codigo_barras')
+    _pdoc = {k: v for k, v in product.model_dump().items() if k != 'codigo_barras' and v is not None}
+    if _cb:
+        _pdoc['codigo_barras'] = _cb
+    await db.products.insert_one(_pdoc)
     # Auto-sync: create branch_products for all active branches of this empresa
     branches = await db.branches.find({"activo": True, "empresa_id": user.empresa_id}).to_list(1000)
     for branch in branches:
@@ -1442,10 +1473,18 @@ async def create_product(product_data: ProductCreate, user: User = Depends(requi
 @api_router.get("/products", response_model=List[Product])
 async def get_products(user: User = Depends(get_current_user)):
     products = await db.products.find({"empresa_id": user.empresa_id, "activo": True}).to_list(1000)
+    result = []
     for p in products:
         if p.get('kind') != 'combo' and p.get('control_stock') is None:
             p['control_stock'] = True
-    return [Product(**prod) for prod in products]
+        # Sanitize: remove null codigo_barras so Pydantic gets None not null
+        if 'codigo_barras' in p and p['codigo_barras'] is None:
+            del p['codigo_barras']
+        try:
+            result.append(Product(**p))
+        except Exception as e:
+            logger.warning(f"Skipping invalid product {p.get('id')}: {e}")
+    return result
 
 @api_router.get("/products/export")
 async def export_products(
@@ -1492,6 +1531,71 @@ async def export_products(
             headers={"Content-Disposition": "attachment; filename=productos.csv"},
         )
 
+@api_router.get("/products/import-template")
+async def get_import_template(user: User = Depends(require_role([UserRole.ADMIN]))):
+    import io as _io
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Productos"
+
+    HDR_FILL  = PatternFill("solid", fgColor="1a7a4a")
+    REQ_FILL  = PatternFill("solid", fgColor="e8f5e9")
+    OPT_FILL  = PatternFill("solid", fgColor="f3f4f6")
+    THIN      = Border(
+        left=Side(style="thin", color="cccccc"), right=Side(style="thin", color="cccccc"),
+        top=Side(style="thin", color="cccccc"),  bottom=Side(style="thin", color="cccccc"),
+    )
+    WHITE_BOLD = Font(bold=True, color="FFFFFF", name="Calibri", size=11)
+    NORM       = Font(name="Calibri", size=10)
+
+    cols = [
+        ("nombre",          28, "OBLIGATORIO. Nombre del producto."),
+        ("tipo",            18, "OBLIGATORIO. Valores: codigo_barras  o  por_peso"),
+        ("precio",          14, "OBLIGATORIO. Precio de venta (solo numeros)."),
+        ("categoria",       18, "OBLIGATORIO. Debe coincidir con una categoria del sistema. Por defecto: General, Alimentos, Bebidas, Limpieza"),
+        ("codigo_barras",   20, "Opcional. Si ya existe ese codigo el producto se ACTUALIZA."),
+        ("precio_por_peso", 18, "Opcional. Solo para tipo=por_peso. Precio por kg."),
+        ("stock",           12, "Opcional. Stock inicial. Por defecto: 0"),
+        ("stock_minimo",    14, "Opcional. Alerta de stock bajo. Por defecto: 10"),
+    ]
+
+    for c, (header, width, _) in enumerate(cols, start=1):
+        cell = ws.cell(row=1, column=c, value=header)
+        cell.font      = WHITE_BOLD
+        cell.fill      = HDR_FILL
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border    = THIN
+        ws.column_dimensions[get_column_letter(c)].width = width
+    ws.row_dimensions[1].height = 22
+
+    dv = DataValidation(type="list", formula1='"codigo_barras,por_peso"', allow_blank=False)
+    dv.sqref = "B2:B1000"
+    ws.add_data_validation(dv)
+
+    for r in range(2, 202):
+        for c in range(1, 9):
+            cell = ws.cell(row=r, column=c)
+            cell.fill   = REQ_FILL if c <= 4 else OPT_FILL
+            cell.border = THIN
+            cell.font   = NORM
+        ws.row_dimensions[r].height = 18
+
+    ws.freeze_panes = "A2"
+
+    buf = _io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=plantilla_productos.xlsx"},
+    )
+
 @api_router.post("/products/import")
 async def import_products(
     file: UploadFile = File(...),
@@ -1517,24 +1621,60 @@ async def import_products(
 
     df.columns = df.columns.str.strip().str.lower()
 
+    # Fix codigo_barras index: must be sparse to allow multiple products without barcode
+    await db.products.update_many({"codigo_barras": None}, {"$unset": {"codigo_barras": ""}})
+    try:
+        await db.command("dropIndexes", "products", index="empresa_id_1_codigo_barras_1")
+        logger.info("Dropped index empresa_id_1_codigo_barras_1")
+    except Exception as _e:
+        logger.info(f"Drop index (may not exist yet): {_e}")
+    try:
+        result = await db.command({
+            "createIndexes": "products",
+            "indexes": [{
+                "key": {"empresa_id": 1, "codigo_barras": 1},
+                "name": "empresa_id_1_codigo_barras_1",
+                "unique": True,
+                "sparse": True
+            }]
+        })
+        logger.info(f"Index created: {result}")
+    except Exception as _e:
+        logger.error(f"FAILED to create sparse index: {_e}")
+
     categories = await db.categories.find({"empresa_id": user.empresa_id}).to_list(1000)
     cat_map = {c["nombre"].strip().lower(): c["id"] for c in categories}
+    cat_name_map = {c["nombre"].strip().lower(): c["nombre"].strip() for c in categories}
     branches = await db.branches.find({"activo": True, "empresa_id": user.empresa_id}).to_list(1000)
 
     created = 0
     updated = 0
     errors = []
+    new_categories = []
 
     for idx, row in df.iterrows():
         try:
-            cat_nombre = str(row.get("categoria", "")).strip().lower()
+            cat_nombre_raw = str(row.get("categoria", "")).strip()
+            cat_nombre = cat_nombre_raw.lower()
             categoria_id = cat_map.get(cat_nombre)
             if not categoria_id:
-                errors.append(f"Fila {idx + 2}: Categoría '{row.get('categoria')}' no encontrada")
-                continue
+                new_cat = Category(empresa_id=user.empresa_id, nombre=cat_nombre_raw)
+                await db.categories.insert_one(new_cat.dict())
+                cat_map[cat_nombre] = new_cat.id
+                cat_name_map[cat_nombre] = cat_nombre_raw
+                new_categories.append(cat_nombre_raw)
+                categoria_id = new_cat.id
 
             raw_barcode = row.get("codigo_barras")
-            codigo_barras = str(raw_barcode).strip() if pd.notna(raw_barcode) and str(raw_barcode).strip() not in ("", "nan") else None
+            if pd.notna(raw_barcode) and str(raw_barcode).strip() not in ("", "nan"):
+                # pandas reads numeric barcodes as float (e.g. 7790895000107.0) — convert to int string
+                try:
+                    codigo_barras = str(int(float(str(raw_barcode).strip())))
+                except (ValueError, OverflowError):
+                    codigo_barras = str(raw_barcode).strip()
+            else:
+                # No barcode provided: generate a unique internal code to avoid index conflicts
+                codigo_barras = f"INT-{uuid.uuid4().hex[:10].upper()}"
 
             tipo = str(row.get("tipo", "codigo_barras")).strip()
             if tipo not in ("codigo_barras", "por_peso"):
@@ -1554,14 +1694,16 @@ async def import_products(
                 "codigo_barras": codigo_barras,
                 "tipo": tipo,
                 "precio": float(row["precio"]),
-                "precio_por_peso": precio_por_peso,
                 "categoria_id": categoria_id,
                 "stock": stock,
                 "stock_minimo": stock_minimo,
             }
+            if precio_por_peso is not None:
+                product_data["precio_por_peso"] = precio_por_peso
 
+            # Only try to find existing if it's a real barcode (not an internal auto-generated one)
             existing = None
-            if codigo_barras:
+            if codigo_barras and not codigo_barras.startswith("INT-"):
                 existing = await db.products.find_one({"codigo_barras": codigo_barras, "empresa_id": user.empresa_id})
 
             if existing:
@@ -1571,8 +1713,10 @@ async def import_products(
                 )
                 updated += 1
             else:
+                product_data['codigo_barras'] = codigo_barras
                 product = Product(**product_data, empresa_id=user.empresa_id)
-                await db.products.insert_one(product.dict())
+                _pdoc = {k: v for k, v in product.model_dump().items() if v is not None}
+                await db.products.insert_one(_pdoc)
                 for branch in branches:
                     bp_exists = await db.branch_products.find_one({
                         "product_id": product.id,
@@ -1595,7 +1739,7 @@ async def import_products(
         except Exception as e:
             errors.append(f"Fila {idx + 2}: {str(e)}")
 
-    return {"created": created, "updated": updated, "errors": errors, "total_procesado": created + updated + len(errors)}
+    return {"created": created, "updated": updated, "errors": errors, "total_procesado": created + updated + len(errors), "new_categories": new_categories}
 
 @api_router.get("/products/{product_id}", response_model=Product)
 async def get_product(product_id: str, user: User = Depends(get_current_user)):
@@ -1638,6 +1782,15 @@ async def update_product(product_id: str, product_data: ProductUpdate, user: Use
 
     updated_product = await db.products.find_one({"id": product_id, "empresa_id": user.empresa_id})
     return Product(**updated_product)
+
+@api_router.delete("/products/{product_id}")
+async def delete_product(product_id: str, user: User = Depends(require_role([UserRole.ADMIN]))):
+    product = await db.products.find_one({"id": product_id, "empresa_id": user.empresa_id})
+    if not product:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    await db.products.delete_one({"id": product_id, "empresa_id": user.empresa_id})
+    await db.branch_products.delete_many({"product_id": product_id, "empresa_id": user.empresa_id})
+    return {"ok": True}
 
 # User management routes
 @api_router.get("/users", response_model=List[User])
@@ -1930,7 +2083,13 @@ async def get_sales(user: User = Depends(get_current_user)):
     else:
         sales = await db.sales.find({"empresa_id": user.empresa_id}).sort("fecha", -1).to_list(1000)
 
-    return [Sale(**sale) for sale in sales]
+    result = []
+    for sale in sales:
+        try:
+            result.append(Sale(**sale))
+        except Exception as e:
+            logger.warning(f"Skipping invalid sale {sale.get('id')}: {e}")
+    return result
 
 @api_router.get("/sales/{sale_id}/returns", response_model=List[SaleReturn])
 async def get_sale_returns(sale_id: str, user: User = Depends(get_current_user)):
@@ -2136,6 +2295,9 @@ async def get_dashboard_stats(user: User = Depends(get_current_user)):
                 "stock_minimo": bp.get("stock_minimo", 0)
             })
 
+    sucursales_count = await db.branches.count_documents({"empresa_id": user.empresa_id, "activo": True})
+    categorias_count = await db.categories.count_documents({"empresa_id": user.empresa_id})
+
     return {
         "ventas_hoy": {
             "total": total_ventas_hoy,
@@ -2145,8 +2307,45 @@ async def get_dashboard_stats(user: User = Depends(get_current_user)):
             "total": total_productos,
             "bajo_stock": bajo_stock_count
         },
-        "productos_bajo_stock": preview
+        "productos_bajo_stock": preview,
+        "onboarding": {
+            "sucursales": sucursales_count,
+            "categorias": categorias_count,
+            "productos": total_productos,
+        }
     }
+
+@api_router.get("/dashboard/ventas-diarias")
+async def get_ventas_diarias(
+    dias: int = Query(60, ge=7, le=90),
+    branch_id: Optional[str] = Query(None),
+    user: User = Depends(get_current_user)
+):
+    desde = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=dias - 1)
+    filtro = {"empresa_id": user.empresa_id, "fecha": {"$gte": desde}}
+    if branch_id:
+        filtro["branch_id"] = branch_id
+    ventas = await db.sales.find(filtro, {"fecha": 1, "total": 1}).to_list(100000)
+
+    # Aggregate by local date string (YYYY-MM-DD)
+    totals: dict = {}
+    for v in ventas:
+        fecha = v.get("fecha")
+        if not fecha:
+            continue
+        if isinstance(fecha, str):
+            day = fecha[:10]
+        else:
+            day = fecha.strftime("%Y-%m-%d")
+        totals[day] = totals.get(day, 0) + v.get("total", 0)
+
+    # Fill every day in the range with 0 if no sales
+    result = []
+    for i in range(dias):
+        d = (desde + timedelta(days=i)).strftime("%Y-%m-%d")
+        result.append({"fecha": d, "total": round(totals.get(d, 0), 2)})
+
+    return result
 
 @api_router.get("/dashboard/stock-alerts")
 async def get_stock_alerts(

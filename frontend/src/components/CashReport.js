@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { API } from '../App';
-import { formatAmount } from '../lib/utils';
+import { formatAmount, parseApiDate } from '../lib/utils';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import {
@@ -43,7 +43,7 @@ const CashReport = () => {
   };
 
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
+    const date = parseApiDate(dateString);
     return date.toLocaleDateString('es-ES', {
       day: '2-digit',
       month: '2-digit',

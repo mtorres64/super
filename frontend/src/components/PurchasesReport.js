@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '../App';
-import { formatAmount } from '../lib/utils';
+import { formatAmount, parseApiDate } from '../lib/utils';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
+import * as XLSX from 'xlsx';
 import {
   Calendar,
   Download,
@@ -146,7 +147,7 @@ const PurchasesReport = () => {
   };
 
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
+    const date = parseApiDate(dateString);
     return date.toLocaleDateString('es-ES', {
       day: '2-digit',
       month: '2-digit',
@@ -280,20 +281,27 @@ const PurchasesReport = () => {
     }
   };
 
-  const exportToCSV = () => {
+  const exportToXLSX = () => {
     const filtered = getFilteredCompras();
-    const header = 'Factura,Fecha,Sucursal,Proveedor,Items,Subtotal,Impuestos,Total\n';
-    const rows = filtered.map(c =>
-      `${c.numero_factura},${formatDate(c.fecha)},${getBranchName(c.sucursal_id)},${getProveedorName(c.proveedor_id)},${c.items.length},${c.subtotal.toFixed(2)},${c.impuestos.toFixed(2)},${c.total.toFixed(2)}`
-    ).join('\n');
-    const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.setAttribute('href', URL.createObjectURL(blob));
-    link.setAttribute('download', `compras_${dateFilter}_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    if (filtered.length === 0) return;
+    const rows = filtered.map(c => ({
+      Factura: c.numero_factura,
+      Fecha: formatDate(c.fecha),
+      Sucursal: getBranchName(c.sucursal_id),
+      Proveedor: getProveedorName(c.proveedor_id),
+      Items: c.items.length,
+      Subtotal: c.subtotal,
+      Impuestos: c.impuestos,
+      Total: c.total,
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 16 }, { wch: 18 }, { wch: 22 }, { wch: 24 },
+      { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Compras');
+    XLSX.writeFile(wb, `compras_${dateFilter}_${new Date().toISOString().split('T')[0]}.xlsx`);
     toast.success('Reporte exportado exitosamente');
   };
 
@@ -361,12 +369,12 @@ const PurchasesReport = () => {
             {generatingPdf ? 'Generando PDF...' : 'Descargar PDF'}
           </button>
           <button
-            onClick={exportToCSV}
+            onClick={exportToXLSX}
             className="btn btn-secondary"
             disabled={filteredCompras.length === 0}
           >
             <Download className="w-4 h-4" />
-            Exportar CSV
+            Exportar Excel
           </button>
         </div>
       </div>

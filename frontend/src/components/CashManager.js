@@ -3,7 +3,7 @@ import useModalClose from '../useModalClose';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { API, AuthContext } from '../App';
-import { formatAmount } from '../lib/utils';
+import { formatAmount, parseApiDate } from '../lib/utils';
 import { toast } from 'sonner';
 import { 
   DollarSign, 
@@ -100,7 +100,7 @@ const CashManager = () => {
   };
 
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
+    const date = parseApiDate(dateString);
     return date.toLocaleDateString('es-ES', {
       day: '2-digit',
       month: '2-digit',
@@ -197,7 +197,7 @@ const CashManager = () => {
                   </div>
                 </div>
                 <div className="stat-value">
-                  {Math.floor((new Date() - new Date(currentSession.fecha_apertura)) / (1000 * 60 * 60))}h
+                  {Math.floor((new Date() - parseApiDate(currentSession.fecha_apertura)) / (1000 * 60 * 60))}h
                 </div>
               </div>
             </div>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Printer, X } from 'lucide-react';
-import { formatAmount } from '../lib/utils';
+import { formatAmount, parseApiDate } from '../lib/utils';
 
 const TIPO_CBTE_NOMBRES = { 1: 'FACTURA A', 6: 'FACTURA B', 11: 'FACTURA C' };
 
@@ -57,7 +57,7 @@ const TicketModal = ({ sale, returns = [], config, afipConfig, cajeroName, title
 
           <div className="ticket-info-row">
             <span>Fecha:</span>
-            <span>{new Date(sale.fecha).toLocaleString('es-AR')}</span>
+            <span>{parseApiDate(sale.fecha).toLocaleString('es-AR')}</span>
           </div>
           {cajeroName && (
             <div className="ticket-info-row">

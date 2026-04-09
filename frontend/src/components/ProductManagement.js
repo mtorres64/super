@@ -43,6 +43,7 @@ const ProductManagement = () => {
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [importLoading, setImportLoading] = useState(false);
+  const [templateLoading, setTemplateLoading] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const fileInputRef = useRef(null);
   const [selectedRows, setSelectedRows] = useState(new Set());
@@ -302,7 +303,7 @@ const ProductManagement = () => {
   };
 
   const [productModalClosing, closeProductModal] = useModalClose(closeModal);
-  const [importModalClosing, closeImportModalAnim] = useModalClose(() => { setShowImportModal(false); setImportFile(null); });
+  const [importModalClosing, closeImportModalAnim] = useModalClose(() => { setShowImportModal(false); setImportFile(null); setImportResult(null); });
   const [categoryModalClosing, closeCategoryModal] = useModalClose(() => setShowCategoryModal(false));
   const [bulkDeleteModalClosing, closeBulkDeleteModal] = useModalClose(() => setShowBulkDeleteModal(false));
 
@@ -403,22 +404,6 @@ const ProductManagement = () => {
         </button>
       </div>
 
-      {/* Low Stock Alert */}
-      {getLowStockProducts().length > 0 && (
-        <div className="mb-6 bg-red-50 border-l-4 border-red-400 p-4 rounded-lg">
-          <div className="flex">
-            <AlertCircle className="h-5 w-5 text-red-400" />
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">
-                {getLowStockProducts().length} productos con stock bajo
-              </h3>
-              <p className="text-sm text-red-700">
-                Algunos productos requieren reabastecimiento
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Search Bar + Action Buttons */}
       <div className="bg-white rounded-lg shadow p-4 mb-6">
@@ -908,11 +893,43 @@ const ProductManagement = () => {
               <form onSubmit={handleImport}>
                 <div className="space-y-4">
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-                    <p className="font-medium mb-1">Formato requerido (CSV o XLSX):</p>
-                    <p className="font-mono text-xs">nombre, codigo_barras, tipo, precio, precio_por_peso, categoria, stock, stock_minimo</p>
-                    <p className="mt-1 text-xs">• <strong>tipo</strong>: <code>codigo_barras</code> o <code>por_peso</code></p>
-                    <p className="text-xs">• <strong>categoria</strong>: debe coincidir con una categoría existente</p>
-                    <p className="text-xs">• Si el código de barras ya existe, el producto se actualizará</p>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <p className="font-medium mb-1">Formato requerido (CSV o XLSX):</p>
+                        <p className="font-mono text-xs">nombre, codigo_barras, tipo, precio, precio_por_peso, categoria, stock, stock_minimo</p>
+                        <p className="mt-1 text-xs">• <strong>tipo</strong>: <code>codigo_barras</code> o <code>por_peso</code></p>
+                        <p className="text-xs">• <strong>categoria</strong>: debe coincidir con una categoría existente</p>
+                        <p className="text-xs">• Si el código de barras ya existe, el producto se actualizará</p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={templateLoading}
+                        onClick={async () => {
+                          setTemplateLoading(true);
+                          try {
+                            const res = await axios.get(`${API}/products/import-template`, { responseType: 'blob' });
+                            const url = URL.createObjectURL(res.data);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = 'plantilla_productos.xlsx';
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          } catch {
+                            toast.error('Error al descargar la plantilla');
+                          } finally {
+                            setTemplateLoading(false);
+                          }
+                        }}
+                        className="flex items-center gap-1.5 text-xs font-medium text-blue-700 border border-blue-300 rounded-md px-2.5 py-1.5 hover:bg-blue-100 transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
+                      >
+                        {templateLoading ? (
+                          <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-blue-700" />
+                        ) : (
+                          <Download className="w-3.5 h-3.5" />
+                        )}
+                        {templateLoading ? 'Descargando...' : 'Descargar plantilla'}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="form-group">
@@ -963,6 +980,17 @@ const ProductManagement = () => {
                     <div className="text-xs text-red-600">Errores</div>
                   </div>
                 </div>
+
+                {importResult.new_categories?.length > 0 && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                    <p className="font-medium text-yellow-800 text-sm mb-1">Categorías creadas automáticamente:</p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {importResult.new_categories.map((cat, i) => (
+                        <span key={i} className="text-xs bg-yellow-100 text-yellow-800 border border-yellow-300 rounded-full px-2 py-0.5">{cat}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {importResult.errors.length > 0 && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-3 max-h-40 overflow-y-auto">

@@ -277,13 +277,15 @@ body {
   border-radius: 8px;
   font-weight: 500;
   font-size: 1rem;
-  border: none;
+  border: 1px solid transparent;
   cursor: pointer;
   transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  box-sizing: border-box;
+  vertical-align: middle;
 }
 
 .btn-primary {
@@ -977,6 +979,14 @@ body {
 
 .modal-close:hover {
   color: #1f2937;
+}
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
 }
 
 /* =====================

@@ -2,12 +2,13 @@ import React, { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 import { useSearchParams } from 'react-router-dom';
 import { API, AuthContext } from '../App';
-import { formatAmount } from '../lib/utils';
+import { formatAmount, parseApiDate } from '../lib/utils';
 import Pagination from './Pagination';
 import ReturnModal from './ReturnModal';
 import TicketModal from './TicketModal';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
+import * as XLSX from 'xlsx';
 import {
   Calendar,
   Download,
@@ -209,7 +210,7 @@ const SalesReports = () => {
   };
 
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
+    const date = parseApiDate(dateString);
     return date.toLocaleDateString('es-ES', {
       day: '2-digit',
       month: '2-digit',
@@ -389,20 +390,26 @@ const SalesReports = () => {
     }
   };
 
-  const exportToCSV = () => {
+  const exportToXLSX = () => {
     const filteredSales = getFilteredSales();
-    const csvHeader = 'Factura,Fecha,Sucursal,Cajero,Total,Metodo Pago,Items\n';
-    const csvRows = filteredSales.map(sale =>
-      `${sale.numero_factura},${formatDate(sale.fecha)},${getBranchName(sale.branch_id)},${sale.cajero_id},${sale.total.toFixed(2)},${getPaymentMethodLabel(sale.metodo_pago)},${sale.items.length}`
-    ).join('\n');
-    const blob = new Blob([csvHeader + csvRows], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.setAttribute('href', URL.createObjectURL(blob));
-    link.setAttribute('download', `ventas_${dateFilter}_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    if (filteredSales.length === 0) return;
+    const rows = filteredSales.map(sale => ({
+      Factura: sale.numero_factura,
+      Fecha: formatDate(sale.fecha),
+      Sucursal: getBranchName(sale.branch_id),
+      Cajero: getCajeroName(sale.cajero_id) || sale.cajero_id,
+      Total: sale.total,
+      'Metodo Pago': getPaymentMethodLabel(sale.metodo_pago),
+      Items: sale.items.length,
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 16 }, { wch: 18 }, { wch: 22 }, { wch: 22 },
+      { wch: 12 }, { wch: 16 }, { wch: 8 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Ventas');
+    XLSX.writeFile(wb, `ventas_${dateFilter}_${new Date().toISOString().split('T')[0]}.xlsx`);
     toast.success('Reporte exportado exitosamente');
   };
 
@@ -486,12 +493,12 @@ const SalesReports = () => {
             {generatingPdf ? 'Generando PDF...' : 'Descargar PDF'}
           </button>
           <button
-            onClick={exportToCSV}
+            onClick={exportToXLSX}
             className="btn btn-secondary"
             disabled={filteredSales.length === 0}
           >
             <Download className="w-4 h-4" />
-            Exportar CSV
+            Exportar Excel
           </button>
         </div>
       </div>

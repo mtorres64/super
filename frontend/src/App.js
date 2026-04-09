@@ -100,6 +100,24 @@ const applyTheme = (token) => {
     headers: { Authorization: `Bearer ${token}` }
   }).then(res => {
     const data = res.data;
+    if (data?.primary_color) {
+      const c = data.primary_color;
+      root.style.setProperty('--primary',        c);
+      root.style.setProperty('--primary-dark',   darken(c, 25));
+      root.style.setProperty('--primary-darker', darken(c, 45));
+      root.style.setProperty('--primary-light',  rgba(c, 0.1));
+      root.style.setProperty('--primary-bg',     rgba(c, 0.05));
+      root.style.setProperty('--primary-text',   contrast(c));
+      localStorage.setItem('app_theme', JSON.stringify({
+        primary:   c,
+        dark:      darken(c, 25),
+        darker:    darken(c, 45),
+        light:     rgba(c, 0.1),
+        bg:        rgba(c, 0.05),
+        secondary: data.secondary_color || null,
+        tertiary:  data.tertiary_color  || null,
+      }));
+    }
     if (data?.secondary_color) applyColorVar(data.secondary_color, 'secondary');
     if (data?.tertiary_color)  applyColorVar(data.tertiary_color,  'tertiary');
   }).catch(() => {});

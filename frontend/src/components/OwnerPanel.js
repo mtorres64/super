@@ -8,6 +8,8 @@ import {
   CreditCard, Search, Zap,
 } from 'lucide-react';
 
+import { parseApiDate } from '../lib/utils';
+
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const OWNER_API = `${BACKEND_URL}/owner`;
 const OWNER_TOKEN_KEY = 'owner_token';
@@ -34,7 +36,7 @@ const StatusBadge = ({ status }) => {
 const formatDate = (d) => {
   if (!d) return '—';
   try {
-    return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return parseApiDate(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   } catch { return '—'; }
 };
 

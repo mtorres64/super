@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 import { API, AuthContext } from '../App';
+import { parseApiDate } from '../lib/utils';
 import { toast } from 'sonner';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -30,7 +31,7 @@ const PAGO_ESTADO_CONFIG = {
 
 const formatDate = (dateStr) => {
   if (!dateStr) return '-';
-  const d = new Date(dateStr);
+  const d = parseApiDate(dateStr);
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 };
 
@@ -38,7 +39,7 @@ const formatCurrency = (amount, currency = 'ARS') =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency }).format(amount);
 
 const Cuenta = () => {
-  useContext(AuthContext);
+  const { refreshSuscripcion } = useContext(AuthContext);
   const [searchParams, setSearchParams] = useSearchParams();
   const [suscripcion, setSuscripcion] = useState(null);
   const [pagos, setPagos] = useState([]);
@@ -65,6 +66,7 @@ const Cuenta = () => {
       toast.success('¡Pago procesado correctamente! Tu suscripción fue actualizada.');
       fetchStatus();
       fetchPagos();
+      refreshSuscripcion();
       setSearchParams({});
     } else if (pagoResult === 'failure') {
       toast.error('El pago no pudo completarse. Podés intentarlo nuevamente.');
@@ -289,7 +291,7 @@ const Cuenta = () => {
                   <button
                     onClick={() => handlePagar('mensual')}
                     disabled={creandoPago !== null}
-                    className="btn btn-primary flex items-center justify-center gap-2 flex-1"
+                    className="btn btn-primary flex items-center gap-2"
                   >
                     {creandoPago === 'mensual' ? (
                       <>
@@ -337,7 +339,7 @@ const Cuenta = () => {
                   <button
                     onClick={() => handlePagar('anual')}
                     disabled={creandoPago !== null}
-                    className="btn btn-primary flex items-center justify-center gap-2 flex-1"
+                    className="btn btn-primary flex items-center gap-2"
                   >
                     {creandoPago === 'anual' ? (
                       <>

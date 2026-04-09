@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { API, AuthContext } from '../App';
 import { toast } from 'sonner';
 import { Bell, CheckCheck, Clock, AlertTriangle, Check, RefreshCw } from 'lucide-react';
+import { parseApiDate } from '../lib/utils';
 
 const TIPO_CONFIG = {
   plan_por_vencer_10: {
@@ -24,7 +25,7 @@ const TIPO_CONFIG = {
 
 const formatFecha = (fecha) => {
   try {
-    return new Date(fecha).toLocaleDateString('es-AR', {
+    return parseApiDate(fecha).toLocaleDateString('es-AR', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
