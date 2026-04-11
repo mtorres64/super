@@ -1,0 +1,349 @@
+import React from 'react';
+import {
+  AlertCircle,
+  Clock,
+  CreditCard,
+  Calendar,
+  RefreshCw,
+  ExternalLink,
+} from 'lucide-react';
+
+const CuentaView = ({
+  suscripcion,
+  pagos,
+  planes,
+  loadingStatus,
+  loadingPagos,
+  creandoPago,
+  whatsappNumero,
+  statusNorm,
+  enGracia,
+  fuePagada,
+  statusConf,
+  showAlert,
+  accionLabel,
+  PAGO_ESTADO_CONFIG,
+  formatDate,
+  formatCurrency,
+  onRefresh,
+  onPagar,
+  onSimularPago,
+}) => {
+  const StatusIcon = statusConf?.icon || Clock;
+
+  return (
+    <div className="p-6">
+      {/* Encabezado */}
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Mi Cuenta</h1>
+          <p className="text-gray-600">Gestión de suscripción y pagos</p>
+        </div>
+        <button
+          onClick={onRefresh}
+          className="btn btn-secondary"
+          title="Actualizar"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Actualizar
+        </button>
+      </div>
+
+      {/* Alerta de vencimiento */}
+      {showAlert && !loadingStatus && (
+        <div className={`mb-5 p-4 rounded-lg flex items-start gap-3 ${
+          statusNorm === 'vencida'
+            ? 'bg-red-50 border border-red-200 text-red-800'
+            : enGracia
+              ? 'bg-amber-50 border border-amber-300 text-amber-900'
+              : 'bg-yellow-50 border border-yellow-200 text-yellow-800'
+        }`}>
+          <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+          <div>
+            {statusNorm === 'vencida' && !enGracia ? (
+              fuePagada ? (
+                <>
+                  <p className="font-semibold">Tu suscripción ha vencido</p>
+                  <p className="text-sm mt-0.5">El período de gracia también expiró. Realizá un pago para volver a operar.</p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold">Tu período de prueba ha vencido</p>
+                  <p className="text-sm mt-0.5">Elegí un plan y realizá tu primer pago para continuar usando el sistema.</p>
+                </>
+              )
+            ) : enGracia ? (
+              <>
+                <p className="font-semibold">
+                  Tu suscripción venció — período de gracia activo
+                </p>
+                <p className="text-sm mt-0.5">
+                  Podés seguir operando por{' '}
+                  {suscripcion.dias_restantes > 0
+                    ? `${suscripcion.dias_restantes} día${suscripcion.dias_restantes !== 1 ? 's' : ''} más`
+                    : 'hoy'
+                  }.{' '}
+                  Si renovás ahora, tu ciclo se mantiene igual y la próxima fecha de pago no cambia.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-semibold">Tu suscripción vence en {suscripcion.dias_restantes} día{suscripcion.dias_restantes !== 1 ? 's' : ''}</p>
+                <p className="text-sm mt-0.5">Renová antes de que expire para evitar interrupciones.</p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Card de estado de suscripción */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
+        <div className="p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <CreditCard className="w-5 h-5 text-primary" />
+            Estado de Suscripción
+          </h2>
+
+          {loadingStatus ? (
+            <div className="flex items-center gap-2 text-gray-500">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
+              <span>Cargando...</span>
+            </div>
+          ) : suscripcion ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Plan</p>
+                <p className="font-semibold text-gray-900">{suscripcion.plan_nombre}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Estado</p>
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${statusConf?.color}`}>
+                  <StatusIcon className="w-3.5 h-3.5" />
+                  {statusConf?.label}
+                </span>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Vencimiento</p>
+                <p className="font-semibold text-gray-900 flex items-center gap-1">
+                  <Calendar className="w-4 h-4 text-gray-400" />
+                  {formatDate(suscripcion.fecha_vencimiento)}
+                </p>
+                {statusNorm !== 'suspendida' && (statusNorm !== 'vencida' || enGracia) && (
+                  <p className={`text-xs mt-0.5 ${enGracia ? 'text-amber-600 font-medium' : 'text-gray-500'}`}>
+                    {enGracia
+                      ? suscripcion.dias_restantes > 0
+                        ? `${suscripcion.dias_restantes} días de gracia restantes`
+                        : 'Gracia vence hoy'
+                      : suscripcion.dias_restantes > 0
+                        ? `${suscripcion.dias_restantes} días restantes`
+                        : 'Vence hoy'}
+                  </p>
+                )}
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Precio</p>
+                <p className="font-semibold text-gray-900">
+                  {formatCurrency(suscripcion.precio, suscripcion.moneda)}
+                  <span className="text-xs font-normal text-gray-500"> / mes</span>
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-gray-500">No se encontró información de suscripción.</p>
+          )}
+        </div>
+
+        {/* Selección de plan y botones de pago */}
+        {suscripcion && statusNorm !== 'suspendida' && (
+          <div className="px-6 pb-6 pt-4 border-t border-gray-100">
+            <p className="text-sm font-medium text-gray-700 mb-3">Elegí tu plan:</p>
+            <div className="flex flex-wrap gap-4">
+              {/* Plan mensual */}
+              <div className="flex-1 min-w-[200px] border border-gray-200 rounded-lg p-4 flex flex-col gap-3">
+                <div>
+                  <p className="font-semibold text-gray-900">
+                    {planes?.mensual?.nombre ?? 'Plan Mensual'}
+                  </p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">
+                    {planes ? formatCurrency(planes.mensual.precio) : '—'}
+                  </p>
+                  <p className="text-xs text-gray-500">por mes</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => onPagar('mensual')}
+                    disabled={creandoPago !== null}
+                    className="btn btn-primary flex items-center gap-2"
+                  >
+                    {creandoPago === 'mensual' ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Redirigiendo...
+                      </>
+                    ) : (
+                      <>
+                        <ExternalLink className="w-4 h-4" />
+                        {accionLabel} mensual
+                      </>
+                    )}
+                  </button>
+                  {whatsappNumero && (
+                    <a
+                      href={`https://wa.me/${whatsappNumero.replace(/\D/g, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Consultar o pagar con transferencia"
+                      className="flex items-center justify-center px-3 self-stretch rounded-lg bg-[#25D366] hover:bg-[#1ebe5d] transition-colors shrink-0"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-5 h-5">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                      </svg>
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              {/* Plan anual */}
+              <div className="flex-1 min-w-[200px] border border-gray-200 rounded-lg p-4 flex flex-col gap-3 relative">
+                <span className="absolute -top-3 left-4 bg-green-600 text-white text-xs font-semibold px-2 py-0.5 rounded-full">
+                  1 mes gratis
+                </span>
+                <div>
+                  <p className="font-semibold text-gray-900">
+                    {planes?.anual?.nombre ?? 'Plan Anual'}
+                  </p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">
+                    {planes ? formatCurrency(planes.anual.precio) : '—'}
+                  </p>
+                  <p className="text-xs text-gray-500">por año (12 meses al precio de 11)</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => onPagar('anual')}
+                    disabled={creandoPago !== null}
+                    className="btn btn-primary flex items-center gap-2"
+                  >
+                    {creandoPago === 'anual' ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Redirigiendo...
+                      </>
+                    ) : (
+                      <>
+                        <ExternalLink className="w-4 h-4" />
+                        {accionLabel} anual
+                      </>
+                    )}
+                  </button>
+                  {whatsappNumero && (
+                    <a
+                      href={`https://wa.me/${whatsappNumero.replace(/\D/g, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Consultar o pagar con transferencia"
+                      className="flex items-center justify-center px-3 self-stretch rounded-lg bg-[#25D366] hover:bg-[#1ebe5d] transition-colors shrink-0"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-5 h-5">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                      </svg>
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-400 mt-3">
+              Serás redirigido a MercadoPago para completar el pago de forma segura.
+            </p>
+
+            {process.env.NODE_ENV === 'development' && (
+              <div className="flex gap-2 mt-3 flex-wrap">
+                <button
+                  onClick={() => onSimularPago('mensual')}
+                  className="btn btn-secondary text-xs border-dashed"
+                >
+                  [TEST] Simular mensual
+                </button>
+                <button
+                  onClick={() => onSimularPago('anual')}
+                  className="btn btn-secondary text-xs border-dashed"
+                >
+                  [TEST] Simular anual
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Historial de pagos */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+        <div className="p-6 border-b border-gray-100">
+          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <Clock className="w-5 h-5 text-primary" />
+            Historial de Pagos
+          </h2>
+        </div>
+
+        {loadingPagos ? (
+          <div className="p-6 flex items-center gap-2 text-gray-500">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
+            <span>Cargando historial...</span>
+          </div>
+        ) : pagos.length === 0 ? (
+          <div className="p-10 text-center text-gray-400">
+            <CreditCard className="w-10 h-10 mx-auto mb-2 opacity-40" />
+            <p>No hay pagos registrados aún.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50">
+                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Fecha</th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Concepto</th>
+                  <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Monto</th>
+                  <th className="text-center px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Estado</th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">ID Pago MP</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {pagos.map((pago) => {
+                  const estadoConf = PAGO_ESTADO_CONFIG[pago.estado] || { label: pago.estado, color: 'bg-gray-100 text-gray-700' };
+                  return (
+                    <tr key={pago.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 text-gray-700 whitespace-nowrap">
+                        {formatDate(pago.fecha)}
+                      </td>
+                      <td className="px-6 py-4 text-gray-700">
+                        {pago.concepto}
+                        {pago.periodo_inicio && pago.periodo_fin && (
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {formatDate(pago.periodo_inicio)} — {formatDate(pago.periodo_fin)}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right font-medium text-gray-900 whitespace-nowrap">
+                        {formatCurrency(pago.monto, pago.moneda)}
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${estadoConf.color}`}>
+                          {estadoConf.label}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-gray-400 text-xs font-mono">
+                        {pago.mp_payment_id || '-'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default CuentaView;
