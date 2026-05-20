@@ -6,6 +6,9 @@ import {
   Calendar,
   RefreshCw,
   ExternalLink,
+  Zap,
+  ZapOff,
+  CheckCircle2,
 } from 'lucide-react';
 
 const CuentaView = ({
@@ -15,6 +18,7 @@ const CuentaView = ({
   loadingStatus,
   loadingPagos,
   creandoPago,
+  gestionandoAuto,
   whatsappNumero,
   statusNorm,
   enGracia,
@@ -28,6 +32,8 @@ const CuentaView = ({
   onRefresh,
   onPagar,
   onSimularPago,
+  onActivarSuscripcionAuto,
+  onCancelarSuscripcionAuto,
 }) => {
   const StatusIcon = statusConf?.icon || Clock;
 
@@ -255,6 +261,78 @@ const CuentaView = ({
             <p className="text-xs text-gray-400 mt-3">
               Serás redirigido a MercadoPago para completar el pago de forma segura.
             </p>
+
+            {/* ── Débito automático ──────────────────────────────────────── */}
+            <div className="mt-5 pt-4 border-t border-gray-100">
+              {(() => {
+                const tipoCobro = suscripcion?.tipo_cobro || 'manual';
+                const esAutomatico = tipoCobro === 'automatico';
+                const pendienteAuth = tipoCobro === 'pendiente_autorizacion';
+                const diaFact = suscripcion?.dia_facturacion;
+
+                return (
+                  <div className={`rounded-lg p-4 ${esAutomatico ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'}`}>
+                    <div className="flex items-start justify-between gap-4 flex-wrap">
+                      <div className="flex items-start gap-3">
+                        {esAutomatico ? (
+                          <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 shrink-0" />
+                        ) : (
+                          <Zap className="w-5 h-5 text-gray-400 mt-0.5 shrink-0" />
+                        )}
+                        <div>
+                          <p className="font-semibold text-gray-900 text-sm">
+                            {esAutomatico ? 'Débito automático activo' : 'Débito automático'}
+                          </p>
+                          {esAutomatico ? (
+                            <p className="text-xs text-green-700 mt-0.5">
+                              Tu suscripción se renueva automáticamente cada mes
+                              {diaFact ? ` el día ${diaFact}` : ''}.
+                              No tenés que hacer nada.
+                            </p>
+                          ) : pendienteAuth ? (
+                            <p className="text-xs text-amber-700 mt-0.5">
+                              Autorización pendiente — completá el proceso en MercadoPago para activar el cobro automático.
+                            </p>
+                          ) : (
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              Activá el débito automático y olvidate de renovar cada mes.
+                              MP cobra solo el día {diaFact || 'de tu ciclo'} sin que tengas que hacer nada.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        {esAutomatico ? (
+                          <button
+                            onClick={onCancelarSuscripcionAuto}
+                            disabled={gestionandoAuto !== false}
+                            className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                          >
+                            {gestionandoAuto === 'cancelando' ? (
+                              <><div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-red-500" /> Cancelando...</>
+                            ) : (
+                              <><ZapOff className="w-3.5 h-3.5" /> Cancelar débito auto</>
+                            )}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={onActivarSuscripcionAuto}
+                            disabled={gestionandoAuto !== false || creandoPago !== null}
+                            className="btn btn-primary flex items-center gap-1.5 text-sm"
+                          >
+                            {gestionandoAuto === 'activando' ? (
+                              <><div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white" /> Redirigiendo...</>
+                            ) : (
+                              <><Zap className="w-3.5 h-3.5" /> Activar débito automático</>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
 
             {process.env.NODE_ENV === 'development' && (
               <div className="flex gap-2 mt-3 flex-wrap">

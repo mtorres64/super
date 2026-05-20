@@ -4,7 +4,7 @@ import {
   AlertTriangle, Clock, Ban, ChevronRight,
   ArrowLeft, Plus, Edit3, ToggleLeft, ToggleRight,
   DollarSign, Shield, Settings, Bell, TrendingUp,
-  CreditCard, Search, Zap,
+  CreditCard, Search, Zap, ZapOff, CheckCircle2,
 } from 'lucide-react';
 import { ownerAxios, formatDate, formatMoney } from './index';
 
@@ -423,6 +423,7 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
   const [pagoForm, setPagoForm] = useState({ monto: '', concepto: '', plan_tipo: 'mensual' });
   const [suscForm, setSuscForm] = useState({ status: '', dias_extra: '', fecha_vencimiento: '', precio: '' });
   const [extMsg, setExtMsg] = useState(null);
+  const [cancelandoPreapproval, setCancelandoPreapproval] = useState(false);
 
   const authHeader = { headers: { Authorization: `Bearer ${token}` } };
 
@@ -490,6 +491,19 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
       alert(err.response?.data?.detail || 'Error al registrar pago');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const cancelarPreapproval = async () => {
+    if (!window.confirm('¿Cancelar el débito automático de este cliente en MercadoPago?')) return;
+    setCancelandoPreapproval(true);
+    try {
+      await ownerAxios.post(`/clientes/${clienteId}/suscripcion/cancelar-preapproval`, {}, authHeader);
+      await loadCliente();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Error al cancelar el débito automático');
+    } finally {
+      setCancelandoPreapproval(false);
     }
   };
 
@@ -672,6 +686,40 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
               <div className="flex justify-between">
                 <dt className="text-sm text-gray-500">Días restantes</dt>
                 <dd className={`text-sm font-bold ${diasColor}`}>{dias} días</dd>
+              </div>
+              {sus.dia_facturacion && (
+                <div className="flex justify-between">
+                  <dt className="text-sm text-gray-500">Día de facturación</dt>
+                  <dd className="text-sm text-gray-200">Día {sus.dia_facturacion} de cada mes</dd>
+                </div>
+              )}
+              {/* Débito automático */}
+              <div className="pt-2 mt-2 border-t border-gray-800">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {sus.tipo_cobro === 'automatico' ? (
+                      <CheckCircle2 className="w-4 h-4 text-green-400" />
+                    ) : (
+                      <ZapOff className="w-4 h-4 text-gray-600" />
+                    )}
+                    <dt className="text-sm text-gray-500">Débito automático</dt>
+                  </div>
+                  <dd className={`text-sm font-medium ${sus.tipo_cobro === 'automatico' ? 'text-green-400' : sus.tipo_cobro === 'pendiente_autorizacion' ? 'text-yellow-400' : 'text-gray-500'}`}>
+                    {sus.tipo_cobro === 'automatico' ? 'Activo' : sus.tipo_cobro === 'pendiente_autorizacion' ? 'Pendiente auth.' : 'Inactivo'}
+                  </dd>
+                </div>
+                {sus.mp_preapproval_id && (
+                  <div className="mt-1 flex items-center justify-between">
+                    <p className="text-xs text-gray-600 font-mono truncate max-w-[180px]">{sus.mp_preapproval_id}</p>
+                    <button
+                      onClick={cancelarPreapproval}
+                      disabled={cancelandoPreapproval}
+                      className="text-xs text-red-500 hover:text-red-400 disabled:opacity-50 flex items-center gap-1 ml-2 shrink-0"
+                    >
+                      {cancelandoPreapproval ? 'Cancelando...' : '✕ Cancelar'}
+                    </button>
+                  </div>
+                )}
               </div>
             </dl>
           ) : (
@@ -978,6 +1026,7 @@ const CobrosView = ({ token }) => {
                   <th className="text-left py-2 px-2 text-gray-600 font-medium">Concepto</th>
                   <th className="text-left py-2 px-2 text-gray-600 font-medium">Monto</th>
                   <th className="text-left py-2 px-2 text-gray-600 font-medium">Tipo</th>
+                  <th className="text-left py-2 px-2 text-gray-600 font-medium">Origen</th>
                   <th className="text-left py-2 px-2 text-gray-600 font-medium">Estado</th>
                 </tr>
               </thead>
@@ -989,6 +1038,15 @@ const CobrosView = ({ token }) => {
                     <td className="py-3 px-2 text-gray-300">{p.concepto}</td>
                     <td className="py-3 px-2 text-emerald-400 font-semibold">{formatMoney(p.monto)}</td>
                     <td className="py-3 px-2 text-gray-400 text-xs capitalize">{p.plan_tipo || '—'}</td>
+                    <td className="py-3 px-2">
+                      {p.origen === 'preapproval' ? (
+                        <span className="flex items-center gap-1 text-xs text-indigo-400">
+                          <Zap className="w-3 h-3" /> Auto
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-600">Manual</span>
+                      )}
+                    </td>
                     <td className="py-3 px-2">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                         p.estado === 'approved' ? 'bg-green-900/40 text-green-300' :

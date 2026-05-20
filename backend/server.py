@@ -42,6 +42,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 horas — duración de un turno de trabaj
 
 # MercadoPago settings
 MP_ACCESS_TOKEN = os.environ.get('MP_ACCESS_TOKEN', '')
+MP_TEST_PAYER_EMAIL = os.environ.get('MP_TEST_PAYER_EMAIL', '')
 APP_URL = os.environ.get('APP_URL', 'http://localhost:8000')
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 SUSCRIPCION_PRECIO = float(os.environ.get('SUSCRIPCION_PRECIO', '50000'))
@@ -322,6 +323,8 @@ class Suscripcion(BaseModel):
     dia_facturacion: Optional[int] = None
     plan_tipo: str = "mensual"
     fue_pagada: bool = False
+    tipo_cobro: str = "manual"               # "manual" | "automatico"
+    mp_preapproval_id: Optional[str] = None  # ID del preapproval en MP (débito automático)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class PagoSuscripcion(BaseModel):
@@ -333,6 +336,8 @@ class PagoSuscripcion(BaseModel):
     concepto: str
     mp_payment_id: Optional[str] = None
     mp_preference_id: Optional[str] = None
+    mp_preapproval_id: Optional[str] = None  # Vinculado si el pago es de débito automático
+    origen: str = "manual"                   # "manual" | "preapproval"
     plan_tipo: str = "mensual"
     fecha: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     periodo_inicio: Optional[datetime] = None
@@ -2714,6 +2719,9 @@ async def get_cuenta_status(user: User = Depends(require_role([UserRole.ADMIN]))
         "fecha_inicio": doc["fecha_inicio"],
         "fecha_vencimiento": doc["fecha_vencimiento"],
         "fue_pagada": doc.get("fue_pagada", False),
+        "tipo_cobro": doc.get("tipo_cobro", "manual"),
+        "mp_preapproval_id": doc.get("mp_preapproval_id"),
+        "dia_facturacion": doc.get("dia_facturacion"),
         **estado,
     }
 
@@ -2914,6 +2922,126 @@ async def crear_pago_suscripcion(data: PagoCreate = PagoCreate(), user: User = D
     }
 
 
+@api_router.post("/cuenta/suscripcion/activar")
+async def activar_suscripcion_automatica(user: User = Depends(require_role([UserRole.ADMIN]))):
+    """Crea un preapproval en MercadoPago para habilitar el débito automático mensual."""
+    if not MP_ACCESS_TOKEN or MP_ACCESS_TOKEN.startswith("APP_USR-your"):
+        raise HTTPException(status_code=503, detail="MercadoPago no configurado.")
+
+    # Obtener datos de empresa y admin
+    empresa = await db.empresas.find_one({"id": user.empresa_id})
+    empresa_nombre = empresa["nombre"] if empresa else user.empresa_id
+    admin = await db.users.find_one({"empresa_id": user.empresa_id, "rol": "admin"})
+    payer_email = MP_TEST_PAYER_EMAIL or (admin["email"] if admin else user.email)
+
+    precio_mensual = await get_precio_suscripcion()
+    nombre_base = await get_plan_nombre_suscripcion()
+
+    # Obtener día de facturación de la suscripción existente
+    suscripcion = await db.suscripciones.find_one({"empresa_id": user.empresa_id})
+    if suscripcion and suscripcion.get("tipo_cobro") == "automatico" and suscripcion.get("mp_preapproval_id"):
+        raise HTTPException(status_code=409, detail="Ya tenés el débito automático activo.")
+    dia_facturacion = (suscripcion or {}).get("dia_facturacion") or min(datetime.now(timezone.utc).day, 28)
+
+    back_url = f"{FRONTEND_URL}/cuenta?suscripcion=authorized"
+    if back_url.startswith("http://localhost") or back_url.startswith("http://127.0.0.1"):
+        back_url = "https://example.com"  # placeholder para dev: MP requiere URL pública
+    preapproval_data = {
+        "reason": f"{nombre_base} - {empresa_nombre}",
+        "auto_recurring": {
+            "frequency": 1,
+            "frequency_type": "months",
+            "transaction_amount": precio_mensual,
+            "currency_id": "ARS",
+            "billing_day": dia_facturacion,
+        },
+        "back_url": back_url,
+        "payer_email": payer_email,
+        "external_reference": user.empresa_id,
+        "status": "pending",
+    }
+
+    try:
+        async with httpx.AsyncClient() as client_http:
+            resp = await client_http.post(
+                "https://api.mercadopago.com/preapproval",
+                json=preapproval_data,
+                headers={"Authorization": f"Bearer {MP_ACCESS_TOKEN}"},
+                timeout=15,
+            )
+        if resp.status_code not in (200, 201):
+            import logging
+            logging.error(f"MP preapproval error: {resp.status_code} {resp.text}")
+            raise HTTPException(status_code=502, detail=f"Error MP ({resp.status_code}): {resp.text[:500]}")
+        data = resp.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error al conectar con MercadoPago: {str(e)}")
+
+    preapproval_id = data["id"]
+
+    # Guardar preapproval_id en la suscripción (aún no es "automatico" hasta que el cliente autorice)
+    if suscripcion:
+        await db.suscripciones.update_one(
+            {"empresa_id": user.empresa_id},
+            {"$set": {"mp_preapproval_id": preapproval_id, "tipo_cobro": "pendiente_autorizacion"}},
+        )
+    else:
+        # Crear suscripción si no existe (edge case)
+        now = datetime.now(timezone.utc)
+        nueva_fecha = calcular_siguiente_vencimiento(dia_facturacion, 1, now)
+        await db.suscripciones.insert_one(Suscripcion(
+            empresa_id=user.empresa_id,
+            plan_nombre=nombre_base,
+            precio=precio_mensual,
+            status=SuscripcionStatus.TRIAL,
+            fecha_inicio=now,
+            fecha_vencimiento=nueva_fecha,
+            dia_facturacion=dia_facturacion,
+            mp_preapproval_id=preapproval_id,
+            tipo_cobro="pendiente_autorizacion",
+        ).dict())
+
+    return {
+        "init_point": data.get("init_point"),
+        "sandbox_init_point": data.get("sandbox_init_point"),
+        "preapproval_id": preapproval_id,
+    }
+
+
+@api_router.post("/cuenta/suscripcion/cancelar")
+async def cancelar_suscripcion_automatica(user: User = Depends(require_role([UserRole.ADMIN]))):
+    """Cancela el débito automático (preapproval) en MercadoPago."""
+    suscripcion = await db.suscripciones.find_one({"empresa_id": user.empresa_id})
+    if not suscripcion or not suscripcion.get("mp_preapproval_id"):
+        raise HTTPException(status_code=404, detail="No tenés un débito automático activo.")
+
+    preapproval_id = suscripcion["mp_preapproval_id"]
+
+    try:
+        async with httpx.AsyncClient() as client_http:
+            resp = await client_http.put(
+                f"https://api.mercadopago.com/preapproval/{preapproval_id}",
+                json={"status": "cancelled"},
+                headers={"Authorization": f"Bearer {MP_ACCESS_TOKEN}"},
+                timeout=15,
+            )
+        # 200/201 OK, también aceptamos 404 si ya fue cancelado en MP
+        if resp.status_code not in (200, 201, 404):
+            raise HTTPException(status_code=502, detail=f"Error MP ({resp.status_code}): {resp.json().get('message', 'Error al cancelar')}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error al conectar con MercadoPago: {str(e)}")
+
+    await db.suscripciones.update_one(
+        {"empresa_id": user.empresa_id},
+        {"$set": {"tipo_cobro": "manual", "mp_preapproval_id": None}},
+    )
+    return {"ok": True, "mensaje": "Débito automático cancelado. Tu suscripción actual sigue vigente hasta su vencimiento."}
+
+
 @api_router.post("/cuenta/pago/simular-aprobado")
 async def simular_pago_aprobado(
     plan_tipo: str = "mensual",
@@ -2952,6 +3080,8 @@ async def simular_pago_aprobado(
                 "fecha_vencimiento": nueva_fecha,
                 "plan_tipo": plan_tipo,
                 "fue_pagada": True,
+                "plan_nombre": plan_nombre,
+                "precio": precio,
             }},
         )
     else:
@@ -2987,6 +3117,57 @@ async def simular_pago_aprobado(
     return {"ok": True, "nueva_fecha_vencimiento": nueva_fecha.isoformat()}
 
 
+# ─── Helpers internos del webhook ────────────────────────────────────────────
+
+async def _procesar_pago_aprobado(empresa_id: str, payment_id: str, monto: float,
+                                   plan_tipo_pago: str = "mensual", origen: str = "manual",
+                                   preapproval_id: Optional[str] = None):
+    """Aplica la renovación de suscripción cuando un pago es aprobado."""
+    meses = 1 if plan_tipo_pago == "mensual" else 12
+    suscripcion = await db.suscripciones.find_one({"empresa_id": empresa_id})
+    now = datetime.now(timezone.utc)
+    precio_mensual = await get_precio_suscripcion()
+    nombre_base = await get_plan_nombre_suscripcion()
+    nuevo_plan_nombre = nombre_base if plan_tipo_pago == "mensual" else f"{nombre_base} Anual"
+    nuevo_precio = precio_mensual if plan_tipo_pago == "mensual" else precio_mensual * 11
+    if suscripcion:
+        base, nueva_fecha = _aplicar_renovacion(suscripcion, meses, now)
+        update_fields = {
+            "status": SuscripcionStatus.ACTIVA,
+            "fecha_vencimiento": nueva_fecha,
+            "plan_tipo": plan_tipo_pago,
+            "fue_pagada": True,
+            "plan_nombre": nuevo_plan_nombre,
+            "precio": nuevo_precio,
+        }
+        # Si es preapproval, marcar como automático
+        if preapproval_id:
+            update_fields["tipo_cobro"] = "automatico"
+            update_fields["mp_preapproval_id"] = preapproval_id
+        await db.suscripciones.update_one({"empresa_id": empresa_id}, {"$set": update_fields})
+        await db.pagos_suscripcion.update_one(
+            {"empresa_id": empresa_id, "mp_payment_id": payment_id},
+            {"$set": {"periodo_inicio": base, "periodo_fin": nueva_fecha}},
+        )
+    else:
+        dia_facturacion = min(now.day, 28)
+        nueva_fecha = calcular_siguiente_vencimiento(dia_facturacion, meses, now)
+        suscripcion_nueva = Suscripcion(
+            empresa_id=empresa_id,
+            plan_nombre=SUSCRIPCION_PLAN_NOMBRE,
+            precio=monto,
+            status=SuscripcionStatus.ACTIVA,
+            fecha_inicio=now,
+            fecha_vencimiento=nueva_fecha,
+            dia_facturacion=dia_facturacion,
+            plan_tipo=plan_tipo_pago,
+            fue_pagada=True,
+            tipo_cobro="automatico" if preapproval_id else "manual",
+            mp_preapproval_id=preapproval_id,
+        )
+        await db.suscripciones.insert_one(suscripcion_nueva.dict())
+
+
 # Webhook de MercadoPago (sin autenticación JWT)
 @app.post("/api/mercadopago/webhook")
 async def mp_webhook(request: Request):
@@ -2995,15 +3176,112 @@ async def mp_webhook(request: Request):
     except Exception:
         return {"status": "ok"}
 
-    # MP envía notificaciones de tipo "payment"
-    if body.get("type") != "payment":
+    if not MP_ACCESS_TOKEN or MP_ACCESS_TOKEN.startswith("APP_USR-your"):
+        return {"status": "ok"}
+
+    event_type = body.get("type", "")
+
+    # ── Evento: cobro automático de suscripción ────────────────────────────────
+    if event_type == "subscription_authorized_payment":
+        authorized_payment_id = str(body.get("data", {}).get("id", ""))
+        if not authorized_payment_id:
+            return {"status": "ok"}
+        try:
+            async with httpx.AsyncClient() as client_http:
+                resp = await client_http.get(
+                    f"https://api.mercadopago.com/v1/subscription_authorized_payments/{authorized_payment_id}",
+                    headers={"Authorization": f"Bearer {MP_ACCESS_TOKEN}"},
+                    timeout=10,
+                )
+            if resp.status_code != 200:
+                return {"status": "ok"}
+            auth_data = resp.json()
+        except Exception:
+            return {"status": "ok"}
+
+        preapproval_id = auth_data.get("preapproval_id", "")
+        payment_info = auth_data.get("payment", {})
+        payment_id = str(payment_info.get("id", ""))
+        estado_pago = payment_info.get("status", "")
+        monto = float(auth_data.get("transaction_amount", payment_info.get("transaction_amount", 0)))
+
+        # Buscar empresa por preapproval_id
+        suscripcion = await db.suscripciones.find_one({"mp_preapproval_id": preapproval_id})
+        if not suscripcion:
+            return {"status": "ok"}
+        empresa_id = suscripcion["empresa_id"]
+
+        empresa = await db.empresas.find_one({"id": empresa_id})
+        empresa_nombre = empresa["nombre"] if empresa else empresa_id
+
+        # Registrar el pago si no existe
+        existing = await db.pagos_suscripcion.find_one({"mp_payment_id": payment_id}) if payment_id else None
+        if not existing:
+            pago = PagoSuscripcion(
+                empresa_id=empresa_id,
+                monto=monto,
+                moneda="ARS",
+                estado=estado_pago if estado_pago else "approved",
+                concepto=f"{SUSCRIPCION_PLAN_NOMBRE} Débito Automático - {empresa_nombre}",
+                mp_payment_id=payment_id or authorized_payment_id,
+                mp_preapproval_id=preapproval_id,
+                origen="preapproval",
+                plan_tipo="mensual",
+            )
+            await db.pagos_suscripcion.insert_one(pago.dict())
+
+        if estado_pago in ("approved", "") or not estado_pago:
+            await _procesar_pago_aprobado(
+                empresa_id=empresa_id,
+                payment_id=payment_id or authorized_payment_id,
+                monto=monto,
+                plan_tipo_pago="mensual",
+                origen="preapproval",
+                preapproval_id=preapproval_id,
+            )
+        return {"status": "ok"}
+
+    # ── Evento: cambio de estado del preapproval ───────────────────────────────
+    if event_type == "subscription_preapproval":
+        preapproval_id = str(body.get("data", {}).get("id", ""))
+        if not preapproval_id:
+            return {"status": "ok"}
+        try:
+            async with httpx.AsyncClient() as client_http:
+                resp = await client_http.get(
+                    f"https://api.mercadopago.com/preapproval/{preapproval_id}",
+                    headers={"Authorization": f"Bearer {MP_ACCESS_TOKEN}"},
+                    timeout=10,
+                )
+            if resp.status_code != 200:
+                return {"status": "ok"}
+            pa_data = resp.json()
+        except Exception:
+            return {"status": "ok"}
+
+        pa_status = pa_data.get("status", "")
+        # Si el cliente canceló desde MP, actualizar nuestra BD
+        if pa_status in ("cancelled", "paused"):
+            await db.suscripciones.update_many(
+                {"mp_preapproval_id": preapproval_id},
+                {"$set": {"tipo_cobro": "manual", "mp_preapproval_id": None}},
+            )
+        # Si fue autorizado (cliente aprobó el preapproval por primera vez)
+        elif pa_status == "authorized":
+            suscripcion = await db.suscripciones.find_one({"mp_preapproval_id": preapproval_id})
+            if suscripcion:
+                await db.suscripciones.update_one(
+                    {"mp_preapproval_id": preapproval_id},
+                    {"$set": {"tipo_cobro": "automatico"}},
+                )
+        return {"status": "ok"}
+
+    # ── Evento: pago único (comportamiento previo) ─────────────────────────────
+    if event_type != "payment":
         return {"status": "ok"}
 
     payment_id = str(body.get("data", {}).get("id", ""))
     if not payment_id:
-        return {"status": "ok"}
-
-    if not MP_ACCESS_TOKEN or MP_ACCESS_TOKEN.startswith("APP_USR-your"):
         return {"status": "ok"}
 
     # Consultar detalle del pago a la API de MP
@@ -3066,46 +3344,16 @@ async def mp_webhook(request: Request):
 
     # Si el pago fue aprobado → extender suscripción
     if estado == "approved":
-        # Recuperar plan_tipo del pago registrado
         pago_reg = await db.pagos_suscripcion.find_one({"empresa_id": empresa_id, "mp_payment_id": payment_id})
         if not pago_reg:
             pago_reg = await db.pagos_suscripcion.find_one({"empresa_id": empresa_id, "mp_preference_id": {"$exists": True}, "estado": "approved"})
         plan_tipo_pago = (pago_reg or {}).get("plan_tipo", "mensual") if pago_reg else "mensual"
-        meses = 1 if plan_tipo_pago == "mensual" else 12
-
-        suscripcion = await db.suscripciones.find_one({"empresa_id": empresa_id})
-        now = datetime.now(timezone.utc)
-        if suscripcion:
-            base, nueva_fecha = _aplicar_renovacion(suscripcion, meses, now)
-            await db.suscripciones.update_one(
-                {"empresa_id": empresa_id},
-                {"$set": {
-                    "status": SuscripcionStatus.ACTIVA,
-                    "fecha_vencimiento": nueva_fecha,
-                    "plan_tipo": plan_tipo_pago,
-                    "fue_pagada": True,
-                }}
-            )
-            # Actualizar periodo del pago registrado
-            await db.pagos_suscripcion.update_one(
-                {"empresa_id": empresa_id, "mp_payment_id": payment_id},
-                {"$set": {"periodo_inicio": base, "periodo_fin": nueva_fecha}}
-            )
-        else:
-            dia_facturacion = min(now.day, 28)
-            nueva_fecha = calcular_siguiente_vencimiento(dia_facturacion, meses, now)
-            suscripcion_nueva = Suscripcion(
-                empresa_id=empresa_id,
-                plan_nombre=SUSCRIPCION_PLAN_NOMBRE,
-                precio=monto,
-                status=SuscripcionStatus.ACTIVA,
-                fecha_inicio=now,
-                fecha_vencimiento=nueva_fecha,
-                dia_facturacion=dia_facturacion,
-                plan_tipo=plan_tipo_pago,
-                fue_pagada=True,
-            )
-            await db.suscripciones.insert_one(suscripcion_nueva.dict())
+        await _procesar_pago_aprobado(
+            empresa_id=empresa_id,
+            payment_id=payment_id,
+            monto=monto,
+            plan_tipo_pago=plan_tipo_pago,
+        )
 
     return {"status": "ok"}
 
@@ -3338,6 +3586,35 @@ async def owner_registrar_pago(
         )
         await db.suscripciones.insert_one(nueva_sus.dict())
     return {"message": "Pago registrado y suscripción renovada"}
+
+@owner_router.post("/clientes/{empresa_id}/suscripcion/cancelar-preapproval")
+async def owner_cancelar_preapproval(empresa_id: str, _=Depends(verify_owner_token)):
+    """Cancela el débito automático de un cliente desde el panel owner."""
+    suscripcion = await db.suscripciones.find_one({"empresa_id": empresa_id})
+    if not suscripcion or not suscripcion.get("mp_preapproval_id"):
+        raise HTTPException(status_code=404, detail="Este cliente no tiene débito automático activo.")
+
+    preapproval_id = suscripcion["mp_preapproval_id"]
+    try:
+        async with httpx.AsyncClient() as client_http:
+            resp = await client_http.put(
+                f"https://api.mercadopago.com/preapproval/{preapproval_id}",
+                json={"status": "cancelled"},
+                headers={"Authorization": f"Bearer {MP_ACCESS_TOKEN}"},
+                timeout=15,
+            )
+        if resp.status_code not in (200, 201, 404):
+            raise HTTPException(status_code=502, detail=f"Error MP ({resp.status_code}): No se pudo cancelar el preapproval")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Error al conectar con MercadoPago: {str(e)}")
+
+    await db.suscripciones.update_one(
+        {"empresa_id": empresa_id},
+        {"$set": {"tipo_cobro": "manual", "mp_preapproval_id": None}},
+    )
+    return {"ok": True, "mensaje": "Débito automático cancelado correctamente."}
 
 @owner_router.put("/clientes/{empresa_id}/activo")
 async def owner_toggle_empresa(empresa_id: str, _=Depends(verify_owner_token)):

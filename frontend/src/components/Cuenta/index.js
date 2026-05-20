@@ -44,6 +44,7 @@ const Cuenta = () => {
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [loadingPagos, setLoadingPagos] = useState(true);
   const [creandoPago, setCreandoPago] = useState(null); // null | 'mensual' | 'anual'
+  const [gestionandoAuto, setGestionandoAuto] = useState(false); // activando/cancelando débito auto
 
   const [whatsappNumero, setWhatsappNumero] = useState(null);
 
@@ -59,6 +60,7 @@ const Cuenta = () => {
   // Manejar retorno desde MercadoPago
   useEffect(() => {
     const pagoResult = searchParams.get('pago');
+    const suscripcionResult = searchParams.get('suscripcion');
     if (pagoResult === 'success') {
       toast.success('¡Pago procesado correctamente! Tu suscripción fue actualizada.');
       fetchStatus();
@@ -70,6 +72,15 @@ const Cuenta = () => {
       setSearchParams({});
     } else if (pagoResult === 'pending') {
       toast.info('Tu pago está siendo procesado. Te notificaremos cuando se acredite.');
+      setSearchParams({});
+    } else if (suscripcionResult === 'authorized') {
+      toast.success('¡Débito automático activado! A partir del próximo ciclo se cobrará automáticamente.');
+      fetchStatus();
+      fetchPagos();
+      refreshSuscripcion();
+      setSearchParams({});
+    } else if (suscripcionResult === 'cancelled') {
+      toast.info('Proceso de suscripción automática cancelado.');
       setSearchParams({});
     }
   }, [searchParams]);
@@ -107,6 +118,39 @@ const Cuenta = () => {
       fetchPagos();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al simular pago');
+    }
+  };
+
+  const handleActivarSuscripcionAuto = async () => {
+    try {
+      setGestionandoAuto('activando');
+      const resp = await axios.post(`${API}/cuenta/suscripcion/activar`);
+      const url = resp.data.init_point || resp.data.sandbox_init_point;
+      if (url) {
+        window.location.href = url;
+      } else {
+        toast.error('No se pudo obtener el enlace de autorización');
+      }
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Error al activar el débito automático';
+      toast.error(msg);
+    } finally {
+      setGestionandoAuto(false);
+    }
+  };
+
+  const handleCancelarSuscripcionAuto = async () => {
+    if (!window.confirm('¿Cancelar el débito automático? Tu suscripción actual sigue vigente hasta su vencimiento.')) return;
+    try {
+      setGestionandoAuto('cancelando');
+      await axios.post(`${API}/cuenta/suscripcion/cancelar`);
+      toast.success('Débito automático cancelado. Tu suscripción sigue activa hasta su vencimiento.');
+      fetchStatus();
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Error al cancelar el débito automático';
+      toast.error(msg);
+    } finally {
+      setGestionandoAuto(false);
     }
   };
 
@@ -153,6 +197,7 @@ const Cuenta = () => {
       loadingStatus={loadingStatus}
       loadingPagos={loadingPagos}
       creandoPago={creandoPago}
+      gestionandoAuto={gestionandoAuto}
       whatsappNumero={whatsappNumero}
       statusNorm={statusNorm}
       enGracia={enGracia}
@@ -166,6 +211,8 @@ const Cuenta = () => {
       onRefresh={() => { fetchStatus(); fetchPagos(); }}
       onPagar={handlePagar}
       onSimularPago={handleSimularPago}
+      onActivarSuscripcionAuto={handleActivarSuscripcionAuto}
+      onCancelarSuscripcionAuto={handleCancelarSuscripcionAuto}
     />
   );
 };
