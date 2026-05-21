@@ -255,11 +255,16 @@ def _smtp_send(destinatario: str, subject: str, html: str):
     msg['From'] = EMAIL_FROM
     msg['To'] = destinatario
     msg.attach(MIMEText(html, 'html', 'utf-8'))
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-        server.ehlo()
-        server.starttls()
-        server.login(SMTP_USER, SMTP_PASSWORD)
-        server.sendmail(SMTP_USER, [destinatario], msg.as_string())
+    if SMTP_PORT == 465:
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.sendmail(SMTP_USER, [destinatario], msg.as_string())
+    else:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.sendmail(SMTP_USER, [destinatario], msg.as_string())
 
 def _send_email_otp_sync(destinatario: str, codigo: str):
     html = _build_email_html(
