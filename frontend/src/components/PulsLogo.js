@@ -3,7 +3,7 @@ import React from 'react';
 const PulsLogo = ({ size = 'md', dark = false, variant = 'pill', fullWidth = false }) => {
   const scales = { sm: 0.55, md: 0.8, lg: 1 };
   const scale = scales[size] || scales.md;
-  const W = 240, H = 44;
+  const W = 90, H = 60;
   const textColor = dark ? '#ffffff' : '#0f0f0f';
   const font = "'Exo', sans-serif";
 
@@ -34,11 +34,10 @@ const PulsLogo = ({ size = 'md', dark = false, variant = 'pill', fullWidth = fal
       <text x="31" y="31" fontFamily={font} fontWeight="900" fontSize="22" fill="#ffffff" textAnchor="middle">
         PULS
       </text>
-      {/* market·app a la derecha */}
-      <text x="65" y="30" fontFamily={font} fontWeight="300" fontSize="20" fill={textColor}>
-        <tspan>market</tspan>
-        <tspan fontWeight="900" fill="#10b981">·</tspan>
-        <tspan>app</tspan>
+      {/* MarketApp debajo */}
+      <text x="1" y="56" fontFamily={font} fontSize="17" fill={textColor}>
+        <tspan fontWeight="300">Market</tspan>
+        <tspan fontWeight="800">App</tspan>
       </text>
     </svg>
   );

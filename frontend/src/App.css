@@ -98,11 +98,11 @@ body {
    ================================================ */
 .login-container {
   min-height: 100vh;
-  /* Clean dark-green background — no external image dependency */
-  background-color: #064e3b;
   background-image:
-    radial-gradient(ellipse 60% 50% at 20% 15%, rgba(16, 185, 129, 0.22) 0%, transparent 60%),
-    radial-gradient(ellipse 50% 45% at 85% 85%, rgba(5, 150, 105, 0.28) 0%, transparent 55%);
+    linear-gradient(135deg, rgba(5, 150, 105, 0.93) 0%, rgba(4, 120, 87, 0.90) 100%),
+    url('https://images.unsplash.com/photo-1553413077-190dd305871c?auto=format&fit=crop&w=1800&q=80');
+  background-size: cover;
+  background-position: center;
   display: flex;
   align-items: center;
   justify-content: center;

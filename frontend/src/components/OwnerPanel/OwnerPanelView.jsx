@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users, LogOut, BarChart3, RefreshCw, CheckCircle,
-  AlertTriangle, Clock, Ban, ChevronRight,
+  AlertTriangle, Clock, Ban, ChevronRight, ChevronDown,
   ArrowLeft, Plus, Edit3, ToggleLeft, ToggleRight,
   DollarSign, Shield, Settings, Bell, TrendingUp,
   CreditCard, Search, Zap, ZapOff, CheckCircle2,
@@ -777,6 +777,9 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
         )}
       </div>
 
+      {/* Configuración de cuenta */}
+      <EmpresaConfigPanel empresaId={clienteId} token={token} />
+
       {/* Modal: Registrar Pago */}
       {showPagoModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
@@ -1071,35 +1074,83 @@ const CobrosView = ({ token }) => {
 
 // ─── ConfigView ───────────────────────────────────────────────────────────────
 
+const ConfigSection = ({ title, children }) => (
+  <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 mb-6">
+    <h3 className="text-sm font-semibold text-indigo-400 uppercase tracking-wider mb-5">{title}</h3>
+    <div className="space-y-5">{children}</div>
+  </div>
+);
+
+const ConfigField = ({ label, hint, children }) => (
+  <div>
+    <label className="block text-sm text-gray-400 mb-1.5">{label}</label>
+    {children}
+    {hint && <p className="text-xs text-gray-600 mt-1">{hint}</p>}
+  </div>
+);
+
+const inputCls = "w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500";
+const inputDisabledCls = "w-full bg-gray-800/40 border border-gray-800 text-gray-500 rounded-lg px-4 py-2.5 cursor-not-allowed";
+
 const ConfigView = ({ token }) => {
   const authHeader = { headers: { Authorization: `Bearer ${token}` } };
-  const [precio, setPrecio] = useState('');
-  const [planNombre, setPlanNombre] = useState('');
-  const [whatsapp, setWhatsapp] = useState('');
-  const [trialDias, setTrialDias] = useState('');
+  const [cfg, setCfg] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
 
   useEffect(() => {
     ownerAxios.get('/config', authHeader).then(res => {
-      setPrecio(String(res.data.suscripcion_precio));
-      setPlanNombre(res.data.suscripcion_plan_nombre);
-      setWhatsapp(res.data.whatsapp_numero || '');
-      setTrialDias(String(res.data.trial_dias ?? 15));
+      setCfg({
+        suscripcion_precio: String(res.data.suscripcion_precio ?? ''),
+        suscripcion_plan_nombre: res.data.suscripcion_plan_nombre ?? '',
+        whatsapp_numero: res.data.whatsapp_numero ?? '',
+        trial_dias: String(res.data.trial_dias ?? 15),
+        descuento_anual_pct: String(res.data.descuento_anual_pct ?? 20),
+        grace_days: String(res.data.grace_days ?? 15),
+        dias_alerta_1: String((res.data.dias_alerta ?? [10, 5])[0] ?? 10),
+        dias_alerta_2: String((res.data.dias_alerta ?? [10, 5])[1] ?? 5),
+        saas_nombre: res.data.saas_nombre ?? 'PULS',
+        statement_descriptor: res.data.statement_descriptor ?? 'SuperMarket POS',
+        smtp_host: res.data.smtp_host ?? '',
+        smtp_port: String(res.data.smtp_port ?? 587),
+        smtp_user: res.data.smtp_user ?? '',
+        smtp_password: res.data.smtp_password ?? '',
+        smtp_from: res.data.smtp_from ?? '',
+      });
     }).finally(() => setLoading(false));
   }, []); // eslint-disable-line
+
+  const set = (field) => (e) => setCfg(prev => ({ ...prev, [field]: e.target.value }));
+
+  const precioAnual = cfg.suscripcion_precio
+    ? Math.round(parseFloat(cfg.suscripcion_precio) * 12 * (1 - (parseFloat(cfg.descuento_anual_pct) || 20) / 100))
+    : 0;
 
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
     setMsg(null);
     try {
+      const diasAlerta = [
+        parseInt(cfg.dias_alerta_1) || 10,
+        parseInt(cfg.dias_alerta_2) || 5,
+      ].sort((a, b) => b - a);
       await ownerAxios.put('/config', {
-        suscripcion_precio: parseFloat(precio),
-        suscripcion_plan_nombre: planNombre,
-        whatsapp_numero: whatsapp,
-        trial_dias: parseInt(trialDias),
+        suscripcion_precio: parseFloat(cfg.suscripcion_precio),
+        suscripcion_plan_nombre: cfg.suscripcion_plan_nombre,
+        whatsapp_numero: cfg.whatsapp_numero,
+        trial_dias: parseInt(cfg.trial_dias),
+        descuento_anual_pct: parseInt(cfg.descuento_anual_pct),
+        grace_days: parseInt(cfg.grace_days),
+        dias_alerta: diasAlerta,
+        saas_nombre: cfg.saas_nombre,
+        statement_descriptor: cfg.statement_descriptor,
+        smtp_host: cfg.smtp_host || null,
+        smtp_port: cfg.smtp_port ? parseInt(cfg.smtp_port) : null,
+        smtp_user: cfg.smtp_user || null,
+        smtp_password: cfg.smtp_password || null,
+        smtp_from: cfg.smtp_from || null,
       }, authHeader);
       setMsg({ ok: true, text: 'Configuración guardada.' });
     } catch (err) {
@@ -1108,8 +1159,6 @@ const ConfigView = ({ token }) => {
       setSaving(false);
     }
   };
-
-  const precioAnual = precio ? Math.round(parseFloat(precio) * 12 * 0.8) : 0;
 
   if (loading) return (
     <div className="flex justify-center py-24">
@@ -1120,81 +1169,382 @@ const ConfigView = ({ token }) => {
   return (
     <div>
       <h2 className="text-lg font-bold text-white mb-6">Configuración del Sistema</h2>
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md">
-        <form onSubmit={handleSave} className="space-y-5">
-          <div>
-            <label className="block text-sm text-gray-400 mb-1.5">Nombre del plan</label>
-            <input
-              type="text"
-              value={planNombre}
-              onChange={e => setPlanNombre(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              required
-            />
+      <form onSubmit={handleSave} className="max-w-lg">
+
+        <ConfigSection title="Identidad">
+          <ConfigField label="Nombre del SaaS" hint="Se muestra en emails de verificación y recuperación de contraseña.">
+            <input type="text" value={cfg.saas_nombre} onChange={set('saas_nombre')} className={inputCls} required />
+          </ConfigField>
+          <ConfigField label="WhatsApp de contacto / pagos" hint="Formato internacional, ej: +5493815156095. Se muestra en la página de Cuenta.">
+            <input type="text" value={cfg.whatsapp_numero} onChange={set('whatsapp_numero')} placeholder="+5493811234567" className={inputCls} />
+          </ConfigField>
+        </ConfigSection>
+
+        <ConfigSection title="Suscripciones y Precios">
+          <ConfigField label="Nombre del plan">
+            <input type="text" value={cfg.suscripcion_plan_nombre} onChange={set('suscripcion_plan_nombre')} className={inputCls} required />
+          </ConfigField>
+          <ConfigField label="Precio mensual (ARS)">
+            <input type="number" value={cfg.suscripcion_precio} onChange={set('suscripcion_precio')} className={inputCls} min="0" required />
+          </ConfigField>
+          <ConfigField label="Descuento plan anual (%)" hint="El precio anual se calcula como precio mensual × 12 × (1 - descuento/100).">
+            <input type="number" value={cfg.descuento_anual_pct} onChange={set('descuento_anual_pct')} className={inputCls} min="0" max="100" required />
+          </ConfigField>
+          <ConfigField label={`Precio anual resultante (ARS)`}>
+            <input type="text" value={precioAnual ? formatMoney(precioAnual) : '—'} disabled className={inputDisabledCls} />
+          </ConfigField>
+          <ConfigField label="Días del período de prueba (trial)" hint="Días de acceso gratuito al registrar una empresa nueva.">
+            <input type="number" value={cfg.trial_dias} onChange={set('trial_dias')} className={inputCls} min="1" max="365" required />
+          </ConfigField>
+        </ConfigSection>
+
+        <ConfigSection title="Vencimientos">
+          <ConfigField label="Período de gracia (días)" hint="Días extra de acceso para suscripciones pagas vencidas, antes de bloquear.">
+            <input type="number" value={cfg.grace_days} onChange={set('grace_days')} className={inputCls} min="0" max="90" required />
+          </ConfigField>
+          <ConfigField label="Umbral de alerta 1 (días)" hint="Se genera notificación cuando faltan este número de días o menos para vencer.">
+            <input type="number" value={cfg.dias_alerta_1} onChange={set('dias_alerta_1')} className={inputCls} min="1" max="60" required />
+          </ConfigField>
+          <ConfigField label="Umbral de alerta 2 (días)" hint="Segundo umbral, más urgente. Debe ser menor que el primero.">
+            <input type="number" value={cfg.dias_alerta_2} onChange={set('dias_alerta_2')} className={inputCls} min="1" max="60" required />
+          </ConfigField>
+        </ConfigSection>
+
+        <ConfigSection title="MercadoPago">
+          <ConfigField label="Statement descriptor" hint="Texto que aparece en el resumen de tarjeta del cliente al pagar.">
+            <input type="text" value={cfg.statement_descriptor} onChange={set('statement_descriptor')} className={inputCls} maxLength={22} />
+          </ConfigField>
+        </ConfigSection>
+
+        <ConfigSection title="Email / SMTP">
+          <div className="grid grid-cols-2 gap-4">
+            <ConfigField label="Host SMTP">
+              <input type="text" value={cfg.smtp_host} onChange={set('smtp_host')} placeholder="smtp.gmail.com" className={inputCls} />
+            </ConfigField>
+            <ConfigField label="Puerto">
+              <input type="number" value={cfg.smtp_port} onChange={set('smtp_port')} placeholder="587" className={inputCls} />
+            </ConfigField>
           </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1.5">WhatsApp de contacto / pagos</label>
-            <input
-              type="text"
-              value={whatsapp}
-              onChange={e => setWhatsapp(e.target.value)}
-              placeholder="+5493811234567"
-              className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-            <p className="text-xs text-gray-600 mt-1">
-              Formato internacional, ej: +5493815156095. Se muestra como botón en la página de Cuenta.
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1.5">Días del período de prueba (trial)</label>
-            <input
-              type="number"
-              value={trialDias}
-              onChange={e => setTrialDias(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              min="1"
-              max="365"
-              required
-            />
-            <p className="text-xs text-gray-600 mt-1">
-              Días que dura el trial al registrar una empresa nueva.
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1.5">Precio mensual (ARS)</label>
-            <input
-              type="number"
-              value={precio}
-              onChange={e => setPrecio(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              min="0"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-600 mb-1.5">Precio anual con 20% descuento (ARS)</label>
-            <input
-              type="text"
-              value={precioAnual ? formatMoney(precioAnual) : '—'}
-              disabled
-              className="w-full bg-gray-800/40 border border-gray-800 text-gray-500 rounded-lg px-4 py-2.5 cursor-not-allowed"
-            />
-            <p className="text-xs text-gray-600 mt-1">
-              Calculado como precio mensual × 12 × 0.8 — referencia para cobros anuales
-            </p>
-          </div>
-          {msg && (
-            <p className={`text-sm ${msg.ok ? 'text-green-400' : 'text-red-400'}`}>{msg.text}</p>
-          )}
-          <button
-            type="submit"
-            disabled={saving}
-            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors"
-          >
-            {saving ? 'Guardando...' : 'Guardar cambios'}
-          </button>
-        </form>
+          <ConfigField label="Usuario (email de envío)">
+            <input type="email" value={cfg.smtp_user} onChange={set('smtp_user')} placeholder="notificaciones@miapp.com" className={inputCls} />
+          </ConfigField>
+          <ConfigField label="Contraseña / App Password">
+            <input type="password" value={cfg.smtp_password} onChange={set('smtp_password')} placeholder="••••••••••••" className={inputCls} autoComplete="new-password" />
+          </ConfigField>
+          <ConfigField label="Nombre remitente (From)" hint='Ej: "Mi App <notificaciones@miapp.com>"'>
+            <input type="text" value={cfg.smtp_from} onChange={set('smtp_from')} placeholder="PULS <noreply@miapp.com>" className={inputCls} />
+          </ConfigField>
+        </ConfigSection>
+
+        {msg && (
+          <p className={`text-sm mb-4 ${msg.ok ? 'text-green-400' : 'text-red-400'}`}>{msg.text}</p>
+        )}
+        <button
+          type="submit"
+          disabled={saving}
+          className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors"
+        >
+          {saving ? 'Guardando...' : 'Guardar configuración'}
+        </button>
+      </form>
+    </div>
+  );
+};
+
+// ─── EmpresaConfigPanel ───────────────────────────────────────────────────────
+
+const EmpresaConfigPanel = ({ empresaId, token }) => {
+  const authHeader = { headers: { Authorization: `Bearer ${token}` } };
+  const [open, setOpen] = useState(false);
+  const [cfg, setCfg] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const loadConfig = async () => {
+    setLoadError(null);
+    try {
+      const res = await ownerAxios.get(`/clientes/${empresaId}/config`, authHeader);
+      const d = res.data;
+      setCfg({
+        company_name: d.company_name ?? '',
+        company_address: d.company_address ?? '',
+        company_phone: d.company_phone ?? '',
+        company_email: d.company_email ?? '',
+        company_tax_id: d.company_tax_id ?? '',
+        tax_rate: String(d.tax_rate != null ? Math.round(d.tax_rate * 100) : 12),
+        currency_symbol: d.currency_symbol ?? '$',
+        currency_code: d.currency_code ?? 'ARS',
+        sounds_enabled: d.sounds_enabled ?? true,
+        auto_focus_barcode: d.auto_focus_barcode ?? true,
+        barcode_scan_timeout: String(d.barcode_scan_timeout ?? 100),
+        receipt_footer_text: d.receipt_footer_text ?? '',
+        default_minimum_stock: String(d.default_minimum_stock ?? 10),
+        low_stock_alert_enabled: d.low_stock_alert_enabled ?? true,
+        auto_update_inventory: d.auto_update_inventory ?? true,
+        print_receipt_auto: d.print_receipt_auto ?? false,
+        show_receipt_after_sale: d.show_receipt_after_sale ?? true,
+        receipt_width: String(d.receipt_width ?? 80),
+        items_per_page: String(d.items_per_page ?? 10),
+        date_format: d.date_format ?? 'DD/MM/YYYY',
+        time_format: d.time_format ?? '24h',
+        pay_efectivo: String(d.payment_method_adjustments?.efectivo ?? 0),
+        pay_tarjeta: String(d.payment_method_adjustments?.tarjeta ?? 0),
+        pay_transferencia: String(d.payment_method_adjustments?.transferencia ?? 0),
+      });
+    } catch (err) {
+      console.error(err);
+      setLoadError(err.response?.data?.detail || 'Error al cargar la configuración');
+    }
+  };
+
+  const handleToggle = () => {
+    if (!open && !cfg) loadConfig();
+    setOpen(o => !o);
+    setMsg(null);
+  };
+
+  const set = (field) => (e) => {
+    const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+    setCfg(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setMsg(null);
+    try {
+      const taxRate = parseFloat(cfg.tax_rate) / 100;
+      await ownerAxios.put(`/clientes/${empresaId}/config`, {
+        company_name: cfg.company_name || null,
+        company_address: cfg.company_address || null,
+        company_phone: cfg.company_phone || null,
+        company_email: cfg.company_email || null,
+        company_tax_id: cfg.company_tax_id || null,
+        tax_rate: isNaN(taxRate) ? null : taxRate,
+        currency_symbol: cfg.currency_symbol || null,
+        currency_code: cfg.currency_code || null,
+        sounds_enabled: cfg.sounds_enabled,
+        auto_focus_barcode: cfg.auto_focus_barcode,
+        barcode_scan_timeout: parseInt(cfg.barcode_scan_timeout) || null,
+        receipt_footer_text: cfg.receipt_footer_text || null,
+        default_minimum_stock: parseInt(cfg.default_minimum_stock) || null,
+        low_stock_alert_enabled: cfg.low_stock_alert_enabled,
+        auto_update_inventory: cfg.auto_update_inventory,
+        print_receipt_auto: cfg.print_receipt_auto,
+        show_receipt_after_sale: cfg.show_receipt_after_sale,
+        receipt_width: parseInt(cfg.receipt_width) || null,
+        items_per_page: parseInt(cfg.items_per_page) || null,
+        date_format: cfg.date_format || null,
+        time_format: cfg.time_format || null,
+        payment_method_adjustments: {
+          efectivo: parseFloat(cfg.pay_efectivo) || 0,
+          tarjeta: parseFloat(cfg.pay_tarjeta) || 0,
+          transferencia: parseFloat(cfg.pay_transferencia) || 0,
+        },
+      }, authHeader);
+      setMsg({ ok: true, text: 'Configuración guardada.' });
+    } catch (err) {
+      setMsg({ ok: false, text: err.response?.data?.detail || 'Error al guardar' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const Toggle = ({ field, label }) => (
+    <label className="flex items-center justify-between cursor-pointer">
+      <span className="text-sm text-gray-400">{label}</span>
+      <div
+        onClick={() => setCfg(prev => ({ ...prev, [field]: !prev[field] }))}
+        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${cfg[field] ? 'bg-indigo-600' : 'bg-gray-700'}`}
+      >
+        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${cfg[field] ? 'translate-x-4' : 'translate-x-1'}`} />
       </div>
+    </label>
+  );
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden mt-5">
+      <button
+        onClick={handleToggle}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-800/50 transition-colors"
+      >
+        <span className="text-sm font-semibold text-gray-300">Configuración de cuenta</span>
+        <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="border-t border-gray-800 p-5">
+          {loadError ? (
+            <div className="flex flex-col items-center gap-3 py-8">
+              <p className="text-red-400 text-sm">{loadError}</p>
+              <button
+                onClick={loadConfig}
+                className="text-xs text-indigo-400 hover:text-indigo-300 underline"
+              >
+                Reintentar
+              </button>
+            </div>
+          ) : !cfg ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-500" />
+            </div>
+          ) : (
+            <form onSubmit={handleSave} className="space-y-6">
+
+              {/* Empresa */}
+              <div>
+                <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-4">Datos de la empresa</p>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Nombre</label>
+                      <input type="text" value={cfg.company_name} onChange={set('company_name')} className={inputCls} />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">CUIT / Tax ID</label>
+                      <input type="text" value={cfg.company_tax_id} onChange={set('company_tax_id')} className={inputCls} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Dirección</label>
+                    <input type="text" value={cfg.company_address} onChange={set('company_address')} className={inputCls} />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Teléfono</label>
+                      <input type="text" value={cfg.company_phone} onChange={set('company_phone')} className={inputCls} />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Email empresa</label>
+                      <input type="email" value={cfg.company_email} onChange={set('company_email')} className={inputCls} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Impuestos y Moneda */}
+              <div>
+                <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-4">Impuestos y Moneda</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">IVA (%)</label>
+                    <input type="number" value={cfg.tax_rate} onChange={set('tax_rate')} className={inputCls} min="0" max="100" step="0.1" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Símbolo moneda</label>
+                    <input type="text" value={cfg.currency_symbol} onChange={set('currency_symbol')} className={inputCls} maxLength={4} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Código moneda</label>
+                    <input type="text" value={cfg.currency_code} onChange={set('currency_code')} className={inputCls} maxLength={4} />
+                  </div>
+                </div>
+              </div>
+
+              {/* POS */}
+              <div>
+                <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-4">POS</p>
+                <div className="space-y-3">
+                  <Toggle field="sounds_enabled" label="Sonidos habilitados" />
+                  <Toggle field="auto_focus_barcode" label="Auto-foco en lector de código" />
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Timeout lector de barcode (ms)</label>
+                    <input type="number" value={cfg.barcode_scan_timeout} onChange={set('barcode_scan_timeout')} className={inputCls} min="50" max="2000" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Pie de recibo</label>
+                    <input type="text" value={cfg.receipt_footer_text} onChange={set('receipt_footer_text')} className={inputCls} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Recibo */}
+              <div>
+                <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-4">Recibo</p>
+                <div className="space-y-3">
+                  <Toggle field="print_receipt_auto" label="Imprimir recibo automáticamente" />
+                  <Toggle field="show_receipt_after_sale" label="Mostrar recibo tras la venta" />
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Ancho recibo (caracteres)</label>
+                    <input type="number" value={cfg.receipt_width} onChange={set('receipt_width')} className={inputCls} min="40" max="120" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Inventario */}
+              <div>
+                <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-4">Inventario</p>
+                <div className="space-y-3">
+                  <Toggle field="low_stock_alert_enabled" label="Alertas de stock bajo habilitadas" />
+                  <Toggle field="auto_update_inventory" label="Actualización automática de inventario" />
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Stock mínimo por defecto</label>
+                    <input type="number" value={cfg.default_minimum_stock} onChange={set('default_minimum_stock')} className={inputCls} min="0" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Sistema */}
+              <div>
+                <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-4">Sistema</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Ítems por página</label>
+                    <input type="number" value={cfg.items_per_page} onChange={set('items_per_page')} className={inputCls} min="5" max="100" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Formato fecha</label>
+                    <select value={cfg.date_format} onChange={set('date_format')} className={inputCls}>
+                      <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                      <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                      <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Formato hora</label>
+                    <select value={cfg.time_format} onChange={set('time_format')} className={inputCls}>
+                      <option value="24h">24h</option>
+                      <option value="12h">12h (AM/PM)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Ajustes por método de pago */}
+              <div>
+                <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-1">Ajustes por método de pago (%)</p>
+                <p className="text-xs text-gray-600 mb-4">Negativo = descuento. Positivo = recargo. Ej: -3 = 3% descuento en efectivo.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Efectivo</label>
+                    <input type="number" value={cfg.pay_efectivo} onChange={set('pay_efectivo')} className={inputCls} step="0.1" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Tarjeta</label>
+                    <input type="number" value={cfg.pay_tarjeta} onChange={set('pay_tarjeta')} className={inputCls} step="0.1" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Transferencia</label>
+                    <input type="number" value={cfg.pay_transferencia} onChange={set('pay_transferencia')} className={inputCls} step="0.1" />
+                  </div>
+                </div>
+              </div>
+
+              {msg && (
+                <p className={`text-sm ${msg.ok ? 'text-green-400' : 'text-red-400'}`}>{msg.text}</p>
+              )}
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors"
+              >
+                {saving ? 'Guardando...' : 'Guardar configuración de cuenta'}
+              </button>
+            </form>
+          )}
+        </div>
+      )}
     </div>
   );
 };

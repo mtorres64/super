@@ -71,6 +71,38 @@ async def get_trial_dias() -> int:
     doc = await db.system_config.find_one({"key": "trial_dias"})
     return int(doc["value"]) if doc else 15
 
+async def get_grace_days() -> int:
+    doc = await db.system_config.find_one({"key": "grace_days"})
+    return int(doc["value"]) if doc else 15
+
+async def get_dias_alerta() -> list:
+    doc = await db.system_config.find_one({"key": "dias_alerta"})
+    return doc["value"] if doc else [10, 5]
+
+async def get_descuento_anual_pct() -> int:
+    doc = await db.system_config.find_one({"key": "descuento_anual_pct"})
+    return int(doc["value"]) if doc else 20
+
+async def get_saas_nombre() -> str:
+    doc = await db.system_config.find_one({"key": "saas_nombre"})
+    return doc["value"] if doc else "PULS"
+
+async def get_statement_descriptor() -> str:
+    doc = await db.system_config.find_one({"key": "statement_descriptor"})
+    return doc["value"] if doc else "SuperMarket POS"
+
+async def get_smtp_config() -> dict:
+    doc = await db.system_config.find_one({"key": "smtp_config"})
+    if doc and isinstance(doc.get("value"), dict):
+        return doc["value"]
+    return {
+        "host": SMTP_HOST,
+        "port": SMTP_PORT,
+        "user": SMTP_USER,
+        "password": SMTP_PASSWORD,
+        "from_address": EMAIL_FROM,
+    }
+
 def calcular_siguiente_vencimiento(dia_facturacion: int, meses: int, desde: datetime) -> datetime:
     """Mismo día del mes, n meses hacia adelante. Clamped al último día del mes si es necesario."""
     mes = desde.month + meses
@@ -107,6 +139,7 @@ GRACE_DAYS = 15  # Días de gracia para suscripciones pagas vencidas
 async def generar_alertas_vencimiento() -> int:
     """Genera notificaciones para suscripciones próximas a vencer. Retorna cantidad generadas."""
     now = datetime.now(timezone.utc)
+    dias_alerta = await get_dias_alerta()
     suscripciones = await db.suscripciones.find(
         {"status": {"$in": [SuscripcionStatus.TRIAL, SuscripcionStatus.ACTIVA]}}
     ).to_list(None)
@@ -125,7 +158,7 @@ async def generar_alertas_vencimiento() -> int:
         plan_nombre = sus.get("plan_nombre", "Plan")
         status_label = "trial" if sus.get("status") == SuscripcionStatus.TRIAL else "suscripción"
         # Usar solo el threshold más urgente que aplique
-        applicable = sorted([t for t in DIAS_ALERTA if dias_restantes <= t])
+        applicable = sorted([t for t in dias_alerta if dias_restantes <= t])
         if not applicable:
             continue
         threshold = applicable[0]  # el más chico = más urgente
@@ -218,7 +251,7 @@ def _digitos_html(codigo: str) -> str:
 def _anio() -> str:
     return str(datetime.now().year)
 
-def _build_email_html(titulo: str, subtitulo: str, codigo: str, nota_pie: str) -> str:
+def _build_email_html(titulo: str, subtitulo: str, codigo: str, nota_pie: str, saas_nombre: str = "PULS") -> str:
     return (
         '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1"></head>'
@@ -229,7 +262,7 @@ def _build_email_html(titulo: str, subtitulo: str, codigo: str, nota_pie: str) -
         'overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">'
         # Header
         '<tr><td style="background:linear-gradient(135deg,#059669,#10b981);padding:36px 40px;text-align:center;">'
-        '<div style="font-size:28px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">PULS</div>'
+        '<div style="font-size:28px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">' + saas_nombre + '</div>'
         '<div style="font-size:13px;color:rgba(255,255,255,0.8);margin-top:4px;">Sistema de gesti\u00f3n para comercios</div>'
         '</td></tr>'
         # Cuerpo
@@ -244,53 +277,65 @@ def _build_email_html(titulo: str, subtitulo: str, codigo: str, nota_pie: str) -
         # Footer
         '<tr><td style="background:#f9fafb;padding:20px 40px;border-top:1px solid #e5e7eb;text-align:center;">'
         '<p style="margin:0;font-size:12px;color:#9ca3af;">'
-        '\u00a9 ' + _anio() + ' PULS \u00b7 Sistema de gesti\u00f3n para comercios'
+        '\u00a9 ' + _anio() + ' ' + saas_nombre + ' \u00b7 Sistema de gesti\u00f3n para comercios'
         '</p></td></tr>'
         '</table></td></tr></table></body></html>'
     )
 
-def _smtp_send(destinatario: str, subject: str, html: str):
+def _smtp_send(destinatario: str, subject: str, html: str, smtp_cfg: dict = None):
+    cfg = smtp_cfg or {"host": SMTP_HOST, "port": SMTP_PORT, "user": SMTP_USER, "password": SMTP_PASSWORD, "from_address": EMAIL_FROM}
+    host = cfg.get("host", SMTP_HOST)
+    port = int(cfg.get("port", SMTP_PORT))
+    user = cfg.get("user", SMTP_USER)
+    password = cfg.get("password", SMTP_PASSWORD)
+    from_address = cfg.get("from_address", EMAIL_FROM)
     msg = MIMEMultipart('alternative')
     msg['Subject'] = subject
-    msg['From'] = EMAIL_FROM
+    msg['From'] = from_address
     msg['To'] = destinatario
     msg.attach(MIMEText(html, 'html', 'utf-8'))
-    if SMTP_PORT == 465:
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
-            server.login(SMTP_USER, SMTP_PASSWORD)
-            server.sendmail(SMTP_USER, [destinatario], msg.as_string())
+    if port == 465:
+        with smtplib.SMTP_SSL(host, port) as server:
+            server.login(user, password)
+            server.sendmail(user, [destinatario], msg.as_string())
     else:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        with smtplib.SMTP(host, port) as server:
             server.ehlo()
             server.starttls()
-            server.login(SMTP_USER, SMTP_PASSWORD)
-            server.sendmail(SMTP_USER, [destinatario], msg.as_string())
+            server.login(user, password)
+            server.sendmail(user, [destinatario], msg.as_string())
 
-def _send_email_otp_sync(destinatario: str, codigo: str):
+def _send_email_otp_sync(destinatario: str, codigo: str, saas_nombre: str = "PULS", smtp_cfg: dict = None):
     html = _build_email_html(
         titulo="Verific\u00e1 tu correo",
-        subtitulo="Us\u00e1 el siguiente c\u00f3digo para completar el registro de tu empresa en PULS.<br>"
+        subtitulo=f"Us\u00e1 el siguiente c\u00f3digo para completar el registro de tu empresa en {saas_nombre}.<br>"
                   "V\u00e1lido por <strong style=\"color:#111827;\">10 minutos</strong>.",
         codigo=codigo,
         nota_pie="Si no solicitaste este c\u00f3digo, pod\u00e9s ignorar este mensaje.",
+        saas_nombre=saas_nombre,
     )
-    _smtp_send(destinatario,"Tu código de verificación PULS: {}".format(codigo), html)
+    _smtp_send(destinatario, f"Tu código de verificación {saas_nombre}: {codigo}", html, smtp_cfg=smtp_cfg)
 
-def _send_password_reset_sync(destinatario: str, codigo: str):
+def _send_password_reset_sync(destinatario: str, codigo: str, saas_nombre: str = "PULS", smtp_cfg: dict = None):
     html = _build_email_html(
         titulo="Recuperar contrase\u00f1a",
         subtitulo="Recibimos una solicitud para restablecer la contrase\u00f1a de tu cuenta.<br>"
                   "Us\u00e1 este c\u00f3digo. V\u00e1lido por <strong style=\"color:#111827;\">15 minutos</strong>.",
         codigo=codigo,
         nota_pie="Si no solicitaste este cambio, pod\u00e9s ignorar este mensaje. Tu contrase\u00f1a no se modificar\u00e1.",
+        saas_nombre=saas_nombre,
     )
-    _smtp_send(destinatario,"Recuperar contraseña PULS: {}".format(codigo), html)
+    _smtp_send(destinatario, f"Recuperar contrase\u00f1a {saas_nombre}: {codigo}", html, smtp_cfg=smtp_cfg)
 
 async def send_email_otp(destinatario: str, codigo: str):
-    await asyncio.to_thread(_send_email_otp_sync, destinatario, codigo)
+    saas_nombre = await get_saas_nombre()
+    smtp_cfg = await get_smtp_config()
+    await asyncio.to_thread(_send_email_otp_sync, destinatario, codigo, saas_nombre, smtp_cfg)
 
 async def send_password_reset_email(destinatario: str, codigo: str):
-    await asyncio.to_thread(_send_password_reset_sync, destinatario, codigo)
+    saas_nombre = await get_saas_nombre()
+    smtp_cfg = await get_smtp_config()
+    await asyncio.to_thread(_send_password_reset_sync, destinatario, codigo, saas_nombre, smtp_cfg)
 
 
 class OTPEnviar(BaseModel):
@@ -2669,8 +2714,8 @@ async def _get_or_create_suscripcion(empresa_id: str) -> dict:
             )
             doc["status"] = SuscripcionStatus.VENCIDA
         elif doc["status"] == SuscripcionStatus.ACTIVA:
-            # Suscripción paga: periodo de gracia de GRACE_DAYS días
-            gracia_fin = vencimiento + timedelta(days=GRACE_DAYS)
+            # Suscripción paga: periodo de gracia configurable
+            gracia_fin = vencimiento + timedelta(days=await get_grace_days())
             if now > gracia_fin:
                 # Gracia expirada → bloquear
                 await db.suscripciones.update_one(
@@ -2682,7 +2727,7 @@ async def _get_or_create_suscripcion(empresa_id: str) -> dict:
     return doc
 
 
-def _calcular_estado_suscripcion(doc: dict) -> dict:
+def _calcular_estado_suscripcion(doc: dict, grace_days: int = 15) -> dict:
     """Calcula campos derivados de una suscripción: en_gracia, gracia_vencimiento, bloqueado, dias_restantes."""
     now = datetime.now(timezone.utc)
     vencimiento = doc["fecha_vencimiento"]
@@ -2694,7 +2739,7 @@ def _calcular_estado_suscripcion(doc: dict) -> dict:
     en_gracia = False
     gracia_vencimiento = None
     if doc["status"] == SuscripcionStatus.ACTIVA and vencimiento < now:
-        gracia_vencimiento = vencimiento + timedelta(days=GRACE_DAYS)
+        gracia_vencimiento = vencimiento + timedelta(days=grace_days)
         en_gracia = True
 
     if en_gracia:
@@ -2714,7 +2759,7 @@ def _calcular_estado_suscripcion(doc: dict) -> dict:
 @api_router.get("/cuenta/status")
 async def get_cuenta_status(user: User = Depends(require_role([UserRole.ADMIN]))):
     doc = await _get_or_create_suscripcion(user.empresa_id)
-    estado = _calcular_estado_suscripcion(doc)
+    estado = _calcular_estado_suscripcion(doc, grace_days=await get_grace_days())
     return {
         "id": doc["id"],
         "plan_nombre": doc["plan_nombre"],
@@ -2735,7 +2780,7 @@ async def get_cuenta_status(user: User = Depends(require_role([UserRole.ADMIN]))
 async def get_suscripcion_check(user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.CAJERO]))):
     """Estado de suscripción para control de acceso. Accesible a todos los roles autenticados."""
     doc = await _get_or_create_suscripcion(user.empresa_id)
-    estado = _calcular_estado_suscripcion(doc)
+    estado = _calcular_estado_suscripcion(doc, grace_days=await get_grace_days())
     return {
         "status": doc["status"],
         "fecha_vencimiento": doc["fecha_vencimiento"],
@@ -2897,7 +2942,7 @@ async def crear_pago_suscripcion(data: PagoCreate = PagoCreate(), user: User = D
         **({"auto_return": "approved"} if not FRONTEND_URL.startswith("http://localhost") else {}),
         "notification_url": f"{APP_URL}/api/mercadopago/webhook",
         "external_reference": user.empresa_id,
-        "statement_descriptor": "SuperMarket POS",
+        "statement_descriptor": await get_statement_descriptor(),
     }
     response = sdk.preference().create(preference_data)
     if response["status"] not in (200, 201):
@@ -3657,13 +3702,54 @@ async def owner_toggle_empresa(empresa_id: str, _=Depends(verify_owner_token)):
             )
     return {"activo": new_status, "message": f"Empresa {'activada' if new_status else 'suspendida'}"}
 
+@owner_router.get("/clientes/{empresa_id}/config")
+async def owner_get_empresa_config(empresa_id: str, _=Depends(verify_owner_token)):
+    empresa = await db.empresas.find_one({"id": empresa_id})
+    if not empresa:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    config = await db.configuration.find_one({"empresa_id": empresa_id})
+    if not config:
+        default_config = Configuration(empresa_id=empresa_id)
+        await db.configuration.insert_one(default_config.dict())
+        return default_config.dict()
+    config.pop("_id", None)
+    return config
+
+@owner_router.put("/clientes/{empresa_id}/config")
+async def owner_update_empresa_config(empresa_id: str, config_data: ConfigurationUpdate, _=Depends(verify_owner_token)):
+    empresa = await db.empresas.find_one({"id": empresa_id})
+    if not empresa:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    current_config = await db.configuration.find_one({"empresa_id": empresa_id})
+    if not current_config:
+        default_config = Configuration(empresa_id=empresa_id).dict()
+        await db.configuration.insert_one(default_config)
+    update_data = {k: v for k, v in config_data.dict().items() if v is not None}
+    update_data["updated_at"] = datetime.now(timezone.utc)
+    if update_data:
+        await db.configuration.update_one({"empresa_id": empresa_id}, {"$set": update_data})
+    updated = await db.configuration.find_one({"empresa_id": empresa_id})
+    updated.pop("_id", None)
+    return updated
+
 @owner_router.get("/config")
 async def owner_get_config(_=Depends(verify_owner_token)):
+    smtp = await get_smtp_config()
     return {
         "suscripcion_precio": await get_precio_suscripcion(),
         "suscripcion_plan_nombre": await get_plan_nombre_suscripcion(),
         "whatsapp_numero": await get_whatsapp_numero(),
         "trial_dias": await get_trial_dias(),
+        "grace_days": await get_grace_days(),
+        "dias_alerta": await get_dias_alerta(),
+        "descuento_anual_pct": await get_descuento_anual_pct(),
+        "saas_nombre": await get_saas_nombre(),
+        "statement_descriptor": await get_statement_descriptor(),
+        "smtp_host": smtp.get("host", SMTP_HOST),
+        "smtp_port": smtp.get("port", SMTP_PORT),
+        "smtp_user": smtp.get("user", SMTP_USER),
+        "smtp_password": smtp.get("password", SMTP_PASSWORD),
+        "smtp_from": smtp.get("from_address", EMAIL_FROM),
     }
 
 class OwnerConfigUpdate(BaseModel):
@@ -3671,31 +3757,52 @@ class OwnerConfigUpdate(BaseModel):
     suscripcion_plan_nombre: Optional[str] = None
     whatsapp_numero: Optional[str] = None
     trial_dias: Optional[int] = None
+    grace_days: Optional[int] = None
+    dias_alerta: Optional[list] = None
+    descuento_anual_pct: Optional[int] = None
+    saas_nombre: Optional[str] = None
+    statement_descriptor: Optional[str] = None
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_from: Optional[str] = None
 
 @owner_router.put("/config")
 async def owner_update_config(data: OwnerConfigUpdate, _=Depends(verify_owner_token)):
-    if data.suscripcion_precio is not None:
+    simple_keys = [
+        ("suscripcion_precio", data.suscripcion_precio),
+        ("suscripcion_plan_nombre", data.suscripcion_plan_nombre),
+        ("whatsapp_numero", data.whatsapp_numero),
+        ("trial_dias", data.trial_dias),
+        ("grace_days", data.grace_days),
+        ("dias_alerta", data.dias_alerta),
+        ("descuento_anual_pct", data.descuento_anual_pct),
+        ("saas_nombre", data.saas_nombre),
+        ("statement_descriptor", data.statement_descriptor),
+    ]
+    for key, value in simple_keys:
+        if value is not None:
+            await db.system_config.update_one(
+                {"key": key},
+                {"$set": {"value": value}},
+                upsert=True,
+            )
+    smtp_fields = {
+        k: v for k, v in {
+            "host": data.smtp_host,
+            "port": data.smtp_port,
+            "user": data.smtp_user,
+            "password": data.smtp_password,
+            "from_address": data.smtp_from,
+        }.items() if v is not None
+    }
+    if smtp_fields:
+        existing = await get_smtp_config()
+        merged = {**existing, **smtp_fields}
         await db.system_config.update_one(
-            {"key": "suscripcion_precio"},
-            {"$set": {"value": data.suscripcion_precio}},
-            upsert=True,
-        )
-    if data.suscripcion_plan_nombre is not None:
-        await db.system_config.update_one(
-            {"key": "suscripcion_plan_nombre"},
-            {"$set": {"value": data.suscripcion_plan_nombre}},
-            upsert=True,
-        )
-    if data.whatsapp_numero is not None:
-        await db.system_config.update_one(
-            {"key": "whatsapp_numero"},
-            {"$set": {"value": data.whatsapp_numero}},
-            upsert=True,
-        )
-    if data.trial_dias is not None:
-        await db.system_config.update_one(
-            {"key": "trial_dias"},
-            {"$set": {"value": data.trial_dias}},
+            {"key": "smtp_config"},
+            {"$set": {"value": merged}},
             upsert=True,
         )
     return {"ok": True}
