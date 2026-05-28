@@ -36,6 +36,14 @@ if (localStorage.getItem('modal_animations') === 'false') {
   document.body.classList.add('no-animations');
 }
 
+// Apply dark mode preference on startup (skip login/landing)
+if (localStorage.getItem('dark_mode') === 'true') {
+  const path = window.location.pathname;
+  if (path !== '/login' && path !== '/') {
+    document.documentElement.classList.add('dark');
+  }
+}
+
 const resetTheme = () => {
   const root = document.documentElement;
   root.style.removeProperty('--primary');
@@ -123,19 +131,38 @@ const applyTheme = (token) => {
   }).catch(() => {});
 };
 
+// Manages dark class based on route — login and landing are always light
+const DarkModeManager = () => {
+  const location = useLocation();
+  React.useEffect(() => {
+    const PUBLIC_PATHS = ['/', '/login'];
+    const isDark = localStorage.getItem('dark_mode') === 'true';
+    if (isDark && !PUBLIC_PATHS.includes(location.pathname)) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [location.pathname]);
+  return null;
+};
+
 // Auth Provider
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
   const [suscripcion, setSuscripcion] = useState(null);
+  const [modulosActivos, setModulosActivos] = useState([]);
 
   const fetchSuscripcion = React.useCallback((currentToken) => {
     const tkn = currentToken || localStorage.getItem('token');
     if (!tkn) return;
     axios.get(`${API}/auth/suscripcion`, {
       headers: { Authorization: `Bearer ${tkn}` }
-    }).then(res => setSuscripcion(res.data)).catch(() => {});
+    }).then(res => {
+      setSuscripcion(res.data);
+      setModulosActivos(res.data.modules_activos || []);
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -146,6 +173,7 @@ export const AuthProvider = ({ children }) => {
           setUser(null);
           setToken(null);
           setSuscripcion(null);
+          setModulosActivos([]);
           localStorage.removeItem('token');
           delete axios.defaults.headers.common['Authorization'];
           resetTheme();
@@ -194,6 +222,7 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     setToken(null);
     setSuscripcion(null);
+    setModulosActivos([]);
     localStorage.removeItem('token');
     delete axios.defaults.headers.common['Authorization'];
     // Restaurar colores por defecto (verde) al cerrar sesión
@@ -201,7 +230,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading, suscripcion, refreshSuscripcion: fetchSuscripcion }}>
+    <AuthContext.Provider value={{ user, token, login, logout, loading, suscripcion, modulosActivos, refreshSuscripcion: fetchSuscripcion }}>
       {children}
     </AuthContext.Provider>
   );
@@ -326,9 +355,29 @@ const SuscripcionBloqueada = ({ user }) => (
   </Layout>
 );
 
+// Pantalla cuando el módulo no está disponible en el plan
+const ModuloNoDisponible = () => (
+  <Layout>
+    <div className="flex flex-col items-center justify-center h-full gap-6 p-8 text-center">
+      <div className="w-20 h-20 rounded-full bg-yellow-100 flex items-center justify-center">
+        <AlertTriangle className="w-10 h-10 text-yellow-600" />
+      </div>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Módulo no disponible</h1>
+        <p className="text-gray-600 mb-4">
+          Esta función no está incluida en tu plan actual. Contactá al administrador para habilitarla.
+        </p>
+        <a href="/cuenta" className="btn btn-primary inline-flex items-center gap-2">
+          Ver mi plan
+        </a>
+      </div>
+    </div>
+  </Layout>
+);
+
 // Protected Route component
-const ProtectedRoute = ({ children, allowedRoles = [], skipSubscriptionCheck = false }) => {
-  const { user, loading, suscripcion } = React.useContext(AuthContext);
+const ProtectedRoute = ({ children, allowedRoles = [], skipSubscriptionCheck = false, modulo = null }) => {
+  const { user, loading, suscripcion, modulosActivos } = React.useContext(AuthContext);
   const location = useLocation();
 
   if (loading) {
@@ -357,6 +406,11 @@ const ProtectedRoute = ({ children, allowedRoles = [], skipSubscriptionCheck = f
     }
   }
 
+  // Control de acceso por módulo (solo si la suscripción no está bloqueada y hay módulos cargados)
+  if (modulo && !suscripcion?.bloqueado && modulosActivos.length > 0 && !modulosActivos.includes(modulo)) {
+    return <ModuloNoDisponible />;
+  }
+
   return <Layout>{children}</Layout>;
 };
 
@@ -365,6 +419,7 @@ function App() {
     <div className="App">
       <AuthProvider>
         <BrowserRouter>
+          <DarkModeManager />
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/" element={<Landing />} />
@@ -379,7 +434,7 @@ function App() {
             <Route
               path="/pos"
               element={
-                <ProtectedRoute allowedRoles={['admin', 'cajero', 'supervisor']}>
+                <ProtectedRoute allowedRoles={['admin', 'cajero', 'supervisor']} modulo="pos">
                   <POS />
                 </ProtectedRoute>
               }
@@ -387,7 +442,7 @@ function App() {
             <Route
               path="/products"
               element={
-                <ProtectedRoute allowedRoles={['admin']}>
+                <ProtectedRoute allowedRoles={['admin']} modulo="inventario">
                   <ProductManagement />
                 </ProtectedRoute>
               }
@@ -395,7 +450,7 @@ function App() {
             <Route
               path="/reports"
               element={
-                <ProtectedRoute allowedRoles={['admin', 'supervisor']}>
+                <ProtectedRoute allowedRoles={['admin', 'supervisor']} modulo="reportes">
                   <Reports />
                 </ProtectedRoute>
               }
@@ -403,7 +458,7 @@ function App() {
             <Route
               path="/users"
               element={
-                <ProtectedRoute allowedRoles={['admin']}>
+                <ProtectedRoute allowedRoles={['admin']} modulo="usuarios">
                   <UserManagement />
                 </ProtectedRoute>
               }
@@ -411,7 +466,7 @@ function App() {
             <Route
               path="/settings"
               element={
-                <ProtectedRoute allowedRoles={['admin']}>
+                <ProtectedRoute allowedRoles={['admin']} modulo="configuracion">
                   <Settings />
                 </ProtectedRoute>
               }
@@ -419,7 +474,7 @@ function App() {
             <Route
               path="/branches"
               element={
-                <ProtectedRoute allowedRoles={['admin']}>
+                <ProtectedRoute allowedRoles={['admin']} modulo="multi_sucursal">
                   <BranchManagement />
                 </ProtectedRoute>
               }
@@ -427,7 +482,7 @@ function App() {
             <Route
               path="/cash"
               element={
-                <ProtectedRoute allowedRoles={['admin', 'cajero', 'supervisor']}>
+                <ProtectedRoute allowedRoles={['admin', 'cajero', 'supervisor']} modulo="caja">
                   <CashManager />
                 </ProtectedRoute>
               }
@@ -435,7 +490,7 @@ function App() {
             <Route
               path="/compras"
               element={
-                <ProtectedRoute allowedRoles={['admin', 'supervisor']}>
+                <ProtectedRoute allowedRoles={['admin', 'supervisor']} modulo="compras">
                   <Compras />
                 </ProtectedRoute>
               }
@@ -443,7 +498,7 @@ function App() {
             <Route
               path="/cash-report/:sessionId"
               element={
-                <ProtectedRoute allowedRoles={['admin', 'cajero', 'supervisor']}>
+                <ProtectedRoute allowedRoles={['admin', 'cajero', 'supervisor']} modulo="caja">
                   <CashReport />
                 </ProtectedRoute>
               }
@@ -459,7 +514,7 @@ function App() {
             <Route
               path="/sales"
               element={
-                <ProtectedRoute allowedRoles={['admin', 'cajero', 'supervisor']}>
+                <ProtectedRoute allowedRoles={['admin', 'cajero', 'supervisor']} modulo="reportes">
                   <SalesReports />
                 </ProtectedRoute>
               }
@@ -467,7 +522,7 @@ function App() {
             <Route
               path="/stock-alerts"
               element={
-                <ProtectedRoute allowedRoles={['admin', 'supervisor', 'cajero']}>
+                <ProtectedRoute allowedRoles={['admin', 'supervisor', 'cajero']} modulo="alertas_stock">
                   <StockAlerts />
                 </ProtectedRoute>
               }
@@ -475,7 +530,7 @@ function App() {
             <Route
               path="/notificaciones"
               element={
-                <ProtectedRoute allowedRoles={['admin']}>
+                <ProtectedRoute allowedRoles={['admin']} modulo="notificaciones">
                   <Notificaciones />
                 </ProtectedRoute>
               }

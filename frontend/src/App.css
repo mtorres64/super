@@ -1699,6 +1699,101 @@ body {
 }
 
 /* ================================================
+   DARK MODE
+   ================================================ */
+
+html.dark {
+  color-scheme: dark;
+
+  /* Neutrals — inverted scale, pure grays */
+  --gray-50:  #121212;
+  --gray-100: #1e1e1e;
+  --gray-200: #2e2e2e;
+  --gray-300: #3d3d3d;
+  --gray-400: #5c5c5c;
+  --gray-500: #8a8a8a;
+  --gray-600: #b0b0b0;
+  --gray-700: #d0d0d0;
+  --gray-800: #e8e8e8;
+  --gray-900: #f5f5f5;
+
+  /* Border shortcuts */
+  --border-color: #2e2e2e;
+  --border-light: #1e1e1e;
+}
+
+html.dark body {
+  background-color: #121212;
+  color: #e8e8e8;
+}
+
+/* Surfaces with hardcoded #ffffff → dark card */
+html.dark .sidebar,
+html.dark .modal-content,
+html.dark .price-check-modal,
+html.dark .ticket-modal-container,
+html.dark .stat-card,
+html.dark .pos-search,
+html.dark .pos-products,
+html.dark .pos-cart,
+html.dark .table-container,
+html.dark .mobile-topbar,
+html.dark .login-card,
+html.dark .login-panel-right {
+  background: #1e1e1e;
+}
+
+html.dark .form-input,
+html.dark .form-select {
+  background: #1e1e1e;
+  color: #e8e8e8;
+  border-color: #2e2e2e;
+}
+html.dark .form-input::placeholder { color: #5c5c5c; }
+
+html.dark .btn-secondary {
+  background: #1e1e1e;
+  color: #d0d0d0;
+  border-color: #2e2e2e;
+}
+html.dark .btn-secondary:hover:not(:disabled) {
+  background: #282828;
+  border-color: #3d3d3d;
+  color: #f5f5f5;
+}
+
+html.dark .sales-tab {
+  background: #1e1e1e;
+  border-color: #2e2e2e;
+  color: #8a8a8a;
+}
+
+html.dark .quantity-btn {
+  background: #1e1e1e;
+  border-color: #2e2e2e;
+  color: #d0d0d0;
+}
+html.dark .quantity-btn:hover { background: #282828; }
+
+html.dark .pos-mobile-tabs { background: #1e1e1e; }
+
+html.dark .nav-item.active {
+  background: #121212;
+}
+
+html.dark .ticket-line,
+html.dark .ticket-footer,
+html.dark .ticket-item-name,
+html.dark .ticket-info-row,
+html.dark .ticket-items-header,
+html.dark .ticket-total-row,
+html.dark .ticket-company-name { color: #d0d0d0; }
+
+html.dark .ticket-item-detail { color: #b0b0b0; }
+html.dark .ticket-total-final  { color: #f5f5f5; }
+html.dark .ticket-separator    { color: #5c5c5c; }
+
+/* ================================================
    DISABLE ANIMATIONS
    ================================================ */
 .no-animations .modal-overlay,

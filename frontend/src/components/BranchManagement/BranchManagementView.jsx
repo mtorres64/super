@@ -278,7 +278,7 @@ const BranchManagementView = ({
                         </div>
                       </td>
                       <td>
-                        <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+                        <span className="px-2 py-1 text-xs font-medium bg-blue-100 rounded-full" style={{ color: '#1e3a5f' }}>
                           {getCategoryName(product.categoria_id)}
                         </span>
                       </td>

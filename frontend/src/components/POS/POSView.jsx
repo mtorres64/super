@@ -97,6 +97,7 @@ const POSView = ({
   showBarcodeScanner,
   handleCameraScan,
   branchName,
+  branchCount,
 }) => {
   return (
     <div className="pos-page">
@@ -137,8 +138,8 @@ const POSView = ({
           <p className="text-gray-600">
             Cajero: {user?.nombre}
             {user?.branch_id && (
-              <span className="ml-3 px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 rounded-full">
-                {branchName ? branchName : 'Sucursal asignada'} — precios diferenciados
+              <span className="ml-3 px-2 py-0.5 text-xs font-medium bg-green-100 rounded-full" style={{ color: '#052e16' }}>
+                {branchName ? branchName : 'Sucursal asignada'}{branchCount > 1 ? ' — precios diferenciados' : ''}
               </span>
             )}
           </p>
@@ -172,7 +173,7 @@ const POSView = ({
             </div>
           </div>
         ) : (
-          <div className="flex-1 p-4 rounded-lg" style={{ background: 'var(--primary-bg)', borderLeft: '4px solid var(--primary)' }}>
+          <div className="flex-1 p-4 rounded-lg pos-session-open" style={{ background: 'var(--primary-bg)', borderLeft: '4px solid var(--primary)' }}>
             <div className="flex items-center">
               <div className="mr-3" style={{ color: 'var(--primary)' }}>✅</div>
               <div>

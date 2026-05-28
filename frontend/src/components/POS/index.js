@@ -46,6 +46,7 @@ const POS = () => {
   const [priceCheckQuery, setPriceCheckQuery] = useState('');
   const [priceCheckResult, setPriceCheckResult] = useState(null);
   const [branchName, setBranchName] = useState(null);
+  const [branchCount, setBranchCount] = useState(0);
   const [receiptClosing, setReceiptClosing] = useState(false);
   const { user } = useContext(AuthContext);
 
@@ -75,6 +76,7 @@ const POS = () => {
     if (user?.branch_id) {
       axios.get(`${API}/branches`)
         .then(res => {
+          setBranchCount(res.data.length);
           const branch = res.data.find(b => b.id === user.branch_id);
           if (branch) setBranchName(branch.nombre);
         })
@@ -594,6 +596,7 @@ const POS = () => {
       showBarcodeScanner={showBarcodeScanner}
       handleCameraScan={handleCameraScan}
       branchName={branchName}
+      branchCount={branchCount}
     />
   );
 };

@@ -17,7 +17,9 @@ import {
   Check,
   Wifi,
   Zap,
-  ZapOff
+  ZapOff,
+  Moon,
+  Sun
 } from 'lucide-react';
 import { COLOR_THEMES, getContrastColor } from './index';
 
@@ -54,6 +56,8 @@ const SettingsView = ({
   handleCustomTertiary,
   handleSaveAfip,
   handleTestAfip,
+  darkMode,
+  onDarkModeToggle,
 }) => {
   const tabs = [
     { id: 'company', label: 'Empresa', icon: Building2 },
@@ -483,7 +487,7 @@ const SettingsView = ({
                             key={theme.id}
                             onClick={() => handleThemeSelect(theme)}
                             title={theme.name}
-                            className={`relative flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                            className={`relative flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all w-20 ${
                               isActive
                                 ? 'border-gray-700 shadow-md bg-white'
                                 : 'border-gray-200 hover:border-gray-400 bg-white'
@@ -590,7 +594,7 @@ const SettingsView = ({
                         Terciario
                       </button>
                       <span
-                        className="px-3 py-1.5 text-sm font-medium rounded-lg border"
+                        className="px-3 py-1.5 text-sm font-medium rounded-lg border badge-preview"
                         style={{ background: activeTheme.bg, color: activeTheme.primary, borderColor: activeTheme.primary }}
                       >
                         Badge activo
@@ -604,30 +608,54 @@ const SettingsView = ({
                   </div>
                 </div>
 
-                {/* Animation Settings */}
+                {/* Appearance & Animation Settings */}
                 <div className="bg-gray-50 rounded-lg p-6">
-                  <h4 className="font-medium text-gray-900 mb-4">Animaciones</h4>
+                  <h4 className="font-medium text-gray-900 mb-4">Apariencia</h4>
 
-                  <div className="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-200">
-                    <div className="flex items-center">
-                      {config?.modal_animations !== false ? (
-                        <Zap className="w-5 h-5 text-yellow-500 mr-3" />
-                      ) : (
-                        <ZapOff className="w-5 h-5 text-gray-400 mr-3" />
-                      )}
-                      <div>
-                        <h4 className="font-medium text-gray-900">Animaciones de modales</h4>
-                        <p className="text-sm text-gray-500">Animación de entrada y salida en ventanas emergentes</p>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-200">
+                      <div className="flex items-center">
+                        {darkMode ? (
+                          <Moon className="w-5 h-5 text-indigo-500 mr-3" />
+                        ) : (
+                          <Sun className="w-5 h-5 text-yellow-500 mr-3" />
+                        )}
+                        <div>
+                          <h4 className="font-medium text-gray-900">Modo oscuro</h4>
+                          <p className="text-sm text-gray-500">Cambia la interfaz a un tema de colores oscuros</p>
+                        </div>
                       </div>
+                      <label className="switch">
+                        <input
+                          type="checkbox"
+                          checked={darkMode}
+                          onChange={(e) => onDarkModeToggle(e.target.checked)}
+                        />
+                        <span className="slider"></span>
+                      </label>
                     </div>
-                    <label className="switch">
-                      <input
-                        type="checkbox"
-                        checked={config?.modal_animations !== false}
-                        onChange={(e) => updateConfig('modal_animations', e.target.checked)}
-                      />
-                      <span className="slider"></span>
-                    </label>
+
+                    <div className="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-200">
+                      <div className="flex items-center">
+                        {config?.modal_animations !== false ? (
+                          <Zap className="w-5 h-5 text-yellow-500 mr-3" />
+                        ) : (
+                          <ZapOff className="w-5 h-5 text-gray-400 mr-3" />
+                        )}
+                        <div>
+                          <h4 className="font-medium text-gray-900">Animaciones de modales</h4>
+                          <p className="text-sm text-gray-500">Animación de entrada y salida en ventanas emergentes</p>
+                        </div>
+                      </div>
+                      <label className="switch">
+                        <input
+                          type="checkbox"
+                          checked={config?.modal_animations !== false}
+                          onChange={(e) => updateConfig('modal_animations', e.target.checked)}
+                        />
+                        <span className="slider"></span>
+                      </label>
+                    </div>
                   </div>
                 </div>
 

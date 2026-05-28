@@ -95,6 +95,7 @@ const Settings = () => {
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('company');
   const [taxInput, setTaxInput] = useState('');
+  const [darkMode, setDarkMode] = useState(localStorage.getItem('dark_mode') === 'true');
 
   // Estado AFIP
   const [afipConfig, setAfipConfig] = useState({ cuit: '', punto_venta: 1, ambiente: 'homologacion', tipo_comprobante_default: 6, razon_social: '' });
@@ -215,6 +216,12 @@ const Settings = () => {
     return preset || buildCustomTheme(color || '#10b981');
   })();
 
+  const handleDarkModeToggle = (enabled) => {
+    setDarkMode(enabled);
+    document.documentElement.classList.toggle('dark', enabled);
+    localStorage.setItem('dark_mode', enabled ? 'true' : 'false');
+  };
+
   // ── Funciones AFIP ──────────────────────────────────────────────────────────
 
   const fetchAfipConfig = async () => {
@@ -304,6 +311,8 @@ const Settings = () => {
       handleCustomTertiary={handleCustomTertiary}
       handleSaveAfip={handleSaveAfip}
       handleTestAfip={handleTestAfip}
+      darkMode={darkMode}
+      onDarkModeToggle={handleDarkModeToggle}
     />
   );
 };

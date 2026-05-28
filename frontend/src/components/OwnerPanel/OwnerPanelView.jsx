@@ -412,6 +412,123 @@ const ClientesListView = ({ clientes, onSelect, onRefresh }) => {
   );
 };
 
+// ─── ModulosPanel ────────────────────────────────────────────────────────────
+
+const ALL_MODULES = [
+  { id: 'pos',           label: 'POS / Ventas' },
+  { id: 'caja',          label: 'Caja' },
+  { id: 'inventario',    label: 'Inventario' },
+  { id: 'reportes',      label: 'Reportes de Ventas' },
+  { id: 'compras',       label: 'Compras y Proveedores' },
+  { id: 'alertas_stock', label: 'Alertas de Stock' },
+  { id: 'usuarios',      label: 'Usuarios y Roles' },
+  { id: 'multi_sucursal',label: 'Multi-sucursal' },
+  { id: 'configuracion', label: 'Configuración' },
+  { id: 'notificaciones',label: 'Notificaciones' },
+];
+
+const PLAN_MODULES_DEF = {
+  emprendedor: ['pos', 'caja', 'inventario', 'notificaciones'],
+  profesional: ['pos', 'caja', 'inventario', 'reportes', 'compras', 'alertas_stock', 'usuarios', 'configuracion', 'notificaciones'],
+  empresarial: ['pos', 'caja', 'inventario', 'reportes', 'compras', 'alertas_stock', 'usuarios', 'multi_sucursal', 'configuracion', 'notificaciones'],
+};
+
+const PLAN_TIERS = [
+  { id: 'emprendedor', label: 'Emprendedor' },
+  { id: 'profesional', label: 'Profesional' },
+  { id: 'empresarial', label: 'Empresarial' },
+];
+
+const ModulosPanel = ({ cliente, updatingModulos, moduleMsg, onToggleModulo, onChangePlanTier }) => {
+  const planTier = cliente.plan_tier || 'profesional';
+  const modulosActivos = cliente.modules_activos || [];
+  const modulosExtra = cliente.modules_extra || [];
+  const modulosRemovidos = cliente.modules_removidos || [];
+  const planBase = PLAN_MODULES_DEF[planTier] || [];
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Módulos y Plan</h3>
+        {moduleMsg && (
+          <p className={`text-xs ${moduleMsg.ok ? 'text-green-400' : 'text-red-400'}`}>{moduleMsg.text}</p>
+        )}
+      </div>
+
+      {/* Selector de plan tier */}
+      <div className="mb-5">
+        <p className="text-xs text-gray-500 mb-2">Plan base</p>
+        <div className="flex gap-2 flex-wrap">
+          {PLAN_TIERS.map(p => (
+            <button
+              key={p.id}
+              onClick={() => onChangePlanTier(p.id)}
+              disabled={updatingModulos || planTier === p.id}
+              className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition-all disabled:cursor-not-allowed ${
+                planTier === p.id
+                  ? 'bg-indigo-700 border-indigo-600 text-white'
+                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-indigo-600 hover:text-indigo-300'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Grid de módulos */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {ALL_MODULES.map(mod => {
+          const enPlanBase = planBase.includes(mod.id);
+          const esExtra = modulosExtra.includes(mod.id);
+          const esRemovido = modulosRemovidos.includes(mod.id);
+          const activo = modulosActivos.includes(mod.id);
+
+          let badge = null;
+          if (esExtra)        badge = <span className="text-xs px-1.5 py-0.5 rounded bg-violet-900/50 text-violet-300 border border-violet-700">+owner</span>;
+          else if (esRemovido) badge = <span className="text-xs px-1.5 py-0.5 rounded bg-red-900/40 text-red-400 border border-red-800">-owner</span>;
+          else if (enPlanBase) badge = <span className="text-xs px-1.5 py-0.5 rounded bg-gray-800 text-gray-500 border border-gray-700">plan</span>;
+
+          return (
+            <div
+              key={mod.id}
+              className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
+                activo
+                  ? 'bg-gray-800/60 border-gray-700'
+                  : 'bg-gray-900 border-gray-800 opacity-60'
+              }`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${activo ? 'bg-green-400' : 'bg-gray-600'}`} />
+                <span className="text-sm text-gray-200 truncate">{mod.label}</span>
+                {badge}
+              </div>
+              <button
+                onClick={() => onToggleModulo(mod.id)}
+                disabled={updatingModulos}
+                className={`ml-3 flex-shrink-0 w-9 h-5 rounded-full transition-colors disabled:opacity-50 ${
+                  activo ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-700 hover:bg-gray-600'
+                }`}
+                title={activo ? 'Desactivar módulo' : 'Activar módulo'}
+              >
+                <span className={`block w-3.5 h-3.5 bg-white rounded-full shadow transition-transform mx-auto ${
+                  activo ? 'translate-x-2' : '-translate-x-1'
+                }`} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {(modulosExtra.length > 0 || modulosRemovidos.length > 0) && (
+        <p className="text-xs text-gray-600 mt-3">
+          Overrides activos: {modulosExtra.length > 0 && `+${modulosExtra.length} añadidos`}{modulosExtra.length > 0 && modulosRemovidos.length > 0 && ', '}{modulosRemovidos.length > 0 && `${modulosRemovidos.length} removidos`}
+        </p>
+      )}
+    </div>
+  );
+};
+
 // ─── ClienteDetalleView ───────────────────────────────────────────────────────
 
 const ClienteDetalleView = ({ clienteId, token, onBack }) => {
@@ -424,6 +541,8 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
   const [suscForm, setSuscForm] = useState({ status: '', dias_extra: '', fecha_vencimiento: '', precio: '' });
   const [extMsg, setExtMsg] = useState(null);
   const [cancelandoPreapproval, setCancelandoPreapproval] = useState(false);
+  const [moduleMsg, setModuleMsg] = useState(null);
+  const [updatingModulos, setUpdatingModulos] = useState(false);
 
   const authHeader = { headers: { Authorization: `Bearer ${token}` } };
 
@@ -504,6 +623,66 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
       alert(err.response?.data?.detail || 'Error al cancelar el débito automático');
     } finally {
       setCancelandoPreapproval(false);
+    }
+  };
+
+  const toggleModulo = async (moduloId) => {
+    const extra = cliente.modules_extra || [];
+    const removidos = cliente.modules_removidos || [];
+    const planTier = cliente.plan_tier || 'profesional';
+    const PLAN_MODULES = {
+      emprendedor: ['pos', 'caja', 'inventario', 'notificaciones'],
+      profesional: ['pos', 'caja', 'inventario', 'reportes', 'compras', 'alertas_stock', 'usuarios', 'configuracion', 'notificaciones'],
+      empresarial: ['pos', 'caja', 'inventario', 'reportes', 'compras', 'alertas_stock', 'usuarios', 'multi_sucursal', 'configuracion', 'notificaciones'],
+    };
+    const enPlanBase = (PLAN_MODULES[planTier] || []).includes(moduloId);
+    const esExtra = extra.includes(moduloId);
+    const esRemovido = removidos.includes(moduloId);
+
+    let newExtra = [...extra];
+    let newRemovidos = [...removidos];
+
+    if (enPlanBase && !esRemovido) {
+      // Activo por plan → remover (añadir a removidos)
+      newRemovidos = [...newRemovidos, moduloId];
+    } else if (esExtra) {
+      // Activo por override extra → quitar extra
+      newExtra = newExtra.filter(m => m !== moduloId);
+    } else if (esRemovido) {
+      // Removido del plan → restaurar (quitar de removidos)
+      newRemovidos = newRemovidos.filter(m => m !== moduloId);
+    } else {
+      // No está en plan y no es extra → añadir como extra
+      newExtra = [...newExtra, moduloId];
+    }
+
+    setUpdatingModulos(true);
+    setModuleMsg(null);
+    try {
+      await ownerAxios.put(`/clientes/${clienteId}/modulos`, {
+        modules_extra: newExtra,
+        modules_removidos: newRemovidos,
+      }, authHeader);
+      setModuleMsg({ ok: true, text: 'Módulos actualizados' });
+      await loadCliente();
+    } catch (err) {
+      setModuleMsg({ ok: false, text: err.response?.data?.detail || 'Error al actualizar módulos' });
+    } finally {
+      setUpdatingModulos(false);
+    }
+  };
+
+  const changePlanTier = async (newTier) => {
+    setUpdatingModulos(true);
+    setModuleMsg(null);
+    try {
+      await ownerAxios.put(`/clientes/${clienteId}/suscripcion`, { plan_tier: newTier }, authHeader);
+      setModuleMsg({ ok: true, text: `Plan cambiado a ${newTier}` });
+      await loadCliente();
+    } catch (err) {
+      setModuleMsg({ ok: false, text: err.response?.data?.detail || 'Error al cambiar plan' });
+    } finally {
+      setUpdatingModulos(false);
     }
   };
 
@@ -776,6 +955,15 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
           <p className="text-gray-600 text-sm">Sin pagos registrados</p>
         )}
       </div>
+
+      {/* Panel de Módulos */}
+      <ModulosPanel
+        cliente={cliente}
+        updatingModulos={updatingModulos}
+        moduleMsg={moduleMsg}
+        onToggleModulo={toggleModulo}
+        onChangePlanTier={changePlanTier}
+      />
 
       {/* Configuración de cuenta */}
       <EmpresaConfigPanel empresaId={clienteId} token={token} />
@@ -1104,6 +1292,9 @@ const ConfigView = ({ token }) => {
       setCfg({
         suscripcion_precio: String(res.data.suscripcion_precio ?? ''),
         suscripcion_plan_nombre: res.data.suscripcion_plan_nombre ?? '',
+        precio_emprendedor: String(res.data.precio_emprendedor ?? 30000),
+        precio_profesional: String(res.data.precio_profesional ?? 45000),
+        precio_empresarial: String(res.data.precio_empresarial ?? 60000),
         whatsapp_numero: res.data.whatsapp_numero ?? '',
         trial_dias: String(res.data.trial_dias ?? 15),
         descuento_anual_pct: String(res.data.descuento_anual_pct ?? 20),
@@ -1139,6 +1330,9 @@ const ConfigView = ({ token }) => {
       await ownerAxios.put('/config', {
         suscripcion_precio: parseFloat(cfg.suscripcion_precio),
         suscripcion_plan_nombre: cfg.suscripcion_plan_nombre,
+        precio_emprendedor: parseFloat(cfg.precio_emprendedor),
+        precio_profesional: parseFloat(cfg.precio_profesional),
+        precio_empresarial: parseFloat(cfg.precio_empresarial),
         whatsapp_numero: cfg.whatsapp_numero,
         trial_dias: parseInt(cfg.trial_dias),
         descuento_anual_pct: parseInt(cfg.descuento_anual_pct),
@@ -1184,15 +1378,21 @@ const ConfigView = ({ token }) => {
           <ConfigField label="Nombre del plan">
             <input type="text" value={cfg.suscripcion_plan_nombre} onChange={set('suscripcion_plan_nombre')} className={inputCls} required />
           </ConfigField>
-          <ConfigField label="Precio mensual (ARS)">
-            <input type="number" value={cfg.suscripcion_precio} onChange={set('suscripcion_precio')} className={inputCls} min="0" required />
-          </ConfigField>
-          <ConfigField label="Descuento plan anual (%)" hint="El precio anual se calcula como precio mensual × 12 × (1 - descuento/100).">
-            <input type="number" value={cfg.descuento_anual_pct} onChange={set('descuento_anual_pct')} className={inputCls} min="0" max="100" required />
-          </ConfigField>
-          <ConfigField label={`Precio anual resultante (ARS)`}>
-            <input type="text" value={precioAnual ? formatMoney(precioAnual) : '—'} disabled className={inputDisabledCls} />
-          </ConfigField>
+          <div className="mb-4">
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Precio mensual por tier (ARS)</p>
+            <div className="grid grid-cols-3 gap-3">
+              <ConfigField label="Emprendedor">
+                <input type="number" value={cfg.precio_emprendedor} onChange={set('precio_emprendedor')} className={inputCls} min="0" required />
+              </ConfigField>
+              <ConfigField label="Profesional">
+                <input type="number" value={cfg.precio_profesional} onChange={set('precio_profesional')} className={inputCls} min="0" required />
+              </ConfigField>
+              <ConfigField label="Empresarial">
+                <input type="number" value={cfg.precio_empresarial} onChange={set('precio_empresarial')} className={inputCls} min="0" required />
+              </ConfigField>
+            </div>
+            <p className="text-xs text-gray-500 mt-1.5">El precio anual se calcula automáticamente como precio × 11 (1 mes gratis).</p>
+          </div>
           <ConfigField label="Días del período de prueba (trial)" hint="Días de acceso gratuito al registrar una empresa nueva.">
             <input type="number" value={cfg.trial_dias} onChange={set('trial_dias')} className={inputCls} min="1" max="365" required />
           </ConfigField>

@@ -83,6 +83,25 @@ async def get_descuento_anual_pct() -> int:
     doc = await db.system_config.find_one({"key": "descuento_anual_pct"})
     return int(doc["value"]) if doc else 20
 
+async def get_precio_emprendedor() -> float:
+    doc = await db.system_config.find_one({"key": "precio_emprendedor"})
+    return float(doc["value"]) if doc else 30000.0
+
+async def get_precio_profesional() -> float:
+    doc = await db.system_config.find_one({"key": "precio_profesional"})
+    return float(doc["value"]) if doc else 45000.0
+
+async def get_precio_empresarial() -> float:
+    doc = await db.system_config.find_one({"key": "precio_empresarial"})
+    return float(doc["value"]) if doc else 60000.0
+
+async def get_precio_por_tier(tier: str) -> float:
+    if tier == "emprendedor":
+        return await get_precio_emprendedor()
+    elif tier == "empresarial":
+        return await get_precio_empresarial()
+    return await get_precio_profesional()
+
 async def get_saas_nombre() -> str:
     doc = await db.system_config.find_one({"key": "saas_nombre"})
     return doc["value"] if doc else "PULS"
@@ -345,6 +364,44 @@ class OTPVerificar(BaseModel):
     email: str
     codigo: str
 
+# ─── Módulos del sistema ──────────────────────────────────────────────────────
+
+MODULES: dict[str, str] = {
+    "pos":           "POS / Ventas",
+    "caja":          "Caja",
+    "inventario":    "Inventario",
+    "reportes":      "Reportes de Ventas",
+    "compras":       "Compras y Proveedores",
+    "alertas_stock": "Alertas de Stock",
+    "usuarios":      "Usuarios y Roles",
+    "multi_sucursal":"Multi-sucursal",
+    "configuracion": "Configuración",
+    "notificaciones":"Notificaciones",
+}
+
+PLAN_MODULES: dict[str, list[str]] = {
+    "emprendedor": [
+        "pos", "caja", "inventario", "notificaciones",
+    ],
+    "profesional": [
+        "pos", "caja", "inventario", "reportes", "compras",
+        "alertas_stock", "usuarios", "configuracion", "notificaciones",
+    ],
+    "empresarial": [
+        "pos", "caja", "inventario", "reportes", "compras",
+        "alertas_stock", "usuarios", "multi_sucursal", "configuracion", "notificaciones",
+    ],
+}
+
+def calcular_modules_activos(plan_tipo: str, modules_extra: list, modules_removidos: list) -> list[str]:
+    base = list(PLAN_MODULES.get(plan_tipo, PLAN_MODULES["profesional"]))
+    activos = [m for m in base if m not in modules_removidos]
+    for m in modules_extra:
+        if m not in activos and m in MODULES:
+            activos.append(m)
+    return activos
+
+
 # --- Empresa models ---
 class Empresa(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -371,10 +428,13 @@ class Suscripcion(BaseModel):
     fecha_inicio: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     fecha_vencimiento: datetime
     dia_facturacion: Optional[int] = None
-    plan_tipo: str = "mensual"
+    plan_tipo: str = "mensual"               # periodo de facturación: "mensual" | "anual"
+    plan_tier: str = "profesional"           # nivel de plan: "emprendedor" | "profesional" | "empresarial"
     fue_pagada: bool = False
     tipo_cobro: str = "manual"               # "manual" | "automatico"
     mp_preapproval_id: Optional[str] = None  # ID del preapproval en MP (débito automático)
+    modules_extra: List[str] = Field(default_factory=list)     # módulos añadidos por owner
+    modules_removidos: List[str] = Field(default_factory=list) # módulos quitados por owner
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class PagoSuscripcion(BaseModel):
@@ -389,6 +449,7 @@ class PagoSuscripcion(BaseModel):
     mp_preapproval_id: Optional[str] = None  # Vinculado si el pago es de débito automático
     origen: str = "manual"                   # "manual" | "preapproval"
     plan_tipo: str = "mensual"
+    plan_tier: Optional[str] = None          # "emprendedor" | "profesional" | "empresarial"
     fecha: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     periodo_inicio: Optional[datetime] = None
     periodo_fin: Optional[datetime] = None
@@ -2760,6 +2821,9 @@ def _calcular_estado_suscripcion(doc: dict, grace_days: int = 15) -> dict:
 async def get_cuenta_status(user: User = Depends(require_role([UserRole.ADMIN]))):
     doc = await _get_or_create_suscripcion(user.empresa_id)
     estado = _calcular_estado_suscripcion(doc, grace_days=await get_grace_days())
+    plan_tier = doc.get("plan_tier", "profesional")
+    modules_extra = doc.get("modules_extra", [])
+    modules_removidos = doc.get("modules_removidos", [])
     return {
         "id": doc["id"],
         "plan_nombre": doc["plan_nombre"],
@@ -2772,6 +2836,8 @@ async def get_cuenta_status(user: User = Depends(require_role([UserRole.ADMIN]))
         "tipo_cobro": doc.get("tipo_cobro", "manual"),
         "mp_preapproval_id": doc.get("mp_preapproval_id"),
         "dia_facturacion": doc.get("dia_facturacion"),
+        "plan_tier": plan_tier,
+        "modules_activos": calcular_modules_activos(plan_tier, modules_extra, modules_removidos),
         **estado,
     }
 
@@ -2781,10 +2847,16 @@ async def get_suscripcion_check(user: User = Depends(require_role([UserRole.ADMI
     """Estado de suscripción para control de acceso. Accesible a todos los roles autenticados."""
     doc = await _get_or_create_suscripcion(user.empresa_id)
     estado = _calcular_estado_suscripcion(doc, grace_days=await get_grace_days())
+    plan_tier = doc.get("plan_tier", "profesional")
+    modules_extra = doc.get("modules_extra", [])
+    modules_removidos = doc.get("modules_removidos", [])
+    modules_activos = calcular_modules_activos(plan_tier, modules_extra, modules_removidos)
     return {
         "status": doc["status"],
         "fecha_vencimiento": doc["fecha_vencimiento"],
         "fue_pagada": doc.get("fue_pagada", False),
+        "plan_tier": plan_tier,
+        "modules_activos": modules_activos,
         **estado,
     }
 
@@ -2799,22 +2871,30 @@ async def get_cuenta_pagos(user: User = Depends(require_role([UserRole.ADMIN])))
 
 @api_router.get("/cuenta/planes")
 async def get_planes(user: User = Depends(require_role([UserRole.ADMIN]))):
-    precio_mensual = await get_precio_suscripcion()
-    nombre_base = await get_plan_nombre_suscripcion()
+    precio_emp = await get_precio_emprendedor()
+    precio_pro = await get_precio_profesional()
+    precio_ent = await get_precio_empresarial()
     whatsapp = await get_whatsapp_numero()
     return {
-        "mensual": {"plan_tipo": "mensual", "nombre": nombre_base, "precio": precio_mensual, "meses": 1},
-        "anual":   {"plan_tipo": "anual",   "nombre": f"{nombre_base} Anual", "precio": precio_mensual * 11, "meses": 12},
+        "tiers": {
+            "emprendedor": {"precio_mensual": precio_emp, "precio_anual": precio_emp * 11},
+            "profesional":  {"precio_mensual": precio_pro, "precio_anual": precio_pro * 11},
+            "empresarial":  {"precio_mensual": precio_ent, "precio_anual": precio_ent * 11},
+        },
         "whatsapp_numero": whatsapp,
     }
 
 @api_router.get("/public/planes")
 async def get_planes_public():
-    precio_mensual = await get_precio_suscripcion()
-    nombre_base = await get_plan_nombre_suscripcion()
+    precio_emp = await get_precio_emprendedor()
+    precio_pro = await get_precio_profesional()
+    precio_ent = await get_precio_empresarial()
     return {
-        "mensual": {"plan_tipo": "mensual", "nombre": nombre_base, "precio": precio_mensual, "meses": 1},
-        "anual":   {"plan_tipo": "anual",   "nombre": f"{nombre_base} Anual", "precio": precio_mensual * 11, "meses": 12},
+        "tiers": {
+            "emprendedor": {"precio_mensual": precio_emp, "precio_anual": precio_emp * 11},
+            "profesional":  {"precio_mensual": precio_pro, "precio_anual": precio_pro * 11},
+            "empresarial":  {"precio_mensual": precio_ent, "precio_anual": precio_ent * 11},
+        },
         "trial_dias": await get_trial_dias(),
     }
 
@@ -2867,7 +2947,8 @@ async def marcar_notificacion_leida(notif_id: str, user: User = Depends(require_
 
 
 class PagoCreate(BaseModel):
-    plan_tipo: str = "mensual"  # "mensual" | "anual"
+    plan_tipo: str = "mensual"   # "mensual" | "anual"
+    plan_tier: str = "profesional"  # "emprendedor" | "profesional" | "empresarial"
 
 
 @api_router.post("/cuenta/pago/crear")
@@ -2890,18 +2971,20 @@ async def crear_pago_suscripcion(data: PagoCreate = PagoCreate(), user: User = D
     if pago_pendiente:
         raise HTTPException(status_code=409, detail="Ya tenés un pago en proceso de acreditación. Puede tardar unas horas. Esperá la confirmación antes de iniciar uno nuevo.")
 
-    # Plan tipo y precio
+    # Plan tipo, tier y precio
     plan_tipo = data.plan_tipo if data.plan_tipo in ("mensual", "anual") else "mensual"
-    precio_mensual = await get_precio_suscripcion()
-    nombre_base = await get_plan_nombre_suscripcion()
+    plan_tier = data.plan_tier if data.plan_tier in ("emprendedor", "profesional", "empresarial") else "profesional"
+    precio_mensual = await get_precio_por_tier(plan_tier)
+    tier_labels = {"emprendedor": "Emprendedor", "profesional": "Profesional", "empresarial": "Empresarial"}
+    tier_label = tier_labels[plan_tier]
     if plan_tipo == "anual":
         precio = precio_mensual * 11
-        plan_nombre = f"{nombre_base} Anual"
+        plan_nombre = f"Plan {tier_label} Anual"
         ventana_dias = 60
         meses = 12
     else:
         precio = precio_mensual
-        plan_nombre = nombre_base
+        plan_nombre = f"Plan {tier_label}"
         ventana_dias = 30
         meses = 1
 
@@ -2962,6 +3045,7 @@ async def crear_pago_suscripcion(data: PagoCreate = PagoCreate(), user: User = D
         concepto=f"{plan_nombre} - {empresa_nombre}",
         mp_preference_id=preference["id"],
         plan_tipo=plan_tipo,
+        plan_tier=plan_tier,
     )
     await db.pagos_suscripcion.insert_one(pago.dict())
 
@@ -3171,24 +3255,26 @@ async def simular_pago_aprobado(
 
 async def _procesar_pago_aprobado(empresa_id: str, payment_id: str, monto: float,
                                    plan_tipo_pago: str = "mensual", origen: str = "manual",
-                                   preapproval_id: Optional[str] = None):
+                                   preapproval_id: Optional[str] = None,
+                                   plan_tier: Optional[str] = None):
     """Aplica la renovación de suscripción cuando un pago es aprobado."""
     meses = 1 if plan_tipo_pago == "mensual" else 12
     suscripcion = await db.suscripciones.find_one({"empresa_id": empresa_id})
     now = datetime.now(timezone.utc)
-    precio_mensual = await get_precio_suscripcion()
-    nombre_base = await get_plan_nombre_suscripcion()
-    nuevo_plan_nombre = nombre_base if plan_tipo_pago == "mensual" else f"{nombre_base} Anual"
-    nuevo_precio = precio_mensual if plan_tipo_pago == "mensual" else precio_mensual * 11
+    tier_efectivo = plan_tier or (suscripcion.get("plan_tier") if suscripcion else "profesional") or "profesional"
+    tier_labels = {"emprendedor": "Emprendedor", "profesional": "Profesional", "empresarial": "Empresarial"}
+    tier_label = tier_labels.get(tier_efectivo, "Profesional")
+    nuevo_plan_nombre = f"Plan {tier_label}" if plan_tipo_pago == "mensual" else f"Plan {tier_label} Anual"
     if suscripcion:
         base, nueva_fecha = _aplicar_renovacion(suscripcion, meses, now)
         update_fields = {
             "status": SuscripcionStatus.ACTIVA,
             "fecha_vencimiento": nueva_fecha,
             "plan_tipo": plan_tipo_pago,
+            "plan_tier": tier_efectivo,
             "fue_pagada": True,
             "plan_nombre": nuevo_plan_nombre,
-            "precio": nuevo_precio,
+            "precio": monto,
         }
         # Si es preapproval, marcar como automático
         if preapproval_id:
@@ -3204,13 +3290,14 @@ async def _procesar_pago_aprobado(empresa_id: str, payment_id: str, monto: float
         nueva_fecha = calcular_siguiente_vencimiento(dia_facturacion, meses, now)
         suscripcion_nueva = Suscripcion(
             empresa_id=empresa_id,
-            plan_nombre=SUSCRIPCION_PLAN_NOMBRE,
+            plan_nombre=nuevo_plan_nombre,
             precio=monto,
             status=SuscripcionStatus.ACTIVA,
             fecha_inicio=now,
             fecha_vencimiento=nueva_fecha,
             dia_facturacion=dia_facturacion,
             plan_tipo=plan_tipo_pago,
+            plan_tier=tier_efectivo,
             fue_pagada=True,
             tipo_cobro="automatico" if preapproval_id else "manual",
             mp_preapproval_id=preapproval_id,
@@ -3398,11 +3485,13 @@ async def mp_webhook(request: Request):
         if not pago_reg:
             pago_reg = await db.pagos_suscripcion.find_one({"empresa_id": empresa_id, "mp_preference_id": {"$exists": True}, "estado": "approved"})
         plan_tipo_pago = (pago_reg or {}).get("plan_tipo", "mensual") if pago_reg else "mensual"
+        plan_tier_pago = (pago_reg or {}).get("plan_tier") if pago_reg else None
         await _procesar_pago_aprobado(
             empresa_id=empresa_id,
             payment_id=payment_id,
             monto=monto,
             plan_tipo_pago=plan_tipo_pago,
+            plan_tier=plan_tier_pago,
         )
 
     return {"status": "ok"}
@@ -3419,8 +3508,13 @@ class SuscripcionUpdate(BaseModel):
     status: Optional[SuscripcionStatus] = None
     fecha_vencimiento: Optional[datetime] = None
     plan_nombre: Optional[str] = None
+    plan_tier: Optional[str] = None
     precio: Optional[float] = None
     dias_extra: Optional[int] = None
+
+class ModulosUpdate(BaseModel):
+    modules_extra: Optional[List[str]] = None
+    modules_removidos: Optional[List[str]] = None
 
 class PagoManual(BaseModel):
     monto: float
@@ -3528,6 +3622,9 @@ async def owner_get_cliente(empresa_id: str, _=Depends(verify_owner_token)):
     dias_restantes = _calc_dias_restantes(suscripcion)
     sus_data = {k: v for k, v in suscripcion.items() if k != "_id"} if suscripcion else None
     pagos_data = [{k: v for k, v in p.items() if k != "_id"} for p in pagos]
+    plan_tier = suscripcion.get("plan_tier", "profesional") if suscripcion else "profesional"
+    modules_extra = suscripcion.get("modules_extra", []) if suscripcion else []
+    modules_removidos = suscripcion.get("modules_removidos", []) if suscripcion else []
     return {
         "id": emp["id"],
         "nombre": emp["nombre"],
@@ -3538,6 +3635,10 @@ async def owner_get_cliente(empresa_id: str, _=Depends(verify_owner_token)):
         "suscripcion": sus_data,
         "dias_restantes": dias_restantes,
         "pagos": pagos_data,
+        "plan_tier": plan_tier,
+        "modules_extra": modules_extra,
+        "modules_removidos": modules_removidos,
+        "modules_activos": calcular_modules_activos(plan_tier, modules_extra, modules_removidos),
     }
 
 @owner_router.put("/clientes/{empresa_id}/suscripcion")
@@ -3553,6 +3654,8 @@ async def owner_update_suscripcion(
         update["status"] = data.status
     if data.plan_nombre is not None:
         update["plan_nombre"] = data.plan_nombre
+    if data.plan_tier is not None and data.plan_tier in PLAN_MODULES:
+        update["plan_tier"] = data.plan_tier
     if data.precio is not None:
         update["precio"] = data.precio
     if data.dias_extra and data.dias_extra > 0:
@@ -3666,6 +3769,43 @@ async def owner_cancelar_preapproval(empresa_id: str, _=Depends(verify_owner_tok
     )
     return {"ok": True, "mensaje": "Débito automático cancelado correctamente."}
 
+@owner_router.put("/clientes/{empresa_id}/modulos")
+async def owner_update_modulos(
+    empresa_id: str, data: ModulosUpdate, _=Depends(verify_owner_token)
+):
+    """Reemplaza los overrides de módulos de un cliente (extra y removidos)."""
+    emp = await db.empresas.find_one({"id": empresa_id})
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    update = {}
+    if data.modules_extra is not None:
+        invalid = [m for m in data.modules_extra if m not in MODULES]
+        if invalid:
+            raise HTTPException(status_code=400, detail=f"Módulos inválidos: {invalid}")
+        update["modules_extra"] = data.modules_extra
+    if data.modules_removidos is not None:
+        invalid = [m for m in data.modules_removidos if m not in MODULES]
+        if invalid:
+            raise HTTPException(status_code=400, detail=f"Módulos inválidos: {invalid}")
+        update["modules_removidos"] = data.modules_removidos
+    if update:
+        suscripcion = await db.suscripciones.find_one({"empresa_id": empresa_id})
+        if suscripcion:
+            await db.suscripciones.update_one({"empresa_id": empresa_id}, {"$set": update})
+        else:
+            raise HTTPException(status_code=404, detail="La empresa no tiene suscripción aún")
+    return {"ok": True, "mensaje": "Módulos actualizados"}
+
+
+@owner_router.get("/modulos")
+async def owner_get_modulos_catalogo(_=Depends(verify_owner_token)):
+    """Devuelve el catálogo completo de módulos y los módulos por plan."""
+    return {
+        "modules": MODULES,
+        "plan_modules": PLAN_MODULES,
+    }
+
+
 @owner_router.put("/clientes/{empresa_id}/activo")
 async def owner_toggle_empresa(empresa_id: str, _=Depends(verify_owner_token)):
     emp = await db.empresas.find_one({"id": empresa_id})
@@ -3738,6 +3878,9 @@ async def owner_get_config(_=Depends(verify_owner_token)):
     return {
         "suscripcion_precio": await get_precio_suscripcion(),
         "suscripcion_plan_nombre": await get_plan_nombre_suscripcion(),
+        "precio_emprendedor": await get_precio_emprendedor(),
+        "precio_profesional": await get_precio_profesional(),
+        "precio_empresarial": await get_precio_empresarial(),
         "whatsapp_numero": await get_whatsapp_numero(),
         "trial_dias": await get_trial_dias(),
         "grace_days": await get_grace_days(),
@@ -3755,6 +3898,9 @@ async def owner_get_config(_=Depends(verify_owner_token)):
 class OwnerConfigUpdate(BaseModel):
     suscripcion_precio: Optional[float] = None
     suscripcion_plan_nombre: Optional[str] = None
+    precio_emprendedor: Optional[float] = None
+    precio_profesional: Optional[float] = None
+    precio_empresarial: Optional[float] = None
     whatsapp_numero: Optional[str] = None
     trial_dias: Optional[int] = None
     grace_days: Optional[int] = None
@@ -3773,6 +3919,9 @@ async def owner_update_config(data: OwnerConfigUpdate, _=Depends(verify_owner_to
     simple_keys = [
         ("suscripcion_precio", data.suscripcion_precio),
         ("suscripcion_plan_nombre", data.suscripcion_plan_nombre),
+        ("precio_emprendedor", data.precio_emprendedor),
+        ("precio_profesional", data.precio_profesional),
+        ("precio_empresarial", data.precio_empresarial),
         ("whatsapp_numero", data.whatsapp_numero),
         ("trial_dias", data.trial_dias),
         ("grace_days", data.grace_days),
