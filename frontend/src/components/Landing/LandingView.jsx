@@ -2,7 +2,6 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import PulsLogo from '../PulsLogo';
 import {
-  Store,
   ShoppingCart,
   BarChart3,
   Package,
@@ -64,9 +63,32 @@ const GREEN = {
   '--primary-text':   'white',
 };
 
+const TIER_CONFIG = [
+  {
+    key: 'emprendedor',
+    label: 'Emprendedor',
+    badgeStyle: { background: '#d1fae5', color: '#065f46' },
+    features: ['POS / Ventas', 'Caja', 'Inventario', 'Notificaciones'],
+    popular: false,
+  },
+  {
+    key: 'profesional',
+    label: 'Profesional',
+    badgeStyle: { background: '#dbeafe', color: '#1e40af' },
+    features: ['Todo Emprendedor', 'Reportes de Ventas', 'Compras y Proveedores', 'Alertas de Stock', 'Usuarios y Roles', 'Configuración'],
+    popular: true,
+  },
+  {
+    key: 'empresarial',
+    label: 'Empresarial',
+    badgeStyle: { background: '#ede9fe', color: '#5b21b6' },
+    features: ['Todo Profesional', 'Multi-sucursal'],
+    popular: false,
+  },
+];
+
 export default function LandingView({
-  precioMensual,
-  precioAnual,
+  planes,
   trialDias,
   PLAN_FEATURES,
   formatCurrency,
@@ -282,8 +304,10 @@ export default function LandingView({
               { n: '3', title: 'Empezá a vender',      desc: 'Tu equipo ya puede operar el sistema desde el primer día. Seguí ventas, devoluciones y reportes en tiempo real.', photo: PHOTOS.step3, alt: 'Empezar a vender' },
             ].map(({ n, title, desc, photo, alt }) => (
               <div key={n} style={{ textAlign: 'center' }}>
-                <div style={{ position: 'relative', width: 160, height: 160, margin: '0 auto 1.25rem', borderRadius: '50%', overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
-                  <img src={photo} alt={alt} style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
+                <div style={{ position: 'relative', width: 160, height: 160, margin: '0 auto 1.25rem' }}>
+                  <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
+                    <img src={photo} alt={alt} style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
+                  </div>
                   <div style={{ position: 'absolute', top: 8, right: 8, width: 32, height: 32, borderRadius: '50%', background: '#10b981', color: 'white', fontWeight: 800, fontSize: '0.95rem', ...S.flexCenter, boxShadow: '0 2px 8px rgba(0,0,0,0.25)' }}>
                     {n}
                   </div>
@@ -298,11 +322,14 @@ export default function LandingView({
 
       {/* ── Pricing ─────────────────────────────── */}
       <section style={S.sectionPad}>
-        <div style={{ ...S.maxW(780), textAlign: 'center' }}>
+        <div style={{ ...S.maxW(1020), textAlign: 'center' }}>
           <h2 style={{ fontSize: 'clamp(1.5rem, 3vw, 2.25rem)', fontWeight: 800, color: '#111827', marginBottom: '0.75rem' }}>
             Planes simples y transparentes
           </h2>
-          <p style={{ color: '#6b7280', marginBottom: '2.5rem' }}>Todo incluido. Sin costos ocultos ni sorpresas.</p>
+          <p style={{ color: '#6b7280', marginBottom: '1.25rem' }}>Todo incluido. Sin costos ocultos ni sorpresas.</p>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#ecfdf5', border: '1.5px solid #6ee7b7', borderRadius: 999, padding: '0.5rem 1.25rem', fontSize: '0.875rem', color: '#065f46', fontWeight: 500, marginBottom: '2rem' }}>
+            🎁 Los primeros <strong>{trialDias} días</strong> probás con el <strong>plan Empresarial completo</strong> — sin tarjeta requerida.
+          </div>
 
           {/* Features únicas */}
           <div style={{ background: 'white', border: '2px solid #e5e7eb', borderRadius: 20, padding: '2rem', boxShadow: '0 4px 16px rgba(0,0,0,0.06)', marginBottom: '2rem', textAlign: 'left' }}>
@@ -320,47 +347,57 @@ export default function LandingView({
           </div>
 
           {/* Planes */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.25rem' }}>
-
-            {/* Plan Mensual */}
-            <div style={{ background: 'white', border: '2px solid #e5e7eb', borderRadius: 16, padding: '1.75rem', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }}>
-              <div style={{ background: '#f3f4f6', color: '#374151', borderRadius: 999, padding: '0.3rem 1rem', fontSize: '0.8rem', fontWeight: 600, display: 'inline-block', marginBottom: '1rem' }}>
-                Plan Mensual
-              </div>
-              <div style={{ marginBottom: '0.4rem' }}>
-                <span style={{ fontSize: '0.9rem', color: '#6b7280', verticalAlign: 'top', marginTop: 5, display: 'inline-block' }}>$</span>
-                <span style={{ fontSize: '2.6rem', fontWeight: 800, color: '#111827', lineHeight: 1 }}>{formatCurrency(precioMensual)}</span>
-                <span style={{ color: '#6b7280', fontSize: '0.875rem' }}> ARS / mes</span>
-              </div>
-              <p style={{ color: '#6b7280', fontSize: '0.8rem', marginBottom: '1.25rem' }}>
-                Primeros {trialDias} días gratis. Sin tarjeta requerida.
-              </p>
-              <Link to="/login" state={{ mode: 'register' }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#10b981', color: 'white', padding: '0.85rem', borderRadius: 10, fontWeight: 700, fontSize: '0.95rem', textDecoration: 'none' }}>
-                Empezar prueba gratis <ArrowRight style={{ width: 16, height: 16 }} />
-              </Link>
-            </div>
-
-            {/* Plan Anual */}
-            <div style={{ background: 'white', border: '2px solid #10b981', borderRadius: 16, padding: '1.75rem', boxShadow: '0 12px 40px rgba(16,185,129,0.15)', position: 'relative' }}>
-              <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', background: '#10b981', color: 'white', borderRadius: 999, padding: '0.3rem 1.1rem', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                ⭐ 1 mes gratis
-              </div>
-              <div style={{ background: '#10b981', color: 'white', borderRadius: 999, padding: '0.3rem 1rem', fontSize: '0.8rem', fontWeight: 600, display: 'inline-block', marginBottom: '1rem' }}>
-                Plan Anual
-              </div>
-              <div style={{ marginBottom: '0.4rem' }}>
-                <span style={{ fontSize: '0.9rem', color: '#6b7280', verticalAlign: 'top', marginTop: 5, display: 'inline-block' }}>$</span>
-                <span style={{ fontSize: '2.6rem', fontWeight: 800, color: '#111827', lineHeight: 1 }}>{formatCurrency(precioAnual)}</span>
-                <span style={{ color: '#6b7280', fontSize: '0.875rem' }}> ARS / año</span>
-              </div>
-              <p style={{ color: '#6b7280', fontSize: '0.8rem', marginBottom: '1.25rem' }}>
-                Equivale a 11 meses — ahorras un mes completo.
-              </p>
-              <Link to="/login" state={{ mode: 'register' }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#10b981', color: 'white', padding: '0.85rem', borderRadius: 10, fontWeight: 700, fontSize: '0.95rem', textDecoration: 'none' }}>
-                Empezar prueba gratis <ArrowRight style={{ width: 16, height: 16 }} />
-              </Link>
-            </div>
-
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem', marginTop: '1rem' }}>
+            {TIER_CONFIG.map(tier => {
+              const priceMensual = planes?.tiers?.[tier.key]?.precio_mensual;
+              const priceAnual   = planes?.tiers?.[tier.key]?.precio_anual;
+              return (
+                <div key={tier.key} style={{
+                  background: 'white',
+                  border: `2px solid ${tier.popular ? '#10b981' : '#e5e7eb'}`,
+                  borderRadius: 16,
+                  boxShadow: tier.popular ? '0 12px 40px rgba(16,185,129,0.15)' : '0 4px 16px rgba(0,0,0,0.06)',
+                  position: 'relative',
+                  display: 'flex', flexDirection: 'column',
+                }}>
+                  {tier.popular && (
+                    <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', background: '#10b981', color: 'white', borderRadius: 999, padding: '0.3rem 1.1rem', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                      ⭐ Más popular
+                    </div>
+                  )}
+                  <div style={{ padding: tier.popular ? '1.75rem 1.5rem 1.5rem' : '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', flex: 1 }}>
+                    <div>
+                      <span style={{ ...tier.badgeStyle, borderRadius: 999, padding: '0.3rem 1rem', fontSize: '0.8rem', fontWeight: 600, display: 'inline-block', marginBottom: '0.75rem' }}>
+                        {tier.label}
+                      </span>
+                      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                        {tier.features.map(f => (
+                          <li key={f} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0.2rem 0', fontSize: '0.825rem', color: '#6b7280' }}>
+                            <CheckCircle style={{ width: 13, height: 13, color: '#10b981', flexShrink: 0 }} />
+                            {f}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: '0.75rem', marginTop: 'auto' }}>
+                      <p style={{ fontWeight: 800, color: '#111827', marginBottom: '0.15rem', lineHeight: 1 }}>
+                        <span style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 400 }}>$</span>
+                        <span style={{ fontSize: '1.75rem' }}>{priceMensual != null ? formatCurrency(priceMensual) : '—'}</span>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 400, color: '#6b7280' }}> / mes</span>
+                      </p>
+                      {priceAnual != null && (
+                        <p style={{ fontSize: '0.75rem', color: '#059669', marginBottom: '0.75rem' }}>
+                          O {formatCurrency(priceAnual)} / año — 1 mes gratis
+                        </p>
+                      )}
+                      <Link to="/login" state={{ mode: 'register' }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#10b981', color: 'white', padding: '0.75rem', borderRadius: 10, fontWeight: 700, fontSize: '0.875rem', textDecoration: 'none' }}>
+                        Empezar prueba gratis <ArrowRight style={{ width: 15, height: 15 }} />
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <p style={{ color: '#9ca3af', fontSize: '0.8rem', marginTop: '1.5rem' }}>

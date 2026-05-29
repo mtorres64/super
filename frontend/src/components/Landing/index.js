@@ -28,15 +28,12 @@ export default function Landing() {
     axios.get(`${API}/public/planes`).then(r => setPlanes(r.data)).catch(() => {});
   }, []);
 
-  const precioMensual = planes?.mensual?.precio ?? null;
-  const precioAnual   = planes?.anual?.precio   ?? null;
-  const trialDias     = planes?.trial_dias      ?? 15;
+  const trialDias  = planes?.trial_dias ?? 15;
   const PLAN_FEATURES = [...PLAN_FEATURES_BASE, `${trialDias} días de prueba gratis`];
 
   return (
     <LandingView
-      precioMensual={precioMensual}
-      precioAnual={precioAnual}
+      planes={planes}
       trialDias={trialDias}
       PLAN_FEATURES={PLAN_FEATURES}
       formatCurrency={formatCurrency}
