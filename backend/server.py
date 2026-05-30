@@ -2468,13 +2468,26 @@ async def get_ventas_diarias(
     branch_id: Optional[str] = Query(None),
     user: User = Depends(get_current_user)
 ):
-    desde = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=dias - 1)
-    filtro = {"empresa_id": user.empresa_id, "fecha": {"$gte": desde}}
+    # Usar timezone local de Argentina (UTC-3, sin DST)
+    AR_TZ = timezone(timedelta(hours=-3))
+    hoy_local = datetime.now(AR_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+    desde_local = hoy_local - timedelta(days=dias - 1)
+    # Convertir a UTC para el filtro de MongoDB
+    desde_utc = desde_local.astimezone(timezone.utc)
+
+    filtro = {"empresa_id": user.empresa_id, "fecha": {"$gte": desde_utc}}
     if branch_id:
         filtro["branch_id"] = branch_id
-    ventas = await db.sales.find(filtro, {"fecha": 1, "total": 1}).to_list(100000)
+    ventas = await db.sales.find(filtro, {"id": 1, "fecha": 1, "total": 1}).to_list(100000)
 
-    # Aggregate by local date string (YYYY-MM-DD)
+    # Traer devoluciones de esas ventas para descontar
+    sale_ids = [v["id"] for v in ventas if v.get("id")]
+    returns_docs = await db.sale_returns.find({"sale_id": {"$in": sale_ids}, "empresa_id": user.empresa_id}, {"sale_id": 1, "total": 1}).to_list(100000)
+    returned_by_sale = {}
+    for r in returns_docs:
+        returned_by_sale[r["sale_id"]] = returned_by_sale.get(r["sale_id"], 0) + r.get("total", 0)
+
+    # Agrupar por fecha local (no UTC)
     totals: dict = {}
     for v in ventas:
         fecha = v.get("fecha")
@@ -2483,13 +2496,15 @@ async def get_ventas_diarias(
         if isinstance(fecha, str):
             day = fecha[:10]
         else:
-            day = fecha.strftime("%Y-%m-%d")
-        totals[day] = totals.get(day, 0) + v.get("total", 0)
+            fecha_local = fecha.astimezone(AR_TZ) if fecha.tzinfo else fecha.replace(tzinfo=timezone.utc).astimezone(AR_TZ)
+            day = fecha_local.strftime("%Y-%m-%d")
+        net = v.get("total", 0) - returned_by_sale.get(v.get("id", ""), 0)
+        totals[day] = totals.get(day, 0) + net
 
-    # Fill every day in the range with 0 if no sales
+    # Rellenar todos los días del rango con 0 si no hay ventas
     result = []
     for i in range(dias):
-        d = (desde + timedelta(days=i)).strftime("%Y-%m-%d")
+        d = (desde_local + timedelta(days=i)).strftime("%Y-%m-%d")
         result.append({"fecha": d, "total": round(totals.get(d, 0), 2)})
 
     return result
