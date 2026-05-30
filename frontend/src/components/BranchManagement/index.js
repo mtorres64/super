@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useLocation } from 'react-router-dom';
 import { API } from '../../App';
+import { useSortableData } from '../../hooks/useSortableData';
 import useModalClose from '../../useModalClose';
 import { toast } from 'sonner';
 import BranchManagementView from './BranchManagementView';
@@ -28,6 +29,9 @@ const BranchManagement = () => {
   const [showBulkStockMinModal, setShowBulkStockMinModal] = useState(false);
   const [bulkStockMinTipo, setBulkStockMinTipo] = useState('establecer');
   const [bulkStockMinValor, setBulkStockMinValor] = useState('');
+  const [showBulkStockModal, setShowBulkStockModal] = useState(false);
+  const [bulkStockTipo, setBulkStockTipo] = useState('establecer');
+  const [bulkStockValor, setBulkStockValor] = useState('');
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -121,6 +125,7 @@ const BranchManagement = () => {
   const [bulkDeleteModalClosing, closeBulkDeleteModalAnim] = useModalClose(() => setShowBulkDeleteModal(false));
   const [bulkMargenModalClosing, closeBulkMargenModal] = useModalClose(() => setShowBulkMargenModal(false));
   const [bulkStockMinModalClosing, closeBulkStockMinModal] = useModalClose(() => setShowBulkStockMinModal(false));
+  const [bulkStockModalClosing, closeBulkStockModal] = useModalClose(() => setShowBulkStockModal(false));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -272,6 +277,37 @@ const BranchManagement = () => {
     toast.success(`Stock mínimo aplicado a ${selectedRows.size} producto(s). Recuerda guardar los cambios.`);
   };
 
+  const applyBulkStock = () => {
+    const valor = parseInt(bulkStockValor, 10);
+    if (isNaN(valor) || valor < 0) {
+      toast.error('Ingresa un valor válido');
+      return;
+    }
+    setPendingChanges(prev => {
+      const next = { ...prev };
+      for (const productId of selectedRows) {
+        const product = branchProducts.find(p => p.product_id === productId);
+        if (!product) continue;
+        const current = prev[productId]?.stock !== undefined
+          ? prev[productId].stock
+          : (product.stock_sucursal ?? 0);
+        let newVal;
+        if (bulkStockTipo === 'establecer') {
+          newVal = valor;
+        } else if (bulkStockTipo === 'incrementar') {
+          newVal = Math.max(0, current + valor);
+        } else {
+          newVal = Math.max(0, current - valor);
+        }
+        next[productId] = { ...next[productId], stock: newVal };
+      }
+      return next;
+    });
+    closeBulkStockModal();
+    setBulkStockValor('');
+    toast.success(`Stock aplicado a ${selectedRows.size} producto(s). Recuerda guardar los cambios.`);
+  };
+
   const handleBulkDelete = async () => {
     setBulkDeleting(true);
     let successCount = 0;
@@ -378,9 +414,11 @@ const BranchManagement = () => {
     (p.codigo_barras && p.codigo_barras.includes(searchTerm))
   );
 
+  const { sortedItems: sortedProducts, sortConfig, requestSort } = useSortableData(filteredProducts);
+
   const itemsPerPage = config?.items_per_page || 10;
-  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
-  const paginatedProducts = filteredProducts.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const totalPages = Math.ceil(sortedProducts.length / itemsPerPage);
+  const paginatedProducts = sortedProducts.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const handleSearch = (value) => {
     setSearchTerm(value);
@@ -431,6 +469,9 @@ const BranchManagement = () => {
       showBulkStockMinModal={showBulkStockMinModal}
       bulkStockMinTipo={bulkStockMinTipo}
       bulkStockMinValor={bulkStockMinValor}
+      showBulkStockModal={showBulkStockModal}
+      bulkStockTipo={bulkStockTipo}
+      bulkStockValor={bulkStockValor}
       showBulkDeleteModal={showBulkDeleteModal}
       bulkDeleting={bulkDeleting}
       currentPage={currentPage}
@@ -439,10 +480,13 @@ const BranchManagement = () => {
       bulkDeleteModalClosing={bulkDeleteModalClosing}
       bulkMargenModalClosing={bulkMargenModalClosing}
       bulkStockMinModalClosing={bulkStockMinModalClosing}
-      filteredProducts={filteredProducts}
+      bulkStockModalClosing={bulkStockModalClosing}
+      filteredProducts={sortedProducts}
       itemsPerPage={itemsPerPage}
       totalPages={totalPages}
       paginatedProducts={paginatedProducts}
+      sortConfig={sortConfig}
+      requestSort={requestSort}
       hasPendingChanges={hasPendingChanges}
       allFilteredSelected={allFilteredSelected}
       someFilteredSelected={someFilteredSelected}
@@ -466,18 +510,23 @@ const BranchManagement = () => {
       onSetBulkMargenValor={setBulkMargenValor}
       onSetBulkStockMinTipo={setBulkStockMinTipo}
       onSetBulkStockMinValor={setBulkStockMinValor}
+      onSetBulkStockTipo={setBulkStockTipo}
+      onSetBulkStockValor={setBulkStockValor}
       onSetShowBulkMargenModal={setShowBulkMargenModal}
       onSetShowBulkStockMinModal={setShowBulkStockMinModal}
+      onSetShowBulkStockModal={setShowBulkStockModal}
       onSetShowBulkDeleteModal={setShowBulkDeleteModal}
       onSetSelectedRows={setSelectedRows}
       onSetCurrentPage={setCurrentPage}
       onSearch={handleSearch}
       onApplyBulkMargen={applyBulkMargen}
       onApplyBulkStockMin={applyBulkStockMin}
+      onApplyBulkStock={applyBulkStock}
       onHandleBulkDelete={handleBulkDelete}
       onCloseBulkDeleteModalAnim={closeBulkDeleteModalAnim}
       onCloseBulkMargenModal={closeBulkMargenModal}
       onCloseBulkStockMinModal={closeBulkStockMinModal}
+      onCloseBulkStockModal={closeBulkStockModal}
       getCategoryName={getCategoryName}
       getUsersInBranch={getUsersInBranch}
       getProductCurrentMargen={getProductCurrentMargen}

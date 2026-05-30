@@ -11,6 +11,7 @@ import {
   ToggleLeft,
   ToggleRight
 } from 'lucide-react';
+import SortIcon from '../ui/SortIcon';
 
 const UserManagementView = ({
   users,
@@ -28,6 +29,8 @@ const UserManagementView = ({
   getRoleBadge,
   getRoleLabel,
   getBranchName,
+  sortConfig,
+  requestSort,
 }) => {
   if (loading) {
     return (
@@ -56,9 +59,9 @@ const UserManagementView = ({
         <table className="table">
           <thead>
             <tr>
-              <th>Usuario</th>
-              <th>Email</th>
-              <th>Rol</th>
+              <th onClick={() => requestSort('nombre')} className="cursor-pointer select-none hover:bg-gray-50">Usuario <SortIcon columnKey="nombre" sortConfig={sortConfig} /></th>
+              <th onClick={() => requestSort('email')} className="cursor-pointer select-none hover:bg-gray-50">Email <SortIcon columnKey="email" sortConfig={sortConfig} /></th>
+              <th onClick={() => requestSort('rol')} className="cursor-pointer select-none hover:bg-gray-50">Rol <SortIcon columnKey="rol" sortConfig={sortConfig} /></th>
               <th>Sucursal</th>
               <th>Estado</th>
               <th className="text-center">Acciones</th>

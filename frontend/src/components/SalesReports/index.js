@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 import { useSearchParams } from 'react-router-dom';
 import { API, AuthContext } from '../../App';
+import { useSortableData } from '../../hooks/useSortableData';
 import { formatAmount, parseApiDate } from '../../lib/utils';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
@@ -21,6 +22,7 @@ const SalesReports = () => {
   const canFilterByUser = !fromCaja && ['admin', 'supervisor'].includes(currentUser?.rol);
 
   const [sales, setSales] = useState([]);
+  const [allReturns, setAllReturns] = useState([]);
   const [branches, setBranches] = useState([]);
   const [users, setUsers] = useState([]);
   const [config, setConfig] = useState(null);
@@ -48,8 +50,12 @@ const SalesReports = () => {
 
   const fetchSales = async () => {
     try {
-      const response = await axios.get(`${API}/sales`);
-      setSales(response.data);
+      const [salesRes, returnsRes] = await Promise.all([
+        axios.get(`${API}/sales`),
+        axios.get(`${API}/returns`),
+      ]);
+      setSales(salesRes.data);
+      setAllReturns(returnsRes.data);
     } catch (error) {
       toast.error('Error al cargar las ventas');
     } finally {
@@ -155,18 +161,19 @@ const SalesReports = () => {
     return filteredSales.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
   };
 
-  const calculateStats = (salesData) => {
+  const calculateStats = (salesData, netTotals = {}) => {
     const totalSales = salesData.length;
-    const totalRevenue = salesData.reduce((sum, sale) => sum + sale.total, 0);
+    const totalRevenue = salesData.reduce((sum, sale) => sum + (sale.total - (netTotals[sale.id] || 0)), 0);
     const averageSale = totalSales > 0 ? totalRevenue / totalSales : 0;
 
     const paymentMethods = {};
     salesData.forEach(sale => {
+      const net = sale.total - (netTotals[sale.id] || 0);
       if (paymentMethods[sale.metodo_pago]) {
         paymentMethods[sale.metodo_pago].count++;
-        paymentMethods[sale.metodo_pago].total += sale.total;
+        paymentMethods[sale.metodo_pago].total += net;
       } else {
-        paymentMethods[sale.metodo_pago] = { count: 1, total: sale.total };
+        paymentMethods[sale.metodo_pago] = { count: 1, total: net };
       }
     });
 
@@ -387,20 +394,22 @@ const SalesReports = () => {
   const getDailyData = (data) => {
     const byDay = {};
     data.forEach(item => {
+      const net = item.total - (saleNetTotal[item.id] || 0);
       const d = new Date(item.fecha);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const label = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (byDay[key]) {
-        byDay[key].total += item.total;
+        byDay[key].total += net;
         byDay[key].count++;
       } else {
-        byDay[key] = { fecha: label, total: item.total, count: 1, key };
+        byDay[key] = { fecha: label, total: net, count: 1, key };
       }
     });
     return Object.values(byDay).sort((a, b) => a.key.localeCompare(b.key));
   };
 
   const getTopProducts = (salesData) => {
+    // Acumular totales vendidos
     const productTotals = {};
     salesData.forEach(sale => {
       if (sale.estado === 'cancelado') return;
@@ -418,17 +427,38 @@ const SalesReports = () => {
         }
       });
     });
+
+    // Restar devoluciones globales por producto
+    const saleIds = new Set(salesData.map(s => s.id));
+    allReturns.forEach(ret => {
+      if (!saleIds.has(ret.sale_id)) return;
+      ret.items.forEach(item => {
+        if (productTotals[item.producto_id]) {
+          productTotals[item.producto_id].cantidad -= item.cantidad;
+          productTotals[item.producto_id].total -= item.precio_unitario * item.cantidad;
+        }
+      });
+    });
+
     return Object.values(productTotals)
+      .filter(p => p.cantidad > 0)
       .sort((a, b) => b.cantidad - a.cantidad)
       .slice(0, 5)
       .map(p => ({ ...p, nombre: p.nombre.length > 20 ? p.nombre.slice(0, 18) + '…' : p.nombre }));
   };
 
   const filteredSales = getFilteredSales();
+  const { sortedItems: sortedSales, sortConfig, requestSort } = useSortableData(filteredSales);
   const itemsPerPage = config?.items_per_page || 10;
-  const totalPages = Math.ceil(filteredSales.length / itemsPerPage);
-  const pagedSales = filteredSales.slice((page - 1) * itemsPerPage, page * itemsPerPage);
-  const stats = calculateStats(filteredSales);
+  const totalPages = Math.ceil(sortedSales.length / itemsPerPage);
+  const pagedSales = sortedSales.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+
+  // Mapa de total neto por venta (total original - devoluciones)
+  const saleNetTotal = {};
+  allReturns.forEach(ret => {
+    saleNetTotal[ret.sale_id] = (saleNetTotal[ret.sale_id] || 0) + ret.total;
+  });
+  const stats = calculateStats(filteredSales, saleNetTotal);
   const dailyData = getDailyData(filteredSales);
   const topProducts = getTopProducts(filteredSales);
   const paymentPieData = Object.entries(stats.paymentMethods).map(([method, data]) => ({
@@ -473,14 +503,17 @@ const SalesReports = () => {
       fromCaja={fromCaja}
       canFilterByUser={canFilterByUser}
       currentUser={currentUser}
-      filteredSales={filteredSales}
+      filteredSales={sortedSales}
       itemsPerPage={itemsPerPage}
       totalPages={totalPages}
       pagedSales={pagedSales}
+      sortConfig={sortConfig}
+      requestSort={requestSort}
       stats={stats}
       dailyData={dailyData}
       topProducts={topProducts}
       paymentPieData={paymentPieData}
+      saleNetTotal={saleNetTotal}
       TIPO_CBTE_NOMBRES={TIPO_CBTE_NOMBRES}
       onSetDateFilter={(val) => { setDateFilter(val); setPage(1); }}
       onSetBranchFilter={(val) => { setBranchFilter(val); setPage(1); }}

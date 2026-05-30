@@ -147,7 +147,7 @@ const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, t
           })()}
           <div className="ticket-total-row ticket-total-final">
             <span>TOTAL:</span>
-            <span>{sym}{formatAmount(sale.total)}</span>
+            <span>{sym}{formatAmount(sale.total - returns.reduce((s, r) => s + r.total, 0))}</span>
           </div>
 
           {sale.cae && (

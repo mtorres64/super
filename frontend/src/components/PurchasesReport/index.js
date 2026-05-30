@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '../../App';
+import { useSortableData } from '../../hooks/useSortableData';
 import { formatAmount, parseApiDate } from '../../lib/utils';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
@@ -334,13 +335,16 @@ const PurchasesReport = () => {
   }
 
   const filteredCompras = getFilteredCompras();
+  const { sortedItems: sortedCompras, sortConfig, requestSort } = useSortableData(filteredCompras);
   const stats = calculateStats(filteredCompras);
   const dailyData = getDailyData(filteredCompras);
   const topProveedores = getTopProveedores(filteredCompras);
 
   return (
     <PurchasesReportView
-      filteredCompras={filteredCompras}
+      filteredCompras={sortedCompras}
+      sortConfig={sortConfig}
+      requestSort={requestSort}
       stats={stats}
       dailyData={dailyData}
       topProveedores={topProveedores}

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import SortIcon from '../ui/SortIcon';
 import {
   AlertCircle,
   Clock,
@@ -229,6 +230,8 @@ const CuentaView = ({
   onSimularPago,
   onActivarSuscripcionAuto,
   onCancelarSuscripcionAuto,
+  sortConfig,
+  requestSort,
 }) => {
   const StatusIcon = statusConf?.icon || Clock;
 
@@ -493,10 +496,10 @@ const CuentaView = ({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Fecha</th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Concepto</th>
-                  <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Monto</th>
-                  <th className="text-center px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Estado</th>
+                  <th onClick={() => requestSort('fecha')} className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:bg-gray-100">Fecha <SortIcon columnKey="fecha" sortConfig={sortConfig} /></th>
+                  <th onClick={() => requestSort('concepto')} className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:bg-gray-100">Concepto <SortIcon columnKey="concepto" sortConfig={sortConfig} /></th>
+                  <th onClick={() => requestSort('monto')} className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:bg-gray-100">Monto <SortIcon columnKey="monto" sortConfig={sortConfig} /></th>
+                  <th onClick={() => requestSort('estado')} className="text-center px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:bg-gray-100">Estado <SortIcon columnKey="estado" sortConfig={sortConfig} /></th>
                   <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">ID Pago MP</th>
                 </tr>
               </thead>

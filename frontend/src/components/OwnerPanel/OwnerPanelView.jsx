@@ -7,6 +7,8 @@ import {
   CreditCard, Search, Zap, ZapOff, CheckCircle2,
 } from 'lucide-react';
 import { ownerAxios, formatDate, formatMoney } from './index';
+import SortIcon from '../ui/SortIcon';
+import { useSortableData } from '../../hooks/useSortableData';
 
 // ─── StatusBadge ─────────────────────────────────────────────────────────────
 
@@ -724,6 +726,7 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
   const diasColor = dias <= 3 ? 'text-red-400' : dias <= 7 ? 'text-yellow-400' : 'text-green-400';
   const pagosAprobados = cliente.pagos?.filter(p => p.estado === 'approved') ?? [];
   const totalPagado = pagosAprobados.reduce((s, p) => s + (p.monto || 0), 0);
+  const { sortedItems: sortedClientePagos, sortConfig: pagosSortConfig, requestSort: pagosRequestSort } = useSortableData(cliente.pagos || []);
 
   const quickExtendOptions = [
     { dias: 7, label: '+7d' },
@@ -912,21 +915,21 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
         <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">
           Historial de Pagos ({cliente.pagos?.length ?? 0})
         </h3>
-        {cliente.pagos?.length > 0 ? (
+        {sortedClientePagos?.length > 0 ? (
           <div className="overflow-x-auto -mx-1">
             <table className="w-full text-sm min-w-[620px]">
               <thead>
                 <tr className="border-b border-gray-800">
-                  <th className="text-left py-2 px-2 text-gray-600 font-medium">Fecha</th>
-                  <th className="text-left py-2 px-2 text-gray-600 font-medium">Concepto</th>
-                  <th className="text-left py-2 px-2 text-gray-600 font-medium">Monto</th>
+                  <th onClick={() => pagosRequestSort('fecha')} className="text-left py-2 px-2 text-gray-600 font-medium cursor-pointer select-none hover:bg-gray-800/50">Fecha <SortIcon columnKey="fecha" sortConfig={pagosSortConfig} dark /></th>
+                  <th onClick={() => pagosRequestSort('concepto')} className="text-left py-2 px-2 text-gray-600 font-medium cursor-pointer select-none hover:bg-gray-800/50">Concepto <SortIcon columnKey="concepto" sortConfig={pagosSortConfig} dark /></th>
+                  <th onClick={() => pagosRequestSort('monto')} className="text-left py-2 px-2 text-gray-600 font-medium cursor-pointer select-none hover:bg-gray-800/50">Monto <SortIcon columnKey="monto" sortConfig={pagosSortConfig} dark /></th>
                   <th className="text-left py-2 px-2 text-gray-600 font-medium">Tipo</th>
-                  <th className="text-left py-2 px-2 text-gray-600 font-medium">Estado</th>
+                  <th onClick={() => pagosRequestSort('estado')} className="text-left py-2 px-2 text-gray-600 font-medium cursor-pointer select-none hover:bg-gray-800/50">Estado <SortIcon columnKey="estado" sortConfig={pagosSortConfig} dark /></th>
                   <th className="text-left py-2 px-2 text-gray-600 font-medium">Período</th>
                 </tr>
               </thead>
               <tbody>
-                {cliente.pagos.map(p => (
+                {sortedClientePagos.map(p => (
                   <tr key={p.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
                     <td className="py-3 px-2 text-gray-400">{formatDate(p.fecha)}</td>
                     <td className="py-3 px-2 text-gray-200">{p.concepto}</td>
@@ -1137,13 +1140,15 @@ const CobrosView = ({ token }) => {
       .filter(Boolean)
   )].sort().reverse();
 
-  const filtered = pagos.filter(p => {
+  const preFiltered = pagos.filter(p => {
     const matchSearch = !search ||
       (p.empresa_nombre || '').toLowerCase().includes(search.toLowerCase()) ||
       (p.concepto || '').toLowerCase().includes(search.toLowerCase());
     const matchMes = !filterMes || (p.fecha && new Date(p.fecha).toISOString().startsWith(filterMes));
     return matchSearch && matchMes;
   });
+
+  const { sortedItems: filtered, sortConfig: cobrosSortConfig, requestSort: cobrosRequestSort } = useSortableData(preFiltered);
 
   const aprobados = filtered.filter(p => p.estado === 'approved');
   const totalFiltrado = aprobados.reduce((s, p) => s + (p.monto || 0), 0);
@@ -1212,13 +1217,13 @@ const CobrosView = ({ token }) => {
             <table className="w-full text-sm min-w-[700px]">
               <thead>
                 <tr className="border-b border-gray-800">
-                  <th className="text-left py-2 px-2 text-gray-600 font-medium">Fecha</th>
-                  <th className="text-left py-2 px-2 text-gray-600 font-medium">Empresa</th>
+                  <th onClick={() => cobrosRequestSort('fecha')} className="text-left py-2 px-2 text-gray-600 font-medium cursor-pointer select-none hover:bg-gray-800/50">Fecha <SortIcon columnKey="fecha" sortConfig={cobrosSortConfig} dark /></th>
+                  <th onClick={() => cobrosRequestSort('empresa_nombre')} className="text-left py-2 px-2 text-gray-600 font-medium cursor-pointer select-none hover:bg-gray-800/50">Empresa <SortIcon columnKey="empresa_nombre" sortConfig={cobrosSortConfig} dark /></th>
                   <th className="text-left py-2 px-2 text-gray-600 font-medium">Concepto</th>
-                  <th className="text-left py-2 px-2 text-gray-600 font-medium">Monto</th>
+                  <th onClick={() => cobrosRequestSort('monto')} className="text-left py-2 px-2 text-gray-600 font-medium cursor-pointer select-none hover:bg-gray-800/50">Monto <SortIcon columnKey="monto" sortConfig={cobrosSortConfig} dark /></th>
                   <th className="text-left py-2 px-2 text-gray-600 font-medium">Tipo</th>
                   <th className="text-left py-2 px-2 text-gray-600 font-medium">Origen</th>
-                  <th className="text-left py-2 px-2 text-gray-600 font-medium">Estado</th>
+                  <th onClick={() => cobrosRequestSort('estado')} className="text-left py-2 px-2 text-gray-600 font-medium cursor-pointer select-none hover:bg-gray-800/50">Estado <SortIcon columnKey="estado" sortConfig={cobrosSortConfig} dark /></th>
                 </tr>
               </thead>
               <tbody>

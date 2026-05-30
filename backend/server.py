@@ -429,7 +429,7 @@ class Suscripcion(BaseModel):
     fecha_vencimiento: datetime
     dia_facturacion: Optional[int] = None
     plan_tipo: str = "mensual"               # periodo de facturación: "mensual" | "anual"
-    plan_tier: str = "profesional"           # nivel de plan: "emprendedor" | "profesional" | "empresarial"
+    plan_tier: str = "empresarial"           # nivel de plan: "emprendedor" | "profesional" | "empresarial"
     fue_pagada: bool = False
     tipo_cobro: str = "manual"               # "manual" | "automatico"
     mp_preapproval_id: Optional[str] = None  # ID del preapproval en MP (débito automático)
@@ -1075,7 +1075,7 @@ async def update_branch(branch_id: str, branch_data: BranchUpdate, user: User = 
 @api_router.post("/cash-sessions", response_model=CashSession)
 async def open_cash_session(session_data: CashSessionCreate, user: User = Depends(get_current_user)):
     if not user.branch_id:
-        raise HTTPException(status_code=400, detail="User must be assigned to a branch")
+        raise HTTPException(status_code=400, detail="El usuario debe estar asignado a una sucursal")
 
     # Check if there's already an open session for this user
     existing_session = await db.cash_sessions.find_one({
@@ -1259,8 +1259,8 @@ async def register_empresa(data: EmpresaRegister):
 
     # Create trial subscription
     trial_inicio = datetime.now(timezone.utc)
-    dia_facturacion = min(trial_inicio.day, 28)
     trial_fin = trial_inicio + timedelta(days=await get_trial_dias())
+    dia_facturacion = min(trial_fin.day, 28)
     suscripcion = Suscripcion(
         empresa_id=empresa.id,
         plan_nombre=await get_plan_nombre_suscripcion(),
@@ -1270,6 +1270,7 @@ async def register_empresa(data: EmpresaRegister):
         fecha_vencimiento=trial_fin,
         dia_facturacion=dia_facturacion,
         plan_tipo="mensual",
+        plan_tier="empresarial",
     )
     await db.suscripciones.insert_one(suscripcion.dict())
 
@@ -1496,7 +1497,7 @@ async def delete_branch_product(branch_product_id: str, user: User = Depends(req
 @api_router.get("/branch-products", response_model=List[dict])
 async def get_branch_products(user: User = Depends(get_current_user)):
     if not user.branch_id:
-        raise HTTPException(status_code=400, detail="User must be assigned to a branch")
+        raise HTTPException(status_code=400, detail="El usuario debe estar asignado a una sucursal")
 
     # Get products with branch-specific data
     pipeline = [
@@ -1619,6 +1620,7 @@ async def export_products(
             "nombre": p.get("nombre"),
             "codigo_barras": p.get("codigo_barras", ""),
             "tipo": p.get("tipo"),
+            "clase": "Combo" if p.get("kind") == "combo" else "Normal",
             "precio": p.get("precio"),
             "precio_por_peso": p.get("precio_por_peso", ""),
             "categoria": cat_map.get(p.get("categoria_id"), ""),
@@ -1678,6 +1680,7 @@ async def get_import_template(user: User = Depends(require_role([UserRole.ADMIN]
         ("precio_por_peso", 18, "Opcional. Solo para tipo=por_peso. Precio por kg."),
         ("stock",           12, "Opcional. Stock inicial. Por defecto: 0"),
         ("stock_minimo",    14, "Opcional. Alerta de stock bajo. Por defecto: 10"),
+        ("clase",           14, "Opcional. Clase del producto: Normal o Combo. Por defecto: Normal"),
     ]
 
     for c, (header, width, _) in enumerate(cols, start=1):
@@ -1693,8 +1696,12 @@ async def get_import_template(user: User = Depends(require_role([UserRole.ADMIN]
     dv.sqref = "B2:B1000"
     ws.add_data_validation(dv)
 
+    dv_clase = DataValidation(type="list", formula1='"Normal,Combo"', allow_blank=True)
+    dv_clase.sqref = "I2:I1000"
+    ws.add_data_validation(dv_clase)
+
     for r in range(2, 202):
-        for c in range(1, 9):
+        for c in range(1, 10):
             cell = ws.cell(row=r, column=c)
             cell.fill   = REQ_FILL if c <= 4 else OPT_FILL
             cell.border = THIN
@@ -1805,10 +1812,14 @@ async def import_products(
             raw_stock_min = row.get("stock_minimo")
             stock_minimo = int(float(raw_stock_min)) if pd.notna(raw_stock_min) and str(raw_stock_min).strip() not in ("", "nan") else 10
 
+            raw_clase = row.get("clase", "")
+            kind = "combo" if str(raw_clase).strip().lower() == "combo" else "normal"
+
             product_data = {
                 "nombre": str(row["nombre"]).strip(),
                 "codigo_barras": codigo_barras,
                 "tipo": tipo,
+                "kind": kind,
                 "precio": float(row["precio"]),
                 "categoria_id": categoria_id,
                 "stock": stock,
@@ -2153,7 +2164,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
         session_id=current_session['id'],
         tipo=MovementType.VENTA,
         monto=total,
-        descripcion=f"Venta {numero_factura} - {sale_data.metodo_pago}",
+        descripcion=f"Venta {numero_factura} - {sale_data.metodo_pago.value.capitalize()}",
         venta_id=sale.id
     )
     await db.cash_movements.insert_one(movement.dict())
@@ -2206,6 +2217,11 @@ async def get_sales(user: User = Depends(get_current_user)):
         except Exception as e:
             logger.warning(f"Skipping invalid sale {sale.get('id')}: {e}")
     return result
+
+@api_router.get("/returns", response_model=List[SaleReturn])
+async def get_all_returns(user: User = Depends(get_current_user)):
+    returns = await db.sale_returns.find({"empresa_id": user.empresa_id}).sort("fecha", -1).to_list(10000)
+    return [SaleReturn(**r) for r in returns]
 
 @api_router.get("/sales/{sale_id}/returns", response_model=List[SaleReturn])
 async def get_sale_returns(sale_id: str, user: User = Depends(get_current_user)):
@@ -2340,6 +2356,16 @@ async def get_cash_session_report(session_id: str, user: User = Depends(get_curr
     branch_doc = await db.branches.find_one({"id": session["branch_id"], "empresa_id": user.empresa_id})
     branch_info = Branch(**branch_doc) if branch_doc else None
 
+    # Devoluciones de esta sesión para descontar del resumen
+    sale_ids = [s.id for s in sales]
+    returns_docs = await db.sale_returns.find({"sale_id": {"$in": sale_ids}, "empresa_id": user.empresa_id}).to_list(1000)
+    returned_by_sale = {}
+    for ret in returns_docs:
+        returned_by_sale[ret["sale_id"]] = returned_by_sale.get(ret["sale_id"], 0) + ret["total"]
+
+    def net_total(sale):
+        return sale.total - returned_by_sale.get(sale.id, 0)
+
     return {
         "session": CashSession(**session),
         "movements": movements,
@@ -2348,9 +2374,9 @@ async def get_cash_session_report(session_id: str, user: User = Depends(get_curr
         "branch": branch_info,
         "resumen": {
             "total_ventas": len(sales),
-            "ingresos_efectivo": sum(sale.total for sale in sales if sale.metodo_pago == 'efectivo'),
-            "ingresos_tarjeta": sum(sale.total for sale in sales if sale.metodo_pago == 'tarjeta'),
-            "ingresos_transferencia": sum(sale.total for sale in sales if sale.metodo_pago == 'transferencia'),
+            "ingresos_efectivo": sum(net_total(s) for s in sales if s.metodo_pago == 'efectivo'),
+            "ingresos_tarjeta": sum(net_total(s) for s in sales if s.metodo_pago == 'tarjeta'),
+            "ingresos_transferencia": sum(net_total(s) for s in sales if s.metodo_pago == 'transferencia'),
         }
     }
 
@@ -2368,7 +2394,12 @@ async def get_dashboard_stats(user: User = Depends(get_current_user)):
         sales_filter["branch_id"] = user.branch_id
 
     today_sales = await db.sales.find(sales_filter).to_list(1000)
-    total_ventas_hoy = sum(sale['total'] for sale in today_sales)
+    today_sale_ids = [s['id'] for s in today_sales]
+    today_returns = await db.sale_returns.find({"sale_id": {"$in": today_sale_ids}, "empresa_id": user.empresa_id}).to_list(1000)
+    returned_by_sale_today = {}
+    for ret in today_returns:
+        returned_by_sale_today[ret["sale_id"]] = returned_by_sale_today.get(ret["sale_id"], 0) + ret["total"]
+    total_ventas_hoy = sum(sale['total'] - returned_by_sale_today.get(sale['id'], 0) for sale in today_sales)
     numero_ventas_hoy = len(today_sales)
 
     # Total products

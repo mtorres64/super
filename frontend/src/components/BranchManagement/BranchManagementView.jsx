@@ -20,6 +20,7 @@ import {
   Trash2
 } from 'lucide-react';
 import Pagination from '../Pagination';
+import SortIcon from '../ui/SortIcon';
 
 const BranchManagementView = ({
   loading,
@@ -39,6 +40,9 @@ const BranchManagementView = ({
   showBulkStockMinModal,
   bulkStockMinTipo,
   bulkStockMinValor,
+  showBulkStockModal,
+  bulkStockTipo,
+  bulkStockValor,
   showBulkDeleteModal,
   bulkDeleting,
   currentPage,
@@ -47,6 +51,7 @@ const BranchManagementView = ({
   bulkDeleteModalClosing,
   bulkMargenModalClosing,
   bulkStockMinModalClosing,
+  bulkStockModalClosing,
   filteredProducts,
   itemsPerPage,
   totalPages,
@@ -74,21 +79,28 @@ const BranchManagementView = ({
   onSetBulkMargenValor,
   onSetBulkStockMinTipo,
   onSetBulkStockMinValor,
+  onSetBulkStockTipo,
+  onSetBulkStockValor,
   onSetShowBulkMargenModal,
   onSetShowBulkStockMinModal,
+  onSetShowBulkStockModal,
   onSetShowBulkDeleteModal,
   onSetSelectedRows,
   onSetCurrentPage,
   onSearch,
   onApplyBulkMargen,
   onApplyBulkStockMin,
+  onApplyBulkStock,
   onHandleBulkDelete,
   onCloseBulkDeleteModalAnim,
   onCloseBulkMargenModal,
   onCloseBulkStockMinModal,
+  onCloseBulkStockModal,
   getCategoryName,
   getUsersInBranch,
   getProductCurrentMargen,
+  sortConfig,
+  requestSort,
 }) => {
   if (loading) {
     return (
@@ -197,6 +209,13 @@ const BranchManagementView = ({
               Stock Mín.
             </button>
             <button
+              onClick={() => { onSetBulkStockTipo('establecer'); onSetBulkStockValor(''); onSetShowBulkStockModal(true); }}
+              className="btn btn-secondary btn-sm"
+            >
+              <Package className="w-4 h-4" />
+              Stock
+            </button>
+            <button
               onClick={() => onSetShowBulkDeleteModal(true)}
               className="btn btn-sm bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
             >
@@ -232,13 +251,13 @@ const BranchManagementView = ({
                       onChange={onToggleSelectAll}
                     />
                   </th>
-                  <th>Producto</th>
+                  <th onClick={() => requestSort('nombre')} className="cursor-pointer select-none hover:bg-gray-50">Producto <SortIcon columnKey="nombre" sortConfig={sortConfig} /></th>
                   <th>Categoría</th>
-                  <th className="text-center">Precio Global</th>
+                  <th className="text-center cursor-pointer select-none hover:bg-gray-50" onClick={() => requestSort('precio_global')}>Precio Global <SortIcon columnKey="precio_global" sortConfig={sortConfig} /></th>
                   <th className="text-center">Margen %</th>
-                  <th className="text-center">Precio Sucursal</th>
-                  <th className="text-center">Stock Sucursal</th>
-                  <th className="text-center">Stock Mínimo</th>
+                  <th className="text-center cursor-pointer select-none hover:bg-gray-50" onClick={() => requestSort('precio_sucursal')}>Precio Sucursal <SortIcon columnKey="precio_sucursal" sortConfig={sortConfig} /></th>
+                  <th className="text-center cursor-pointer select-none hover:bg-gray-50" onClick={() => requestSort('stock_sucursal')}>Stock Sucursal <SortIcon columnKey="stock_sucursal" sortConfig={sortConfig} /></th>
+                  <th className="text-center cursor-pointer select-none hover:bg-gray-50" onClick={() => requestSort('stock_minimo_sucursal')}>Stock Mínimo <SortIcon columnKey="stock_minimo_sucursal" sortConfig={sortConfig} /></th>
                   <th className="text-center">Activo</th>
                 </tr>
               </thead>
@@ -496,6 +515,83 @@ const BranchManagementView = ({
                   className="btn btn-primary disabled:opacity-50"
                 >
                   <SlidersHorizontal className="w-4 h-4" />
+                  Aplicar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Stock Modal */}
+        {showBulkStockModal && (
+          <div className={`modal-overlay${bulkStockModalClosing ? ' closing' : ''}`}>
+            <div className={`modal-content max-w-md${bulkStockModalClosing ? ' closing' : ''}`}>
+              <div className="modal-header">
+                <h3 className="modal-title flex items-center gap-2">
+                  <Package className="w-5 h-5 text-green-600" />
+                  Cambio masivo de Stock
+                </h3>
+                <button onClick={onCloseBulkStockModal} className="modal-close">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                Aplicar a <strong>{selectedRows.size} producto(s)</strong> seleccionado(s)
+              </div>
+
+              <div className="space-y-4">
+                <div className="form-group">
+                  <label className="form-label">Tipo de cambio</label>
+                  <div className="flex gap-2 mt-1">
+                    {[
+                      { value: 'establecer', label: 'Establecer' },
+                      { value: 'incrementar', label: 'Incrementar' },
+                      { value: 'decrementar', label: 'Decrementar' },
+                    ].map(opt => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => onSetBulkStockTipo(opt.value)}
+                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-colors ${
+                          bulkStockTipo === opt.value
+                            ? 'bg-green-600 text-white border-green-600'
+                            : 'bg-white text-gray-600 border-gray-200 hover:border-green-300'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">
+                    {bulkStockTipo === 'establecer' ? 'Nuevo stock' : bulkStockTipo === 'incrementar' ? 'Incremento' : 'Decremento'}
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    className="form-input w-32 text-center mt-1"
+                    value={bulkStockValor}
+                    onChange={(e) => onSetBulkStockValor(e.target.value)}
+                    placeholder="0"
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 mt-6">
+                <button type="button" onClick={onCloseBulkStockModal} className="btn btn-secondary">
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={onApplyBulkStock}
+                  disabled={bulkStockValor === ''}
+                  className="btn btn-primary disabled:opacity-50"
+                >
+                  <Package className="w-4 h-4" />
                   Aplicar
                 </button>
               </div>

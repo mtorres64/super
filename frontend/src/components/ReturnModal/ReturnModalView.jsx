@@ -72,7 +72,7 @@ const ReturnModalView = ({
                   </div>
                 </div>
                 {isChecked && (
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex flex-col items-center shrink-0 gap-0.5">
                     <input
                       type="number"
                       min="1"
@@ -84,7 +84,7 @@ const ReturnModalView = ({
                       }))}
                       className="form-input w-16 text-center text-sm"
                     />
-                    <span className="text-xs text-gray-400">/ {available}</span>
+                    <span className="text-xs text-gray-400 whitespace-nowrap">máx. {available}</span>
                   </div>
                 )}
               </div>

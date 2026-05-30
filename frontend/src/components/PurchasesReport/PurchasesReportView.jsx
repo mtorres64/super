@@ -10,6 +10,7 @@ import {
   Truck,
   Printer
 } from 'lucide-react';
+import SortIcon from '../ui/SortIcon';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer
@@ -39,6 +40,8 @@ const PurchasesReportView = ({
   formatAmount,
   getBranchName,
   getProveedorName,
+  sortConfig,
+  requestSort,
 }) => {
   return (
     <div className="p-6">
@@ -274,14 +277,14 @@ const PurchasesReportView = ({
           <table className="table">
             <thead>
               <tr>
-                <th>Factura</th>
-                <th>Fecha</th>
+                <th onClick={() => requestSort('numero_factura')} className="cursor-pointer select-none hover:bg-gray-50">Factura <SortIcon columnKey="numero_factura" sortConfig={sortConfig} /></th>
+                <th onClick={() => requestSort('fecha')} className="cursor-pointer select-none hover:bg-gray-50">Fecha <SortIcon columnKey="fecha" sortConfig={sortConfig} /></th>
                 <th>Sucursal</th>
-                <th>Proveedor</th>
+                <th onClick={() => requestSort('proveedor_nombre')} className="cursor-pointer select-none hover:bg-gray-50">Proveedor <SortIcon columnKey="proveedor_nombre" sortConfig={sortConfig} /></th>
                 <th style={{ textAlign: 'center' }}>Items</th>
                 <th style={{ textAlign: 'right' }}>Subtotal</th>
                 <th style={{ textAlign: 'right' }}>Impuestos</th>
-                <th style={{ textAlign: 'right' }}>Total</th>
+                <th style={{ textAlign: 'right' }} onClick={() => requestSort('total')} className="cursor-pointer select-none hover:bg-gray-50">Total <SortIcon columnKey="total" sortConfig={sortConfig} /></th>
               </tr>
             </thead>
             <tbody>

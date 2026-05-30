@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import useModalClose from '../../useModalClose';
 import axios from 'axios';
 import { API } from '../../App';
+import { useSortableData } from '../../hooks/useSortableData';
 import { parseApiDate } from '../../lib/utils';
 import { toast } from 'sonner';
 import ComprasView from './ComprasView';
@@ -416,6 +417,9 @@ const Compras = () => {
     (p.ruc_cuit && p.ruc_cuit.includes(searchProveedor))
   );
 
+  const { sortedItems: sortedCompras, sortConfig: comprasSortConfig, requestSort: comprasRequestSort } = useSortableData(filteredCompras);
+  const { sortedItems: sortedProveedores, sortConfig: proveedoresSortConfig, requestSort: proveedoresRequestSort } = useSortableData(filteredProveedores);
+
   const formatDate = (iso) => {
     if (!iso) return '—';
     return parseApiDate(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -468,8 +472,12 @@ const Compras = () => {
       setProveedorForm={setProveedorForm}
       searchProveedor={searchProveedor}
       setSearchProveedor={setSearchProveedor}
-      filteredCompras={filteredCompras}
-      filteredProveedores={filteredProveedores}
+      filteredCompras={sortedCompras}
+      filteredProveedores={sortedProveedores}
+      comprasSortConfig={comprasSortConfig}
+      comprasRequestSort={comprasRequestSort}
+      proveedoresSortConfig={proveedoresSortConfig}
+      proveedoresRequestSort={proveedoresRequestSort}
       compraModalClosing={compraModalClosing}
       proveedorModalClosing={proveedorModalClosing}
       openCompraModal={openCompraModal}

@@ -19,6 +19,7 @@ import {
 import Pagination from '../Pagination';
 import ReturnModal from '../ReturnModal';
 import TicketModal from '../TicketModal';
+import SortIcon from '../ui/SortIcon';
 
 const SalesReportsView = ({
   loading,
@@ -48,6 +49,7 @@ const SalesReportsView = ({
   dailyData,
   topProducts,
   paymentPieData,
+  saleNetTotal,
   onSetDateFilter,
   onSetBranchFilter,
   onSetUserFilter,
@@ -69,6 +71,8 @@ const SalesReportsView = ({
   getPaymentMethodLabel,
   formatDate,
   formatAmount,
+  sortConfig,
+  requestSort,
 }) => {
   if (loading) {
     return (
@@ -358,13 +362,14 @@ const SalesReportsView = ({
           <table className="table">
             <thead>
               <tr>
-                <th>Factura</th>
-                <th className="hidden lg:table-cell">Fecha</th>
+                <th onClick={() => requestSort('numero_factura')} className="cursor-pointer select-none hover:bg-gray-50">Factura <SortIcon columnKey="numero_factura" sortConfig={sortConfig} /></th>
+                <th className="hidden lg:table-cell cursor-pointer select-none hover:bg-gray-50" onClick={() => requestSort('fecha')}>Fecha <SortIcon columnKey="fecha" sortConfig={sortConfig} /></th>
                 <th className="hidden lg:table-cell">Sucursal</th>
                 <th className="hidden lg:table-cell" style={{ textAlign: 'center' }}>Items</th>
                 <th className="hidden lg:table-cell" style={{ textAlign: 'right' }}>Subtotal</th>
-                <th style={{ textAlign: 'right' }}>Total</th>
-                <th style={{ textAlign: 'center' }}>Método de Pago</th>
+                <th className="hidden lg:table-cell" style={{ textAlign: 'right' }}>Descuento/Recargo</th>
+                <th style={{ textAlign: 'right' }} onClick={() => requestSort('total')} className="cursor-pointer select-none hover:bg-gray-50">Total <SortIcon columnKey="total" sortConfig={sortConfig} /></th>
+                <th style={{ textAlign: 'center' }} onClick={() => requestSort('metodo_pago')} className="cursor-pointer select-none hover:bg-gray-50">Método de Pago <SortIcon columnKey="metodo_pago" sortConfig={sortConfig} /></th>
                 <th className="hidden md:table-cell">Estado</th>
                 <th></th>
               </tr>
@@ -388,8 +393,21 @@ const SalesReportsView = ({
                     </span>
                   </td>
                   <td className="hidden lg:table-cell text-right">${formatAmount(sale.subtotal)}</td>
+                  <td className="hidden lg:table-cell text-right">
+                    {(() => {
+                      const adj = sale.total - sale.subtotal - (sale.impuestos || 0);
+                      if (Math.abs(adj) < 0.01) return <span className="text-gray-300">—</span>;
+                      return (
+                        <span className={adj < 0 ? 'text-green-600' : 'text-red-600'}>
+                          {adj < 0 ? '-' : '+'} ${formatAmount(Math.abs(adj))}
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <td className="text-right">
-                    <span className="font-semibold text-green-600">${formatAmount(sale.total)}</span>
+                    <span className="font-semibold text-green-600">
+                      ${formatAmount(sale.total - (saleNetTotal?.[sale.id] || 0))}
+                    </span>
                   </td>
                   <td className="text-center">
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${

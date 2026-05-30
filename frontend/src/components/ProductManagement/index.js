@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useContext } from 'react';
 import axios from 'axios';
 import { API, AuthContext } from '../../App';
+import { useSortableData } from '../../hooks/useSortableData';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import useModalClose from '../../useModalClose';
@@ -223,12 +224,14 @@ const ProductManagement = () => {
     (product.codigo_barras && product.codigo_barras.includes(searchTerm))
   );
 
+  const { sortedItems: sortedProducts, sortConfig, requestSort } = useSortableData(filteredProducts);
+
   // Pagination logic
   const itemsPerPage = config?.items_per_page || 10;
-  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
+  const totalPages = Math.ceil(sortedProducts.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
+  const paginatedProducts = sortedProducts.slice(startIndex, endIndex);
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
@@ -407,10 +410,12 @@ const ProductManagement = () => {
       showComboDropdown={showComboDropdown}
       setShowComboDropdown={setShowComboDropdown}
       comboSearchRef={comboSearchRef}
-      filteredProducts={filteredProducts}
+      filteredProducts={sortedProducts}
       itemsPerPage={itemsPerPage}
       totalPages={totalPages}
       paginatedProducts={paginatedProducts}
+      sortConfig={sortConfig}
+      requestSort={requestSort}
       productModalClosing={productModalClosing}
       importModalClosing={importModalClosing}
       categoryModalClosing={categoryModalClosing}

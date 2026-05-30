@@ -15,6 +15,7 @@ import {
   Minus
 } from 'lucide-react';
 import Pagination from '../Pagination';
+import SortIcon from '../ui/SortIcon';
 
 const ProductManagementView = ({
   user,
@@ -84,6 +85,8 @@ const ProductManagementView = ({
   getProductName,
   getLowStockProducts,
   normalize,
+  sortConfig,
+  requestSort,
 }) => {
   if (loading) {
     return (
@@ -196,11 +199,11 @@ const ProductManagementView = ({
                   onChange={toggleSelectAll}
                 />
               </th>
-              <th>Producto</th>
-              <th style={{ textAlign: 'center' }}>Código</th>
+              <th onClick={() => requestSort('nombre')} className="cursor-pointer select-none hover:bg-gray-50">Producto <SortIcon columnKey="nombre" sortConfig={sortConfig} /></th>
+              <th style={{ textAlign: 'center' }} onClick={() => requestSort('codigo_barras')} className="cursor-pointer select-none hover:bg-gray-50">Código <SortIcon columnKey="codigo_barras" sortConfig={sortConfig} /></th>
               <th style={{ textAlign: 'center' }}>Categoría</th>
               <th style={{ textAlign: 'center' }}>Clase</th>
-              <th style={{ textAlign: 'center' }}>Stock Mínimo</th>
+              <th style={{ textAlign: 'center' }} onClick={() => requestSort('stock_minimo')} className="cursor-pointer select-none hover:bg-gray-50">Stock Mínimo <SortIcon columnKey="stock_minimo" sortConfig={sortConfig} /></th>
               <th style={{ textAlign: 'center' }}>Estado</th>
               <th style={{ textAlign: 'center' }}>Acciones</th>
             </tr>
@@ -614,8 +617,9 @@ const ProductManagementView = ({
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1">
                         <p className="font-medium mb-1">Formato requerido (CSV o XLSX):</p>
-                        <p className="font-mono text-xs">nombre, codigo_barras, tipo, precio, precio_por_peso, categoria, stock, stock_minimo</p>
+                        <p className="font-mono text-xs">nombre, codigo_barras, tipo, clase, precio, precio_por_peso, categoria, stock, stock_minimo</p>
                         <p className="mt-1 text-xs">• <strong>tipo</strong>: <code>codigo_barras</code> o <code>por_peso</code></p>
+                        <p className="text-xs">• <strong>clase</strong>: <code>Normal</code> o <code>Combo</code> (por defecto: Normal)</p>
                         <p className="text-xs">• <strong>categoria</strong>: debe coincidir con una categoría existente</p>
                         <p className="text-xs">• Si el código de barras ya existe, el producto se actualizará</p>
                       </div>

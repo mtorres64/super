@@ -12,6 +12,8 @@ import {
   CheckCircle,
   Printer
 } from 'lucide-react';
+import SortIcon from '../ui/SortIcon';
+import { useSortableData } from '../../hooks/useSortableData';
 
 const CashReportView = ({
   loading,
@@ -41,8 +43,9 @@ const CashReportView = ({
     );
   }
 
-  const { session, movements, user, branch, resumen } = report;
+  const { session, movements: rawMovements, user, branch, resumen } = report;
   const isClosed = session.status === 'cerrada';
+  const { sortedItems: movements, sortConfig, requestSort } = useSortableData(rawMovements || []);
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">
@@ -280,10 +283,10 @@ const CashReportView = ({
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-200">
-                  <th className="text-left py-2">Fecha</th>
-                  <th className="text-left py-2">Tipo</th>
+                  <th onClick={() => requestSort('fecha')} className="text-left py-2 cursor-pointer select-none hover:bg-gray-50">Fecha <SortIcon columnKey="fecha" sortConfig={sortConfig} /></th>
+                  <th onClick={() => requestSort('tipo')} className="text-left py-2 cursor-pointer select-none hover:bg-gray-50">Tipo <SortIcon columnKey="tipo" sortConfig={sortConfig} /></th>
                   <th className="text-left py-2">Descripción</th>
-                  <th className="text-right py-2">Monto</th>
+                  <th onClick={() => requestSort('monto')} className="text-right py-2 cursor-pointer select-none hover:bg-gray-50">Monto <SortIcon columnKey="monto" sortConfig={sortConfig} /></th>
                 </tr>
               </thead>
               <tbody>

@@ -3,6 +3,7 @@ import axios from 'axios';
 import { API } from '../../App';
 import { toast } from 'sonner';
 import useModalClose from '../../useModalClose';
+import { useSortableData } from '../../hooks/useSortableData';
 import UserManagementView from './UserManagementView';
 
 const UserManagement = () => {
@@ -130,10 +131,14 @@ const UserManagement = () => {
     return branch ? branch.nombre : '—';
   };
 
+  const { sortedItems: sortedUsers, sortConfig, requestSort } = useSortableData(users);
+
   return (
     <UserManagementView
-      users={users}
+      users={sortedUsers}
       branches={branches}
+      sortConfig={sortConfig}
+      requestSort={requestSort}
       loading={loading}
       showModal={showModal}
       editingUser={editingUser}

@@ -14,6 +14,7 @@ import {
   TrendingUp,
   Package
 } from 'lucide-react';
+import SortIcon from '../ui/SortIcon';
 
 const ComprasView = ({
   activeTab,
@@ -47,6 +48,10 @@ const ComprasView = ({
   setSearchProveedor,
   filteredCompras,
   filteredProveedores,
+  comprasSortConfig,
+  comprasRequestSort,
+  proveedoresSortConfig,
+  proveedoresRequestSort,
   compraModalClosing,
   proveedorModalClosing,
   openCompraModal,
@@ -141,13 +146,13 @@ const ComprasView = ({
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Fecha</th>
-                    <th>N° Factura</th>
-                    <th>Proveedor</th>
+                    <th onClick={() => comprasRequestSort('fecha')} className="cursor-pointer select-none hover:bg-gray-50">Fecha <SortIcon columnKey="fecha" sortConfig={comprasSortConfig} /></th>
+                    <th onClick={() => comprasRequestSort('numero_factura')} className="cursor-pointer select-none hover:bg-gray-50">N° Factura <SortIcon columnKey="numero_factura" sortConfig={comprasSortConfig} /></th>
+                    <th onClick={() => comprasRequestSort('proveedor_nombre')} className="cursor-pointer select-none hover:bg-gray-50">Proveedor <SortIcon columnKey="proveedor_nombre" sortConfig={comprasSortConfig} /></th>
                     <th>Sucursal</th>
                     <th style={{ textAlign: 'right' }}>Subtotal</th>
                     <th style={{ textAlign: 'right' }}>Impuestos</th>
-                    <th style={{ textAlign: 'right' }}>Total</th>
+                    <th style={{ textAlign: 'right' }} onClick={() => comprasRequestSort('total')} className="cursor-pointer select-none hover:bg-gray-50">Total <SortIcon columnKey="total" sortConfig={comprasSortConfig} /></th>
                     <th>Acciones</th>
                   </tr>
                 </thead>
@@ -230,8 +235,8 @@ const ComprasView = ({
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Nombre</th>
-                    <th>RUC / CUIT</th>
+                    <th onClick={() => proveedoresRequestSort('nombre')} className="cursor-pointer select-none hover:bg-gray-50">Nombre <SortIcon columnKey="nombre" sortConfig={proveedoresSortConfig} /></th>
+                    <th onClick={() => proveedoresRequestSort('ruc_cuit')} className="cursor-pointer select-none hover:bg-gray-50">RUC / CUIT <SortIcon columnKey="ruc_cuit" sortConfig={proveedoresSortConfig} /></th>
                     <th>Email</th>
                     <th>Teléfono</th>
                     <th>Estado</th>

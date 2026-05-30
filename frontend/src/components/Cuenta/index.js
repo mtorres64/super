@@ -11,6 +11,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import CuentaView from './CuentaView';
+import { useSortableData } from '../../hooks/useSortableData';
 
 const STATUS_CONFIG = {
   trial:      { label: 'Período de Prueba', color: 'bg-blue-100 text-blue-800',   icon: Clock        },
@@ -190,10 +191,14 @@ const Cuenta = () => {
 
   const accionLabel = (statusNorm === 'vencida' || enGracia) ? 'Reactivar' : 'Renovar';
 
+  const { sortedItems: sortedPagos, sortConfig, requestSort } = useSortableData(pagos);
+
   return (
     <CuentaView
       suscripcion={suscripcion}
-      pagos={pagos}
+      pagos={sortedPagos}
+      sortConfig={sortConfig}
+      requestSort={requestSort}
       planes={planes}
       loadingStatus={loadingStatus}
       loadingPagos={loadingPagos}

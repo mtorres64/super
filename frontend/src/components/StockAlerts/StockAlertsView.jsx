@@ -11,6 +11,8 @@ import {
   SlidersHorizontal
 } from 'lucide-react';
 import Pagination from '../Pagination';
+import SortIcon from '../ui/SortIcon';
+import { useSortableData } from '../../hooks/useSortableData';
 
 const StockAlertsView = ({
   user,
@@ -34,6 +36,8 @@ const StockAlertsView = ({
   onModalValueChange,
   getDiffColor,
 }) => {
+  const { sortedItems, sortConfig, requestSort } = useSortableData(items);
+
   return (
     <div className="p-6">
       {/* Header */}
@@ -105,19 +109,19 @@ const StockAlertsView = ({
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Producto
+                    <th onClick={() => requestSort('nombre')} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:bg-gray-100">
+                      Producto <SortIcon columnKey="nombre" sortConfig={sortConfig} />
                     </th>
                     {user?.rol === 'admin' && (
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Sucursal
                       </th>
                     )}
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Stock Actual
+                    <th onClick={() => requestSort('stock')} className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:bg-gray-100">
+                      Stock Actual <SortIcon columnKey="stock" sortConfig={sortConfig} />
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Stock Mínimo
+                    <th onClick={() => requestSort('stock_minimo')} className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:bg-gray-100">
+                      Stock Mínimo <SortIcon columnKey="stock_minimo" sortConfig={sortConfig} />
                     </th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Diferencia
@@ -133,7 +137,7 @@ const StockAlertsView = ({
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {items.map((item, index) => {
+                  {sortedItems.map((item, index) => {
                     const diff = item.stock - item.stock_minimo;
                     const isCritical = item.stock === 0;
                     return (

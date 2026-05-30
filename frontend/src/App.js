@@ -224,6 +224,8 @@ export const AuthProvider = ({ children }) => {
     setSuscripcion(null);
     setModulosActivos([]);
     localStorage.removeItem('token');
+    localStorage.removeItem('dark_mode');
+    document.documentElement.classList.remove('dark');
     delete axios.defaults.headers.common['Authorization'];
     // Restaurar colores por defecto (verde) al cerrar sesión
     resetTheme();
