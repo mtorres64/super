@@ -2870,8 +2870,11 @@ async def get_cuenta_status(user: User = Depends(require_role([UserRole.ADMIN]))
     plan_tier = doc.get("plan_tier", "profesional")
     modules_extra = doc.get("modules_extra", [])
     modules_removidos = doc.get("modules_removidos", [])
+    empresa = await db.empresas.find_one({"id": user.empresa_id})
+    empresa_nombre = empresa["nombre"] if empresa else ""
     return {
         "id": doc["id"],
+        "empresa_nombre": empresa_nombre,
         "plan_nombre": doc["plan_nombre"],
         "precio": doc["precio"],
         "moneda": doc["moneda"],

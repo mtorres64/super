@@ -11,6 +11,7 @@ import {
   ZapOff,
   CheckCircle2,
   X,
+  Download,
 } from 'lucide-react';
 
 const WA_ICON = (
@@ -230,6 +231,7 @@ const CuentaView = ({
   onSimularPago,
   onActivarSuscripcionAuto,
   onCancelarSuscripcionAuto,
+  onDescargarRecibo,
   sortConfig,
   requestSort,
 }) => {
@@ -458,16 +460,6 @@ const CuentaView = ({
               })()}
             </div>
 
-            {process.env.NODE_ENV === 'development' && (
-              <div className="flex gap-2 mt-3 flex-wrap">
-                <button onClick={() => onSimularPago('mensual')} className="btn btn-secondary text-xs border-dashed">
-                  [TEST] Simular mensual
-                </button>
-                <button onClick={() => onSimularPago('anual')} className="btn btn-secondary text-xs border-dashed">
-                  [TEST] Simular anual
-                </button>
-              </div>
-            )}
           </>
         )}
       </div>
@@ -501,6 +493,7 @@ const CuentaView = ({
                   <th onClick={() => requestSort('monto')} className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:bg-gray-100">Monto <SortIcon columnKey="monto" sortConfig={sortConfig} /></th>
                   <th onClick={() => requestSort('estado')} className="text-center px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:bg-gray-100">Estado <SortIcon columnKey="estado" sortConfig={sortConfig} /></th>
                   <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">ID Pago MP</th>
+                  <th className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide text-center">Recibo</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -529,6 +522,17 @@ const CuentaView = ({
                       </td>
                       <td className="px-6 py-4 text-gray-400 text-xs font-mono">
                         {pago.mp_payment_id || '-'}
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        {pago.estado === 'approved' && (
+                          <button
+                            onClick={() => onDescargarRecibo(pago)}
+                            title="Descargar recibo"
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-green-600 hover:bg-green-50 hover:text-green-700 transition-colors"
+                          >
+                            <Download className="w-4 h-4" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
