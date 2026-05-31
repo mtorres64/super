@@ -318,7 +318,13 @@ const Layout = ({ children }) => {
             </span>
           </div>
         )}
-        <main className="flex-1 overflow-auto">
+        <main
+          className="flex-1 overflow-auto"
+          style={{
+            backgroundColor: 'white',
+            backgroundImage: 'linear-gradient(to bottom, var(--primary-light) 0%, transparent 360px)',
+          }}
+        >
           {children}
         </main>
       </div>

@@ -44,8 +44,9 @@ const Cuenta = () => {
   const [planes, setPlanes] = useState(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [loadingPagos, setLoadingPagos] = useState(true);
-  const [creandoPago, setCreandoPago] = useState(null); // null | 'emprendedor-mensual' | etc.
-  const [gestionandoAuto, setGestionandoAuto] = useState(false); // activando/cancelando débito auto
+  const [creandoPago, setCreandoPago] = useState(null);
+  const [gestionandoAuto, setGestionandoAuto] = useState(false);
+  const [descargandoRecibo, setDescargandoRecibo] = useState(null);
 
   const [whatsappNumero, setWhatsappNumero] = useState(null);
 
@@ -427,23 +428,42 @@ const Cuenta = () => {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
-window.onload = async () => {
+window.addEventListener('load', async () => {
+  await new Promise(r => setTimeout(r, 1200));
   const { jsPDF } = window.jspdf;
   const page = document.querySelector('.page');
-  const canvas = await html2canvas(page, { scale: 2, useCORS: true, backgroundColor: '#fff' });
-  const imgData = canvas.toDataURL('image/png');
+  const canvas = await html2canvas(page, { scale: 2, useCORS: true, backgroundColor: '#fff', logging: false });
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  pdf.addImage(imgData, 'PNG', 10, 10, 190, 277);
+  pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 10, 10, 190, 277);
   pdf.save('Comprobante-${numFormatted}.pdf');
-  window.close();
-};
+  window.parent.postMessage({ type: 'recibo-done' }, '*');
+});
 </script>
 </body>
 </html>`;
 
-    const win = window.open('', '_blank', 'width=834,height=1200');
-    win.document.write(html);
-    win.document.close();
+    setDescargandoRecibo(pago.id);
+
+    const iframe = document.createElement('iframe');
+    Object.assign(iframe.style, {
+      position: 'fixed', top: '-9999px', left: '-9999px',
+      width: '834px', height: '1200px', border: 'none', visibility: 'hidden',
+    });
+    document.body.appendChild(iframe);
+
+    const handleMessage = (e) => {
+      if (e.data?.type === 'recibo-done') {
+        window.removeEventListener('message', handleMessage);
+        document.body.removeChild(iframe);
+        setDescargandoRecibo(null);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+
+    const doc = iframe.contentDocument || iframe.contentWindow.document;
+    doc.open();
+    doc.write(html);
+    doc.close();
   };
 
   const handlePagar = async (planTipo = 'mensual', planTier = 'profesional') => {
@@ -511,6 +531,7 @@ window.onload = async () => {
       onActivarSuscripcionAuto={handleActivarSuscripcionAuto}
       onCancelarSuscripcionAuto={handleCancelarSuscripcionAuto}
       onDescargarRecibo={handleDescargarRecibo}
+      descargandoRecibo={descargandoRecibo}
     />
   );
 };
