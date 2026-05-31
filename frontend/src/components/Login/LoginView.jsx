@@ -105,7 +105,9 @@ const LoginView = ({
           {/* Panel izquierdo */}
           <div className="login-panel-left">
             <div style={{ position: 'relative', zIndex: 1 }}>
-              <PulsLogo size="lg" dark={false} />
+              <a href="/" style={{ display: 'inline-block', cursor: 'pointer' }}>
+                <PulsLogo size="lg" dark={true} />
+              </a>
               <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.95rem', marginTop: '0.75rem', lineHeight: 1.6 }}>
                 El sistema de gestión que tu comercio necesita
               </p>
@@ -197,7 +199,9 @@ const LoginView = ({
           {/* Panel izquierdo */}
           <div className="login-panel-left">
             <div style={{ position: 'relative', zIndex: 1 }}>
-              <PulsLogo size="lg" dark={false} />
+              <a href="/" style={{ display: 'inline-block', cursor: 'pointer' }}>
+                <PulsLogo size="lg" dark={true} />
+              </a>
               <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.95rem', marginTop: '0.75rem', lineHeight: 1.6 }}>
                 Empezá tu prueba gratuita hoy
               </p>
