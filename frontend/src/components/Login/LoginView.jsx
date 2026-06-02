@@ -147,7 +147,7 @@ const LoginView = ({
                 <div className="input-icon-wrap">
                   <span className="input-icon"><Mail size={15} /></span>
                   <input type="email" className="form-input" value={email}
-                    onChange={(e) => setEmail(e.target.value)} placeholder="tu@empresa.com" required />
+                    onChange={(e) => setEmail(e.target.value.toLowerCase())} placeholder="tu@empresa.com" required />
                 </div>
               </div>
 
@@ -263,7 +263,7 @@ const LoginView = ({
                     <div className="input-icon-wrap">
                       <span className="input-icon"><Mail size={15} /></span>
                       <input type="email" className="form-input" value={email}
-                        onChange={(e) => setEmail(e.target.value)} placeholder="juan@miempresa.com" required />
+                        onChange={(e) => setEmail(e.target.value.toLowerCase())} placeholder="juan@miempresa.com" required />
                     </div>
                   </div>
                   <div className="form-group">
@@ -345,7 +345,7 @@ const LoginView = ({
                   <div className="input-icon-wrap">
                     <span className="input-icon"><Mail size={15} /></span>
                     <input type="email" className="form-input" value={email}
-                      onChange={(e) => setEmail(e.target.value)} placeholder="tu@empresa.com" required />
+                      onChange={(e) => setEmail(e.target.value.toLowerCase())} placeholder="tu@empresa.com" required />
                   </div>
                 </div>
                 <button type="submit" className="btn btn-primary btn-lg w-full" disabled={loading}>

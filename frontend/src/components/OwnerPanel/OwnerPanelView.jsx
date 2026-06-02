@@ -713,6 +713,8 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
     }
   };
 
+  const { sortedItems: sortedClientePagos, sortConfig: pagosSortConfig, requestSort: pagosRequestSort } = useSortableData(cliente?.pagos || []);
+
   if (loading) return (
     <div className="flex justify-center py-24">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500" />
@@ -726,7 +728,6 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
   const diasColor = dias <= 3 ? 'text-red-400' : dias <= 7 ? 'text-yellow-400' : 'text-green-400';
   const pagosAprobados = cliente.pagos?.filter(p => p.estado === 'approved') ?? [];
   const totalPagado = pagosAprobados.reduce((s, p) => s + (p.monto || 0), 0);
-  const { sortedItems: sortedClientePagos, sortConfig: pagosSortConfig, requestSort: pagosRequestSort } = useSortableData(cliente.pagos || []);
 
   const quickExtendOptions = [
     { dias: 7, label: '+7d' },

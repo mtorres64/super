@@ -87,7 +87,7 @@ const UserManagement = () => {
       } else {
         const createData = {
           nombre: formData.nombre,
-          email: formData.email,
+          email: formData.email.toLowerCase(),
           password: formData.password,
           rol: formData.rol,
           branch_id: formData.branch_id || null
