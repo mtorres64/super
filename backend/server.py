@@ -1723,9 +1723,19 @@ async def get_import_template(user: User = Depends(require_role([UserRole.ADMIN]
     from openpyxl.utils import get_column_letter
     from openpyxl.worksheet.datavalidation import DataValidation
 
+    # Obtener categorías existentes de la empresa
+    db_cats = await db.categories.find({"empresa_id": user.empresa_id}).to_list(1000)
+    cat_names = [c["nombre"] for c in db_cats] if db_cats else ["General", "Alimentos", "Bebidas", "Limpieza"]
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Productos"
+
+    # Hoja oculta con las categorías para el dropdown
+    ws_cats = wb.create_sheet("Categorias")
+    for i, nombre in enumerate(cat_names, start=1):
+        ws_cats.cell(row=i, column=1, value=nombre)
+    ws_cats.sheet_state = "hidden"
 
     HDR_FILL  = PatternFill("solid", fgColor="1a7a4a")
     REQ_FILL  = PatternFill("solid", fgColor="e8f5e9")
@@ -1741,7 +1751,7 @@ async def get_import_template(user: User = Depends(require_role([UserRole.ADMIN]
         ("nombre",          28, "OBLIGATORIO. Nombre del producto."),
         ("tipo",            18, "OBLIGATORIO. Valores: codigo_barras  o  por_peso"),
         ("precio",          14, "OBLIGATORIO. Precio de venta (solo numeros)."),
-        ("categoria",       18, "OBLIGATORIO. Debe coincidir con una categoria del sistema. Por defecto: General, Alimentos, Bebidas, Limpieza"),
+        ("categoria",       18, "OBLIGATORIO. Seleccionar de la lista desplegable."),
         ("codigo_barras",   20, "Opcional. Si ya existe ese codigo el producto se ACTUALIZA."),
         ("precio_por_peso", 18, "Opcional. Solo para tipo=por_peso. Precio por kg."),
         ("stock",           12, "Opcional. Stock inicial. Por defecto: 0"),
@@ -1761,6 +1771,16 @@ async def get_import_template(user: User = Depends(require_role([UserRole.ADMIN]
     dv = DataValidation(type="list", formula1='"codigo_barras,por_peso"', allow_blank=False)
     dv.sqref = "B2:B1000"
     ws.add_data_validation(dv)
+
+    # Dropdown de categorías referenciando la hoja oculta
+    n_cats = len(cat_names)
+    dv_cat = DataValidation(
+        type="list",
+        formula1=f"=Categorias!$A$1:$A${n_cats}",
+        allow_blank=True,
+    )
+    dv_cat.sqref = "D2:D1000"
+    ws.add_data_validation(dv_cat)
 
     dv_clase = DataValidation(type="list", formula1='"Normal,Combo"', allow_blank=True)
     dv_clase.sqref = "I2:I1000"

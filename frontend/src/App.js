@@ -304,10 +304,8 @@ const Layout = ({ children }) => {
           backgroundImage: `
             linear-gradient(
               to bottom,
-              rgba(var(--primary-rgb, 16, 185, 129), 0.08) 0%,
-              rgba(var(--primary-rgb, 16, 185, 129), 0.00) 42%,
-              rgba(255, 255, 255, 0.15) 68%,
-              rgba(255, 255, 255, 0.40) 100%
+              rgba(var(--primary-rgb, 16, 185, 129), 0.12) 0%,
+              rgba(var(--primary-rgb, 16, 185, 129), 0.00) 50%
             )
           `,
         }}
