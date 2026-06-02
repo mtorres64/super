@@ -324,6 +324,9 @@ const PurchasesReport = () => {
       .slice(0, 6);
   };
 
+  const filteredCompras = loading ? [] : getFilteredCompras();
+  const { sortedItems: sortedCompras, sortConfig, requestSort } = useSortableData(filteredCompras);
+
   if (loading) {
     return (
       <div className="p-6">
@@ -333,9 +336,6 @@ const PurchasesReport = () => {
       </div>
     );
   }
-
-  const filteredCompras = getFilteredCompras();
-  const { sortedItems: sortedCompras, sortConfig, requestSort } = useSortableData(filteredCompras);
   const stats = calculateStats(filteredCompras);
   const dailyData = getDailyData(filteredCompras);
   const topProveedores = getTopProveedores(filteredCompras);
