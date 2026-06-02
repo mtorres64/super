@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useContext } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useContext } from 'react';
 import axios from 'axios';
 import { API, AuthContext } from '../../App';
 import { useSortableData } from '../../hooks/useSortableData';
@@ -14,9 +14,15 @@ const ProductManagement = () => {
   const navigate = useNavigate();
   const { user } = useContext(AuthContext);
   const [products, setProducts] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [comboProducts, setComboProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [config, setConfig] = useState(null);
+  const [configLoaded, setConfigLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const searchTimerRef = useRef(null);
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -27,10 +33,12 @@ const ProductManagement = () => {
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [importLoading, setImportLoading] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const fileInputRef = useRef(null);
   const [selectedRows, setSelectedRows] = useState(new Set());
+  const [selectAllGlobal, setSelectAllGlobal] = useState(false);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
@@ -52,30 +60,38 @@ const ProductManagement = () => {
   const [showComboDropdown, setShowComboDropdown] = useState(false);
   const comboSearchRef = useRef(null);
 
-  useEffect(() => {
-    fetchProducts();
-    fetchCategories();
-    fetchConfiguration();
-  }, []);
-
   const fetchConfiguration = async () => {
     try {
       const response = await axios.get(`${API}/config`);
       setConfig(response.data);
     } catch (error) {
       console.error('Error loading configuration');
+    } finally {
+      setConfigLoaded(true);
     }
   };
 
-  const fetchProducts = async () => {
+  const loadProducts = useCallback(async (page, search, perPage) => {
+    setLoading(true);
     try {
-      const response = await axios.get(`${API}/products`);
-      setProducts(response.data);
+      const response = await axios.get(`${API}/products`, {
+        params: { page, per_page: perPage, ...(search && { search }) }
+      });
+      setProducts(response.data.items);
+      setTotal(response.data.total);
+      setTotalPages(response.data.total_pages);
     } catch (error) {
       toast.error('Error al cargar productos');
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const fetchComboProducts = async () => {
+    try {
+      const res = await axios.get(`${API}/products`, { params: { page: 1, per_page: 10000 } });
+      setComboProducts(res.data.items);
+    } catch { /* no-op */ }
   };
 
   const fetchCategories = async () => {
@@ -86,6 +102,41 @@ const ProductManagement = () => {
       toast.error('Error al cargar categorías');
     }
   };
+
+  useEffect(() => {
+    fetchCategories();
+    fetchConfiguration();
+  }, []);
+
+  // Debounce search: updates debouncedSearch 400ms after typing, resetting to page 1
+  useEffect(() => {
+    clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setCurrentPage(1);
+    }, 400);
+    return () => clearTimeout(searchTimerRef.current);
+  }, [searchTerm]);
+
+  // Fetch products from server when page, search or config changes
+  useEffect(() => {
+    if (!configLoaded) return;
+    const perPage = config?.items_per_page || 50;
+    loadProducts(currentPage, debouncedSearch, perPage);
+  }, [configLoaded, currentPage, debouncedSearch, loadProducts]);
+
+  // Reset global selection when page or search changes
+  useEffect(() => {
+    setSelectAllGlobal(false);
+    setSelectedRows(new Set());
+  }, [currentPage, debouncedSearch]);
+
+  // Load all products for combo dropdown when modal is a combo type
+  useEffect(() => {
+    if (showModal && formData.kind === 'combo') {
+      fetchComboProducts();
+    }
+  }, [showModal, formData.kind]);
 
   const resetForm = () => {
     setFormData({
@@ -157,7 +208,7 @@ const ProductManagement = () => {
   };
 
   const getProductName = (productId) => {
-    const p = products.find(p => p.id === productId);
+    const p = comboProducts.find(p => p.id === productId);
     return p ? p.nombre : productId;
   };
 
@@ -187,7 +238,7 @@ const ProductManagement = () => {
         toast.success('Producto creado exitosamente');
       }
 
-      fetchProducts();
+      loadProducts(currentPage, debouncedSearch, config?.items_per_page || 50);
       closeProductModal();
     } catch (error) {
       const detail = error.response?.data?.detail;
@@ -219,28 +270,14 @@ const ProductManagement = () => {
     return category ? category.nombre : 'Sin categoría';
   };
 
-  const filteredProducts = products.filter(product =>
-    product.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (product.codigo_barras && product.codigo_barras.includes(searchTerm))
-  );
-
-  const { sortedItems: sortedProducts, sortConfig, requestSort } = useSortableData(filteredProducts);
-
-  // Pagination logic
-  const itemsPerPage = config?.items_per_page || 10;
-  const totalPages = Math.ceil(sortedProducts.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedProducts = sortedProducts.slice(startIndex, endIndex);
+  // Sort current page client-side; pagination is handled by the server
+  const { sortedItems: sortedProducts, sortConfig, requestSort } = useSortableData(products);
+  const itemsPerPage = config?.items_per_page || 50;
+  const paginatedProducts = sortedProducts;
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
   };
-
-  // Reset to first page when search changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm]);
 
   const handleExport = async (format) => {
     setShowExportMenu(false);
@@ -271,25 +308,61 @@ const ProductManagement = () => {
       return;
     }
     setImportLoading(true);
+    setImportProgress(0);
     setImportResult(null);
     try {
+      const token = localStorage.getItem('token');
       const formDataFile = new FormData();
       formDataFile.append('file', importFile);
-      const response = await axios.post(`${API}/products/import`, formDataFile, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+
+      const response = await fetch(`${API}/products/import`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formDataFile,
       });
-      setImportResult(response.data);
-      fetchProducts();
-      toast.success(`Importación completada: ${response.data.created} creados, ${response.data.updated} actualizados`);
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || 'Error al importar productos');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.progress !== undefined) {
+              setImportProgress(data.progress);
+            }
+            if (data.done) {
+              setImportResult(data);
+              setCurrentPage(1);
+              setSearchTerm('');
+              setDebouncedSearch('');
+              loadProducts(1, '', config?.items_per_page || 50);
+              toast.success(`Importación completada: ${data.created} creados, ${data.updated} actualizados`);
+            }
+          } catch { /* ignore malformed event */ }
+        }
+      }
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al importar productos');
+      toast.error(error.message || 'Error al importar productos');
     } finally {
       setImportLoading(false);
     }
   };
 
   const [productModalClosing, closeProductModal] = useModalClose(closeModal);
-  const [importModalClosing, closeImportModalAnim] = useModalClose(() => { setShowImportModal(false); setImportFile(null); setImportResult(null); });
+  const [importModalClosing, closeImportModalAnim] = useModalClose(() => { setShowImportModal(false); setImportFile(null); setImportResult(null); setImportProgress(0); });
   const [categoryModalClosing, closeCategoryModal] = useModalClose(() => setShowCategoryModal(false));
   const [bulkDeleteModalClosing, closeBulkDeleteModal] = useModalClose(() => setShowBulkDeleteModal(false));
 
@@ -310,6 +383,7 @@ const ProductManagement = () => {
   };
 
   const toggleSelectAll = () => {
+    setSelectAllGlobal(false);
     if (paginatedProducts.every(p => selectedRows.has(p.id))) {
       setSelectedRows(prev => {
         const next = new Set(prev);
@@ -325,24 +399,37 @@ const ProductManagement = () => {
     }
   };
 
+  const handleSelectAllGlobal = () => setSelectAllGlobal(true);
+
+  const handleClearSelection = () => {
+    setSelectAllGlobal(false);
+    setSelectedRows(new Set());
+  };
+
   const handleBulkDelete = async () => {
     setBulkDeleting(true);
-    let successCount = 0;
-    let errorCount = 0;
-    for (const productId of selectedRows) {
-      try {
-        await axios.delete(`${API}/products/${productId}`);
-        successCount++;
-      } catch {
-        errorCount++;
+    try {
+      if (selectAllGlobal) {
+        const res = await axios.delete(`${API}/products/bulk`, {
+          data: { delete_all: true, search: debouncedSearch || null }
+        });
+        toast.success(`${res.data.deleted} producto(s) eliminado(s)`);
+      } else {
+        const res = await axios.delete(`${API}/products/bulk`, {
+          data: { ids: [...selectedRows] }
+        });
+        toast.success(`${res.data.deleted} producto(s) eliminado(s)`);
       }
+      closeBulkDeleteModal();
+      setSelectedRows(new Set());
+      setSelectAllGlobal(false);
+      setCurrentPage(1);
+      await loadProducts(1, debouncedSearch, config?.items_per_page || 50);
+    } catch {
+      toast.error('Error al eliminar productos');
+    } finally {
+      setBulkDeleting(false);
     }
-    if (successCount > 0) toast.success(`${successCount} producto(s) eliminado(s)`);
-    if (errorCount > 0) toast.error(`${errorCount} producto(s) con error al eliminar`);
-    closeBulkDeleteModal();
-    setSelectedRows(new Set());
-    await fetchProducts();
-    setBulkDeleting(false);
   };
 
   const getLowStockProducts = () => {
@@ -351,6 +438,44 @@ const ProductManagement = () => {
       product.control_stock !== false &&
       product.stock <= product.stock_minimo
     );
+  };
+
+  const handleBulkSetControlStock = async (value) => {
+    try {
+      const payload = selectAllGlobal
+        ? { delete_all: true, search: debouncedSearch || null, control_stock: value }
+        : { ids: [...selectedRows], control_stock: value };
+      const res = await axios.put(`${API}/products/bulk-control-stock`, payload);
+      toast.success(`Control de stock ${value ? 'activado' : 'desactivado'} en ${res.data.updated} producto(s)`);
+      handleClearSelection();
+      loadProducts(currentPage, debouncedSearch, config?.items_per_page || 50);
+    } catch {
+      toast.error('Error al actualizar el control de stock');
+    }
+  };
+
+  const handleToggleControlStock = async (product) => {
+    if (product.kind === 'combo') return;
+    const newValue = !product.control_stock;
+    try {
+      await axios.put(`${API}/products/${product.id}`, {
+        nombre: product.nombre,
+        codigo_barras: product.codigo_barras || '',
+        tipo: product.tipo,
+        kind: product.kind || 'normal',
+        precio: product.precio,
+        precio_por_peso: product.precio_por_peso || null,
+        categoria_id: product.categoria_id,
+        stock: product.stock,
+        stock_minimo: product.stock_minimo,
+        control_stock: newValue,
+        combo_items: product.combo_items || []
+      });
+      toast.success(`Control de stock ${newValue ? 'activado' : 'desactivado'}`);
+      loadProducts(currentPage, debouncedSearch, config?.items_per_page || 50);
+    } catch {
+      toast.error('Error al actualizar el control de stock');
+    }
   };
 
   const handleDownloadTemplate = async () => {
@@ -374,7 +499,8 @@ const ProductManagement = () => {
     <ProductManagementView
       user={user}
       navigate={navigate}
-      products={products}
+      products={comboProducts}
+      total={total}
       categories={categories}
       loading={loading}
       showModal={showModal}
@@ -393,11 +519,15 @@ const ProductManagement = () => {
       importFile={importFile}
       setImportFile={setImportFile}
       importLoading={importLoading}
+      importProgress={importProgress}
       templateLoading={templateLoading}
       importResult={importResult}
       fileInputRef={fileInputRef}
       selectedRows={selectedRows}
       setSelectedRows={setSelectedRows}
+      selectAllGlobal={selectAllGlobal}
+      handleSelectAllGlobal={handleSelectAllGlobal}
+      handleClearSelection={handleClearSelection}
       showBulkDeleteModal={showBulkDeleteModal}
       setShowBulkDeleteModal={setShowBulkDeleteModal}
       bulkDeleting={bulkDeleting}
@@ -430,6 +560,8 @@ const ProductManagement = () => {
       handleExport={handleExport}
       handleImport={handleImport}
       handleBulkDelete={handleBulkDelete}
+      handleBulkSetControlStock={handleBulkSetControlStock}
+      handleToggleControlStock={handleToggleControlStock}
       handleDownloadTemplate={handleDownloadTemplate}
       handlePageChange={handlePageChange}
       toggleSelectRow={toggleSelectRow}

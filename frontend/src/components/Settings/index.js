@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { API } from '../../App';
 import { toast } from 'sonner';
@@ -94,6 +94,8 @@ const Settings = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('company');
+  const isInitialLoad = useRef(true);
+  const autoSaveTimer = useRef(null);
   const [taxInput, setTaxInput] = useState('');
   const [darkMode, setDarkMode] = useState(localStorage.getItem('dark_mode') === 'true');
 
@@ -146,36 +148,38 @@ const Settings = () => {
     }
   }, [config]);
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await axios.put(`${API}/config`, config);
-      if (config?.primary_color) {
-        const preset = COLOR_THEMES.find(t => t.primary === config.primary_color);
-        const baseTheme = preset || buildCustomTheme(config.primary_color);
-        persistTheme({ ...baseTheme, secondary: config.secondary_color, tertiary: config.tertiary_color });
-      }
-      toast.success('Configuración guardada exitosamente');
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al guardar configuración');
-    } finally {
-      setSaving(false);
+  useEffect(() => {
+    if (config === null) return;
+    if (isInitialLoad.current) {
+      isInitialLoad.current = false;
+      return;
     }
-  };
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(async () => {
+      setSaving(true);
+      try {
+        await axios.put(`${API}/config`, config);
+        if (config?.primary_color) {
+          const preset = COLOR_THEMES.find(t => t.primary === config.primary_color);
+          const baseTheme = preset || buildCustomTheme(config.primary_color);
+          persistTheme({ ...baseTheme, secondary: config.secondary_color, tertiary: config.tertiary_color });
+        }
+      } catch (error) {
+        toast.error(error.response?.data?.detail || 'Error al guardar configuración');
+      } finally {
+        setSaving(false);
+      }
+    }, 800);
+    return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); };
+  }, [config]);
 
-  const handleRestoreDefaults = async () => {
+  const handleRestoreDefaults = () => {
     const newConfig = { ...config, ...DEFAULT_COLORS };
     setConfig(newConfig);
     const preset = COLOR_THEMES.find(t => t.primary === DEFAULT_COLORS.primary_color);
     const baseTheme = preset || buildCustomTheme(DEFAULT_COLORS.primary_color);
     applyTheme({ ...baseTheme, secondary: DEFAULT_COLORS.secondary_color, tertiary: DEFAULT_COLORS.tertiary_color });
-    try {
-      await axios.put(`${API}/config`, newConfig);
-      persistTheme({ ...baseTheme, secondary: DEFAULT_COLORS.secondary_color, tertiary: DEFAULT_COLORS.tertiary_color });
-      toast.success('Colores restaurados a valores predeterminados');
-    } catch {
-      toast.error('Error al guardar configuración');
-    }
+    toast.success('Colores restaurados a valores predeterminados');
   };
 
   const updateConfig = (key, value) => {
@@ -301,7 +305,6 @@ const Settings = () => {
       p12Password={p12Password}
       setP12Password={setP12Password}
       activeTheme={activeTheme}
-      handleSave={handleSave}
       handleRestoreDefaults={handleRestoreDefaults}
       updateConfig={updateConfig}
       handleLogoUpdate={handleLogoUpdate}

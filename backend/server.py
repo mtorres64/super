@@ -6,6 +6,7 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import io
+import json
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field
@@ -552,6 +553,12 @@ class BranchProductUpdate(BaseModel):
     costo: Optional[float] = None
     activo: Optional[bool] = None
 
+class BranchProductBulkDeleteRequest(BaseModel):
+    ids: Optional[List[str]] = None
+    branch_id: Optional[str] = None
+    delete_all: bool = False
+    search: Optional[str] = None
+
 class Configuration(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     empresa_id: str
@@ -729,6 +736,17 @@ class ProductUpdate(BaseModel):
     control_stock: Optional[bool] = None
     combo_items: Optional[List[ComboItem]] = None
     activo: Optional[bool] = None
+
+class BulkDeleteRequest(BaseModel):
+    ids: Optional[List[str]] = None
+    delete_all: bool = False
+    search: Optional[str] = None
+
+class BulkUpdateControlStockRequest(BaseModel):
+    ids: Optional[List[str]] = None
+    delete_all: bool = False
+    search: Optional[str] = None
+    control_stock: bool
 
 class SaleItem(BaseModel):
     producto_id: str
@@ -1019,21 +1037,35 @@ async def export_branch_products(
         )
 
 @api_router.get("/branches/{branch_id}/products")
-async def get_branch_products_admin(branch_id: str, user: User = Depends(get_current_user)):
+async def get_branch_products_admin(
+    branch_id: str,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=10000),
+    search: Optional[str] = Query(None),
+    user: User = Depends(get_current_user)
+):
     if user.rol not in [UserRole.ADMIN, UserRole.SUPERVISOR]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     branch = await db.branches.find_one({"id": branch_id, "empresa_id": user.empresa_id})
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
-    # Get all active global products for this empresa
-    products = await db.products.find({"empresa_id": user.empresa_id, "activo": True}).to_list(10000)
+    query = {"empresa_id": user.empresa_id, "activo": True}
+    if search:
+        regex = {"$regex": search, "$options": "i"}
+        query["$or"] = [{"nombre": regex}, {"codigo_barras": regex}]
+    total = await db.products.count_documents(query)
+    skip = (page - 1) * per_page
+    products = await db.products.find(query).skip(skip).limit(per_page).to_list(per_page)
+    product_ids = [p.get("id") for p in products]
+    bps = await db.branch_products.find({
+        "product_id": {"$in": product_ids},
+        "branch_id": branch_id,
+        "empresa_id": user.empresa_id
+    }).to_list(per_page)
+    bp_map = {bp["product_id"]: bp for bp in bps}
     result = []
     for product in products:
-        bp = await db.branch_products.find_one({
-            "product_id": product.get("id"),
-            "branch_id": branch_id,
-            "empresa_id": user.empresa_id
-        })
+        bp = bp_map.get(product.get("id"))
         result.append({
             "product_id": product.get("id"),
             "nombre": product.get("nombre"),
@@ -1051,7 +1083,13 @@ async def get_branch_products_admin(branch_id: str, user: User = Depends(get_cur
             "costo_sucursal": bp.get("costo") if bp else None,
             "activo_sucursal": bp.get("activo", True) if bp else True,
         })
-    return result
+    return {
+        "items": result,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, -(-total // per_page))
+    }
 
 @api_router.get("/branches/{branch_id}", response_model=Branch)
 async def get_branch(branch_id: str, user: User = Depends(get_current_user)):
@@ -1486,6 +1524,26 @@ async def update_branch_product(branch_product_id: str, product_data: BranchProd
     updated = await db.branch_products.find_one({"id": branch_product_id, "empresa_id": user.empresa_id})
     return BranchProduct(**updated)
 
+@api_router.delete("/branch-products/bulk")
+async def bulk_delete_branch_products(data: BranchProductBulkDeleteRequest, user: User = Depends(require_role([UserRole.ADMIN]))):
+    if data.delete_all and data.branch_id:
+        query = {"branch_id": data.branch_id, "empresa_id": user.empresa_id}
+        if data.search:
+            regex = {"$regex": data.search, "$options": "i"}
+            matching_products = await db.products.find(
+                {"empresa_id": user.empresa_id, "$or": [{"nombre": regex}, {"codigo_barras": regex}]},
+                {"id": 1}
+            ).to_list(None)
+            matching_product_ids = [p["id"] for p in matching_products]
+            query["product_id"] = {"$in": matching_product_ids}
+        result = await db.branch_products.delete_many(query)
+        return {"deleted": result.deleted_count}
+    ids = data.ids or []
+    if not ids:
+        return {"deleted": 0}
+    result = await db.branch_products.delete_many({"id": {"$in": ids}, "empresa_id": user.empresa_id})
+    return {"deleted": result.deleted_count}
+
 @api_router.delete("/branch-products/{branch_product_id}")
 async def delete_branch_product(branch_product_id: str, user: User = Depends(require_role([UserRole.ADMIN]))):
     bp = await db.branch_products.find_one({"id": branch_product_id, "empresa_id": user.empresa_id})
@@ -1494,53 +1552,45 @@ async def delete_branch_product(branch_product_id: str, user: User = Depends(req
     await db.branch_products.delete_one({"id": branch_product_id, "empresa_id": user.empresa_id})
     return {"message": "Producto eliminado de la sucursal"}
 
-@api_router.get("/branch-products", response_model=List[dict])
-async def get_branch_products(user: User = Depends(get_current_user)):
+@api_router.get("/branch-products")
+async def get_branch_products(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=10000),
+    search: Optional[str] = Query(None),
+    user: User = Depends(get_current_user)
+):
     if not user.branch_id:
         raise HTTPException(status_code=400, detail="El usuario debe estar asignado a una sucursal")
 
-    # Get products with branch-specific data
-    pipeline = [
-        {
-            "$match": {
-                "branch_id": user.branch_id,
-                "empresa_id": user.empresa_id,
-                "activo": True
-            }
-        },
-        {
-            "$lookup": {
-                "from": "products",
-                "localField": "product_id",
-                "foreignField": "id",
-                "as": "product"
-            }
-        },
-        {
-            "$unwind": "$product"
-        },
-        {
-            "$project": {
-                "_id": 0,
-                "id": 1,
-                "product_id": 1,
-                "branch_id": 1,
-                "empresa_id": 1,
-                "precio": 1,
-                "precio_por_peso": 1,
-                "stock": 1,
-                "stock_minimo": 1,
-                "activo": 1,
-                "nombre": "$product.nombre",
-                "codigo_barras": "$product.codigo_barras",
-                "tipo": "$product.tipo",
-                "categoria_id": "$product.categoria_id"
-            }
-        }
+    base_pipeline = [
+        {"$match": {"branch_id": user.branch_id, "empresa_id": user.empresa_id, "activo": True}},
+        {"$lookup": {"from": "products", "localField": "product_id", "foreignField": "id", "as": "product"}},
+        {"$unwind": "$product"},
+        {"$project": {
+            "_id": 0, "id": 1, "product_id": 1, "branch_id": 1, "empresa_id": 1,
+            "precio": 1, "precio_por_peso": 1, "stock": 1, "stock_minimo": 1, "activo": 1,
+            "nombre": "$product.nombre", "codigo_barras": "$product.codigo_barras",
+            "tipo": "$product.tipo", "categoria_id": "$product.categoria_id"
+        }}
     ]
 
-    branch_products = await db.branch_products.aggregate(pipeline).to_list(1000)
-    return branch_products
+    if search:
+        regex = {"$regex": search, "$options": "i"}
+        base_pipeline.append({"$match": {"$or": [{"nombre": regex}, {"codigo_barras": regex}]}})
+
+    count_result = await db.branch_products.aggregate(base_pipeline + [{"$count": "total"}]).to_list(1)
+    total = count_result[0]["total"] if count_result else 0
+
+    paginated_pipeline = base_pipeline + [{"$skip": (page - 1) * per_page}, {"$limit": per_page}]
+    items = await db.branch_products.aggregate(paginated_pipeline).to_list(per_page)
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, -(-total // per_page))
+    }
 
 # Product routes
 @api_router.post("/products", response_model=Product)
@@ -1587,21 +1637,37 @@ async def create_product(product_data: ProductCreate, user: User = Depends(requi
             await db.branch_products.insert_one(bp.dict())
     return product
 
-@api_router.get("/products", response_model=List[Product])
-async def get_products(user: User = Depends(get_current_user)):
-    products = await db.products.find({"empresa_id": user.empresa_id, "activo": True}).to_list(1000)
+@api_router.get("/products")
+async def get_products(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=10000),
+    search: Optional[str] = Query(None),
+    user: User = Depends(get_current_user)
+):
+    query = {"empresa_id": user.empresa_id, "activo": True}
+    if search:
+        regex = {"$regex": search, "$options": "i"}
+        query["$or"] = [{"nombre": regex}, {"codigo_barras": regex}]
+    total = await db.products.count_documents(query)
+    skip = (page - 1) * per_page
+    raw = await db.products.find(query).skip(skip).limit(per_page).to_list(per_page)
     result = []
-    for p in products:
+    for p in raw:
         if p.get('kind') != 'combo' and p.get('control_stock') is None:
             p['control_stock'] = True
-        # Sanitize: remove null codigo_barras so Pydantic gets None not null
         if 'codigo_barras' in p and p['codigo_barras'] is None:
             del p['codigo_barras']
         try:
             result.append(Product(**p))
         except Exception as e:
             logger.warning(f"Skipping invalid product {p.get('id')}: {e}")
-    return result
+    return {
+        "items": [p.dict() for p in result],
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, -(-total // per_page))
+    }
 
 @api_router.get("/products/export")
 async def export_products(
@@ -1734,6 +1800,8 @@ async def import_products(
             df = pd.read_csv(io.StringIO(content.decode("utf-8-sig")))
         else:
             raise HTTPException(status_code=400, detail="Formato no soportado. Use CSV o XLSX.")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error al leer el archivo: {str(e)}")
 
@@ -1744,24 +1812,16 @@ async def import_products(
 
     df.columns = df.columns.str.strip().str.lower()
 
-    # Fix codigo_barras index: must be sparse to allow multiple products without barcode
     await db.products.update_many({"codigo_barras": None}, {"$unset": {"codigo_barras": ""}})
     try:
         await db.command("dropIndexes", "products", index="empresa_id_1_codigo_barras_1")
-        logger.info("Dropped index empresa_id_1_codigo_barras_1")
-    except Exception as _e:
-        logger.info(f"Drop index (may not exist yet): {_e}")
+    except Exception:
+        pass
     try:
-        result = await db.command({
+        await db.command({
             "createIndexes": "products",
-            "indexes": [{
-                "key": {"empresa_id": 1, "codigo_barras": 1},
-                "name": "empresa_id_1_codigo_barras_1",
-                "unique": True,
-                "sparse": True
-            }]
+            "indexes": [{"key": {"empresa_id": 1, "codigo_barras": 1}, "name": "empresa_id_1_codigo_barras_1", "unique": True, "sparse": True}]
         })
-        logger.info(f"Index created: {result}")
     except Exception as _e:
         logger.error(f"FAILED to create sparse index: {_e}")
 
@@ -1769,104 +1829,110 @@ async def import_products(
     cat_map = {c["nombre"].strip().lower(): c["id"] for c in categories}
     cat_name_map = {c["nombre"].strip().lower(): c["nombre"].strip() for c in categories}
     branches = await db.branches.find({"activo": True, "empresa_id": user.empresa_id}).to_list(1000)
+    empresa_id = user.empresa_id
+    total_rows = len(df)
 
-    created = 0
-    updated = 0
-    errors = []
-    new_categories = []
+    async def generate():
+        created = 0
+        updated = 0
+        errors = []
+        new_categories = []
 
-    for idx, row in df.iterrows():
-        try:
-            cat_nombre_raw = str(row.get("categoria", "")).strip()
-            cat_nombre = cat_nombre_raw.lower()
-            categoria_id = cat_map.get(cat_nombre)
-            if not categoria_id:
-                new_cat = Category(empresa_id=user.empresa_id, nombre=cat_nombre_raw)
-                await db.categories.insert_one(new_cat.dict())
-                cat_map[cat_nombre] = new_cat.id
-                cat_name_map[cat_nombre] = cat_nombre_raw
-                new_categories.append(cat_nombre_raw)
-                categoria_id = new_cat.id
+        for idx, row in df.iterrows():
+            try:
+                cat_nombre_raw = str(row.get("categoria", "")).strip()
+                cat_nombre = cat_nombre_raw.lower()
+                categoria_id = cat_map.get(cat_nombre)
+                if not categoria_id:
+                    new_cat = Category(empresa_id=empresa_id, nombre=cat_nombre_raw)
+                    await db.categories.insert_one(new_cat.dict())
+                    cat_map[cat_nombre] = new_cat.id
+                    cat_name_map[cat_nombre] = cat_nombre_raw
+                    new_categories.append(cat_nombre_raw)
+                    categoria_id = new_cat.id
 
-            raw_barcode = row.get("codigo_barras")
-            if pd.notna(raw_barcode) and str(raw_barcode).strip() not in ("", "nan"):
-                # pandas reads numeric barcodes as float (e.g. 7790895000107.0) — convert to int string
-                try:
-                    codigo_barras = str(int(float(str(raw_barcode).strip())))
-                except (ValueError, OverflowError):
-                    codigo_barras = str(raw_barcode).strip()
-            else:
-                # No barcode provided: generate a unique internal code to avoid index conflicts
-                codigo_barras = f"INT-{uuid.uuid4().hex[:10].upper()}"
+                raw_barcode = row.get("codigo_barras")
+                if pd.notna(raw_barcode) and str(raw_barcode).strip() not in ("", "nan"):
+                    try:
+                        codigo_barras = str(int(float(str(raw_barcode).strip())))
+                    except (ValueError, OverflowError):
+                        codigo_barras = str(raw_barcode).strip()
+                else:
+                    codigo_barras = f"INT-{uuid.uuid4().hex[:10].upper()}"
 
-            tipo = str(row.get("tipo", "codigo_barras")).strip()
-            if tipo not in ("codigo_barras", "por_peso"):
-                tipo = "codigo_barras"
+                tipo = str(row.get("tipo", "codigo_barras")).strip()
+                if tipo not in ("codigo_barras", "por_peso"):
+                    tipo = "codigo_barras"
 
-            raw_ppp = row.get("precio_por_peso")
-            precio_por_peso = float(raw_ppp) if pd.notna(raw_ppp) and str(raw_ppp).strip() not in ("", "nan") else None
+                raw_ppp = row.get("precio_por_peso")
+                precio_por_peso = float(raw_ppp) if pd.notna(raw_ppp) and str(raw_ppp).strip() not in ("", "nan") else None
 
-            raw_stock = row.get("stock")
-            stock = int(float(raw_stock)) if pd.notna(raw_stock) and str(raw_stock).strip() not in ("", "nan") else 0
+                raw_stock = row.get("stock")
+                stock = int(float(raw_stock)) if pd.notna(raw_stock) and str(raw_stock).strip() not in ("", "nan") else 0
 
-            raw_stock_min = row.get("stock_minimo")
-            stock_minimo = int(float(raw_stock_min)) if pd.notna(raw_stock_min) and str(raw_stock_min).strip() not in ("", "nan") else 10
+                raw_stock_min = row.get("stock_minimo")
+                stock_minimo = int(float(raw_stock_min)) if pd.notna(raw_stock_min) and str(raw_stock_min).strip() not in ("", "nan") else 10
 
-            raw_clase = row.get("clase", "")
-            kind = "combo" if str(raw_clase).strip().lower() == "combo" else "normal"
+                raw_clase = row.get("clase", "")
+                kind = "combo" if str(raw_clase).strip().lower() == "combo" else "normal"
 
-            product_data = {
-                "nombre": str(row["nombre"]).strip(),
-                "codigo_barras": codigo_barras,
-                "tipo": tipo,
-                "kind": kind,
-                "precio": float(row["precio"]),
-                "categoria_id": categoria_id,
-                "stock": stock,
-                "stock_minimo": stock_minimo,
-            }
-            if precio_por_peso is not None:
-                product_data["precio_por_peso"] = precio_por_peso
+                product_data = {
+                    "nombre": str(row["nombre"]).strip(),
+                    "codigo_barras": codigo_barras,
+                    "tipo": tipo,
+                    "kind": kind,
+                    "precio": float(row["precio"]),
+                    "categoria_id": categoria_id,
+                    "stock": stock,
+                    "stock_minimo": stock_minimo,
+                }
+                if precio_por_peso is not None:
+                    product_data["precio_por_peso"] = precio_por_peso
 
-            # Only try to find existing if it's a real barcode (not an internal auto-generated one)
-            existing = None
-            if codigo_barras and not codigo_barras.startswith("INT-"):
-                existing = await db.products.find_one({"codigo_barras": codigo_barras, "empresa_id": user.empresa_id})
+                existing = None
+                if codigo_barras and not codigo_barras.startswith("INT-"):
+                    existing = await db.products.find_one({"codigo_barras": codigo_barras, "empresa_id": empresa_id})
 
-            if existing:
-                await db.products.update_one(
-                    {"id": existing["id"], "empresa_id": user.empresa_id},
-                    {"$set": product_data}
-                )
-                updated += 1
-            else:
-                product_data['codigo_barras'] = codigo_barras
-                product = Product(**product_data, empresa_id=user.empresa_id)
-                _pdoc = {k: v for k, v in product.model_dump().items() if v is not None}
-                await db.products.insert_one(_pdoc)
-                for branch in branches:
-                    bp_exists = await db.branch_products.find_one({
-                        "product_id": product.id,
-                        "branch_id": branch["id"],
-                        "empresa_id": user.empresa_id
-                    })
-                    if not bp_exists:
-                        bp = BranchProduct(
-                            empresa_id=user.empresa_id,
-                            product_id=product.id,
-                            branch_id=branch["id"],
-                            precio=product.precio,
-                            precio_por_peso=product.precio_por_peso,
-                            stock=product.stock,
-                            stock_minimo=product.stock_minimo,
-                        )
-                        await db.branch_products.insert_one(bp.dict())
-                created += 1
+                if existing:
+                    await db.products.update_one(
+                        {"id": existing["id"], "empresa_id": empresa_id},
+                        {"$set": product_data}
+                    )
+                    updated += 1
+                else:
+                    product_data['codigo_barras'] = codigo_barras
+                    product = Product(**product_data, empresa_id=empresa_id)
+                    _pdoc = {k: v for k, v in product.model_dump().items() if v is not None}
+                    await db.products.insert_one(_pdoc)
+                    for branch in branches:
+                        bp_exists = await db.branch_products.find_one({
+                            "product_id": product.id,
+                            "branch_id": branch["id"],
+                            "empresa_id": empresa_id
+                        })
+                        if not bp_exists:
+                            bp = BranchProduct(
+                                empresa_id=empresa_id,
+                                product_id=product.id,
+                                branch_id=branch["id"],
+                                precio=product.precio,
+                                precio_por_peso=product.precio_por_peso,
+                                stock=product.stock,
+                                stock_minimo=product.stock_minimo,
+                            )
+                            await db.branch_products.insert_one(bp.dict())
+                    created += 1
 
-        except Exception as e:
-            errors.append(f"Fila {idx + 2}: {str(e)}")
+            except Exception as e:
+                errors.append(f"Fila {idx + 2}: {str(e)}")
 
-    return {"created": created, "updated": updated, "errors": errors, "total_procesado": created + updated + len(errors), "new_categories": new_categories}
+            progress = int(((idx + 1) / total_rows) * 100)
+            yield f"data: {json.dumps({'progress': progress, 'processed': idx + 1, 'total': total_rows})}\n\n"
+            await asyncio.sleep(0)
+
+        yield f"data: {json.dumps({'done': True, 'created': created, 'updated': updated, 'errors': errors, 'total_procesado': created + updated + len(errors), 'new_categories': new_categories})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 @api_router.get("/products/{product_id}", response_model=Product)
 async def get_product(product_id: str, user: User = Depends(get_current_user)):
@@ -1881,6 +1947,25 @@ async def get_product_by_barcode(barcode: str, user: User = Depends(get_current_
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     return Product(**product)
+
+@api_router.put("/products/bulk-control-stock")
+async def bulk_update_control_stock(data: BulkUpdateControlStockRequest, user: User = Depends(require_role([UserRole.ADMIN]))):
+    if data.delete_all:
+        query = {"empresa_id": user.empresa_id}
+        if data.search:
+            regex = {"$regex": data.search, "$options": "i"}
+            query["$or"] = [{"nombre": regex}, {"codigo_barras": regex}]
+        products = await db.products.find(query, {"id": 1}).to_list(None)
+        ids = [p["id"] for p in products]
+    else:
+        ids = data.ids or []
+    if not ids:
+        return {"updated": 0}
+    result = await db.products.update_many(
+        {"id": {"$in": ids}, "empresa_id": user.empresa_id, "kind": {"$ne": "combo"}},
+        {"$set": {"control_stock": data.control_stock}}
+    )
+    return {"updated": result.modified_count}
 
 @api_router.put("/products/{product_id}", response_model=Product)
 async def update_product(product_id: str, product_data: ProductUpdate, user: User = Depends(require_role([UserRole.ADMIN]))):
@@ -1909,6 +1994,24 @@ async def update_product(product_id: str, product_data: ProductUpdate, user: Use
 
     updated_product = await db.products.find_one({"id": product_id, "empresa_id": user.empresa_id})
     return Product(**updated_product)
+    return {"updated": result.modified_count}
+
+@api_router.delete("/products/bulk")
+async def bulk_delete_products(data: BulkDeleteRequest, user: User = Depends(require_role([UserRole.ADMIN]))):
+    if data.delete_all:
+        query = {"empresa_id": user.empresa_id}
+        if data.search:
+            regex = {"$regex": data.search, "$options": "i"}
+            query["$or"] = [{"nombre": regex}, {"codigo_barras": regex}]
+        products_to_delete = await db.products.find(query, {"id": 1}).to_list(None)
+        ids = [p["id"] for p in products_to_delete]
+    else:
+        ids = data.ids or []
+    if not ids:
+        return {"deleted": 0}
+    result = await db.products.delete_many({"id": {"$in": ids}, "empresa_id": user.empresa_id})
+    await db.branch_products.delete_many({"product_id": {"$in": ids}, "empresa_id": user.empresa_id})
+    return {"deleted": result.deleted_count}
 
 @api_router.delete("/products/{product_id}")
 async def delete_product(product_id: str, user: User = Depends(require_role([UserRole.ADMIN]))):
@@ -2008,6 +2111,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
     # Get current configuration for tax rate
     config = await db.configuration.find_one({"empresa_id": user.empresa_id})
     tax_rate = config['tax_rate'] if config else 0.12  # Default 12%
+    auto_update_inventory = config.get('auto_update_inventory', True) if config else True
 
     # Verify products and calculate totals
     total_amount = 0
@@ -2044,7 +2148,8 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
             combo_items = global_product.get('combo_items', [])
             for ci in combo_items:
                 comp = await db.products.find_one({"id": ci['product_id'], "empresa_id": user.empresa_id})
-                if not comp or not comp.get('control_stock', True):
+                comp_control = comp.get('control_stock', True) if comp else False
+                if not comp or not comp_control or not auto_update_inventory:
                     continue
                 comp_cantidad = ci['cantidad'] * item.cantidad
                 deducted = False
@@ -2056,7 +2161,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
                         "activo": True
                     })
                     if comp_bp:
-                        if comp_bp['stock'] < comp_cantidad:
+                        if comp_bp.get('stock', 0) < comp_cantidad:
                             raise HTTPException(status_code=400, detail=f"Stock insuficiente para {comp['nombre']} (componente del combo)")
                         await db.branch_products.update_one(
                             {"product_id": ci['product_id'], "branch_id": user.branch_id, "empresa_id": user.empresa_id},
@@ -2064,7 +2169,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
                         )
                         deducted = True
                 if not deducted:
-                    if comp['stock'] < comp_cantidad:
+                    if comp.get('stock', 0) < comp_cantidad:
                         raise HTTPException(status_code=400, detail=f"Stock insuficiente para {comp['nombre']} (componente del combo)")
                     await db.products.update_one(
                         {"id": ci['product_id'], "empresa_id": user.empresa_id},
@@ -2073,6 +2178,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
 
         else:
             # Normal product: try branch first
+            manage_stock = control_stock and auto_update_inventory
             if user.branch_id:
                 branch_product = await db.branch_products.find_one({
                     "product_id": item.producto_id,
@@ -2081,10 +2187,10 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
                     "activo": True
                 })
                 if branch_product:
-                    if control_stock and branch_product['stock'] < item.cantidad:
+                    if manage_stock and branch_product.get('stock', 0) < item.cantidad:
                         raise HTTPException(status_code=400, detail=f"Stock insuficiente para {global_product['nombre']}")
-                    precio_unitario = branch_product.get('precio_por_peso') or branch_product['precio']
-                    if control_stock:
+                    precio_unitario = branch_product.get('precio_por_peso') or branch_product.get('precio')
+                    if manage_stock:
                         await db.branch_products.update_one(
                             {"product_id": item.producto_id, "branch_id": user.branch_id, "empresa_id": user.empresa_id},
                             {"$inc": {"stock": -int(item.cantidad)}}
@@ -2093,17 +2199,19 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
 
             # Fall back to global product
             if precio_unitario is None:
-                if control_stock and global_product['stock'] < item.cantidad:
+                if manage_stock and global_product.get('stock', 0) < item.cantidad:
                     raise HTTPException(status_code=400, detail=f"Stock insuficiente para {global_product['nombre']}")
-                precio_unitario = global_product.get('precio_por_peso') or global_product['precio']
+                precio_unitario = global_product.get('precio_por_peso') or global_product.get('precio')
                 product_nombre = global_product['nombre']
-                if control_stock:
+                if manage_stock:
                     await db.products.update_one(
                         {"id": item.producto_id, "empresa_id": user.empresa_id},
                         {"$inc": {"stock": -int(item.cantidad)}}
                     )
 
         # Calculate subtotal
+        if precio_unitario is None:
+            raise HTTPException(status_code=400, detail=f"No se pudo determinar el precio para {product_nombre or item.producto_id}")
         subtotal = item.cantidad * precio_unitario
         validated_items.append(SaleItem(
             producto_id=item.producto_id,
@@ -2274,8 +2382,11 @@ async def create_sale_return(sale_id: str, return_data: ReturnCreate, user: User
     if not return_items:
         raise HTTPException(status_code=400, detail="Debe seleccionar al menos un producto para devolver")
 
-    # Restore stock
+    # Restore stock (only for products with control_stock enabled)
     for item in return_items:
+        gp = await db.products.find_one({"id": item.producto_id, "empresa_id": user.empresa_id})
+        if not gp or not gp.get("control_stock", True):
+            continue
         await db.products.update_one(
             {"id": item.producto_id, "empresa_id": user.empresa_id},
             {"$inc": {"stock": int(item.cantidad)}}
@@ -2425,12 +2536,20 @@ async def get_dashboard_stats(user: User = Depends(get_current_user)):
     elif is_admin_or_supervisor and user.rol == UserRole.SUPERVISOR and user.branch_id:
         bp_filter["branch_id"] = user.branch_id
 
-    bajo_stock_bps = await db.branch_products.find(bp_filter).to_list(1000)
-    bajo_stock_count = len(bajo_stock_bps)
+    # Check if low stock alerts are enabled in config
+    empresa_config = await db.configuration.find_one({"empresa_id": user.empresa_id})
+    low_stock_enabled = empresa_config.get("low_stock_alert_enabled", True) if empresa_config else True
+
+    bajo_stock_count = 0
+    preview = []
+    if low_stock_enabled:
+        bajo_stock_count = await db.branch_products.count_documents(bp_filter)
+        bajo_stock_bps_preview = await db.branch_products.find(bp_filter).to_list(5)
+    else:
+        bajo_stock_bps_preview = []
 
     # Build preview list (up to 5) with product names
-    preview = []
-    for bp in bajo_stock_bps[:5]:
+    for bp in bajo_stock_bps_preview:
         prod = await db.products.find_one({"id": bp["product_id"], "empresa_id": user.empresa_id})
         branch = await db.branches.find_one({"id": bp["branch_id"], "empresa_id": user.empresa_id})
         if prod:
@@ -2534,6 +2653,10 @@ async def get_stock_alerts(
     # Supervisor and cajero: filter to their branch
     if user.rol != UserRole.ADMIN and user.branch_id:
         bp_filter["branch_id"] = user.branch_id
+
+    empresa_config = await db.configuration.find_one({"empresa_id": user.empresa_id})
+    if not (empresa_config.get("low_stock_alert_enabled", True) if empresa_config else True):
+        return {"items": [], "total": 0, "page": page, "per_page": per_page}
 
     total = await db.branch_products.count_documents(bp_filter)
     skip = (page - 1) * per_page

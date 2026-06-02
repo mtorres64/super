@@ -46,7 +46,6 @@ const SettingsView = ({
   p12Password,
   setP12Password,
   activeTheme,
-  handleSave,
   handleRestoreDefaults,
   updateConfig,
   handleLogoUpdate,
@@ -92,23 +91,12 @@ const SettingsView = ({
             Personaliza la configuración de tu supermercado
           </p>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="btn btn-primary w-full sm:w-auto"
-        >
-          {saving ? (
-            <>
-              <div className="spinner" />
-              Guardando...
-            </>
-          ) : (
-            <>
-              <Save className="w-4 h-4" />
-              Guardar Cambios
-            </>
-          )}
-        </button>
+        {saving && (
+          <div className="flex items-center gap-2 text-sm text-gray-400">
+            <div className="spinner w-4 h-4" />
+            <span>Guardando...</span>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-lg shadow">

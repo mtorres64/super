@@ -13,11 +13,15 @@ const Dashboard = () => {
   const [diasGrafico, setDiasGrafico] = useState(30);
   const [branches, setBranches] = useState([]);
   const [branchFiltro, setBranchFiltro] = useState(null); // null = se inicializa con la del usuario
+  const [lowStockAlertEnabled, setLowStockAlertEnabled] = useState(true);
   const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#16a34a';
   const { user } = useContext(AuthContext);
 
   useEffect(() => {
     fetchDashboardStats();
+    axios.get(`${API}/config`)
+      .then(res => setLowStockAlertEnabled(res.data.low_stock_alert_enabled !== false))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -152,7 +156,7 @@ const Dashboard = () => {
   };
 
   const showStats = stats && ['admin', 'supervisor'].includes(user?.rol);
-  const showLowStockAlert = stats?.productos_bajo_stock?.length > 0;
+  const showLowStockAlert = lowStockAlertEnabled && stats?.productos_bajo_stock?.length > 0;
 
   return (
     <DashboardView

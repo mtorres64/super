@@ -34,6 +34,7 @@ const BranchManagementView = ({
   savingChanges,
   showExportMenu,
   selectedRows,
+  selectAllGlobal,
   showBulkMargenModal,
   bulkMargenTipo,
   bulkMargenValor,
@@ -53,6 +54,7 @@ const BranchManagementView = ({
   bulkStockMinModalClosing,
   bulkStockModalClosing,
   filteredProducts,
+  total,
   itemsPerPage,
   totalPages,
   paginatedProducts,
@@ -86,6 +88,8 @@ const BranchManagementView = ({
   onSetShowBulkStockModal,
   onSetShowBulkDeleteModal,
   onSetSelectedRows,
+  onSelectAllGlobal,
+  onClearSelection,
   onSetCurrentPage,
   onSearch,
   onApplyBulkMargen,
@@ -191,44 +195,59 @@ const BranchManagementView = ({
         </div>
 
         {/* Bulk Actions Bar */}
-        {selectedRows.size > 0 && (
-          <div className="flex items-center gap-3 mb-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-            <span className="text-sm text-blue-700 font-medium">{selectedRows.size} seleccionado(s)</span>
-            <button
-              onClick={() => { onSetBulkMargenTipo('establecer'); onSetBulkMargenValor(''); onSetShowBulkMargenModal(true); }}
-              className="btn btn-secondary btn-sm"
-            >
-              <Percent className="w-4 h-4" />
-              Margen
-            </button>
-            <button
-              onClick={() => { onSetBulkStockMinTipo('establecer'); onSetBulkStockMinValor(''); onSetShowBulkStockMinModal(true); }}
-              className="btn btn-secondary btn-sm"
-            >
-              <SlidersHorizontal className="w-4 h-4" />
-              Stock Mín.
-            </button>
-            <button
-              onClick={() => { onSetBulkStockTipo('establecer'); onSetBulkStockValor(''); onSetShowBulkStockModal(true); }}
-              className="btn btn-secondary btn-sm"
-            >
-              <Package className="w-4 h-4" />
-              Stock
-            </button>
-            <button
-              onClick={() => onSetShowBulkDeleteModal(true)}
-              className="btn btn-sm bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
-            >
-              <Trash2 className="w-4 h-4" />
-              Eliminar seleccionados
-            </button>
-            <button
-              onClick={() => onSetSelectedRows(new Set())}
-              className="text-gray-400 hover:text-gray-600 ml-auto"
-              title="Deseleccionar todo"
-            >
-              <X className="w-4 h-4" />
-            </button>
+        {(selectedRows.size > 0 || selectAllGlobal) && (
+          <div className="flex flex-col gap-2 mb-3">
+            <div className="flex items-center gap-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+              <span className="text-sm text-blue-700 font-medium">
+                {selectAllGlobal ? `${total} seleccionado(s) (todos)` : `${selectedRows.size} seleccionado(s)`}
+              </span>
+              <button
+                onClick={() => { onSetBulkMargenTipo('establecer'); onSetBulkMargenValor(''); onSetShowBulkMargenModal(true); }}
+                className="btn btn-secondary btn-sm"
+              >
+                <Percent className="w-4 h-4" />
+                Margen
+              </button>
+              <button
+                onClick={() => { onSetBulkStockMinTipo('establecer'); onSetBulkStockMinValor(''); onSetShowBulkStockMinModal(true); }}
+                className="btn btn-secondary btn-sm"
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+                Stock Mín.
+              </button>
+              <button
+                onClick={() => { onSetBulkStockTipo('establecer'); onSetBulkStockValor(''); onSetShowBulkStockModal(true); }}
+                className="btn btn-secondary btn-sm"
+              >
+                <Package className="w-4 h-4" />
+                Stock
+              </button>
+              <button
+                onClick={() => onSetShowBulkDeleteModal(true)}
+                className="btn btn-sm bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
+              >
+                <Trash2 className="w-4 h-4" />
+                Eliminar seleccionados
+              </button>
+              <button
+                onClick={onClearSelection}
+                className="text-gray-400 hover:text-gray-600 ml-auto"
+                title="Deseleccionar todo"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {!selectAllGlobal && paginatedProducts.length > 0 && paginatedProducts.every(p => selectedRows.has(p.product_id)) && total > paginatedProducts.length && (
+              <div className="px-4 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800 flex items-center gap-3">
+                <span>Solo están seleccionados los {paginatedProducts.length} productos de esta página.</span>
+                <button
+                  onClick={onSelectAllGlobal}
+                  className="font-semibold text-yellow-900 underline hover:text-yellow-700 whitespace-nowrap"
+                >
+                  Seleccionar los {total} productos
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -366,15 +385,17 @@ const BranchManagementView = ({
                       </td>
                       <td className="text-center">
                         <button
-                          onClick={() => onToggleBranchProductActive(product)}
+                          type="button"
                           disabled={!product.branch_product_id}
-                          className="text-gray-400 hover:text-green-600 disabled:opacity-30 disabled:cursor-not-allowed"
-                          title={!product.branch_product_id ? 'Guarda cambios primero para activar/desactivar' : ''}
+                          onClick={() => onToggleBranchProductActive(product)}
+                          title={!product.branch_product_id ? 'Guarda cambios primero para activar/desactivar' : product.activo_sucursal ? 'Activo — clic para desactivar' : 'Inactivo — clic para activar'}
+                          className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-40"
+                          style={{ background: product.activo_sucursal ? '#22c55e' : '#d1d5db' }}
                         >
-                          {product.activo_sucursal
-                            ? <ToggleRight className="w-6 h-6 text-green-500" />
-                            : <ToggleLeft className="w-6 h-6 text-gray-400" />
-                          }
+                          <span
+                            className="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform"
+                            style={{ transform: product.activo_sucursal ? 'translateX(1.1rem)' : 'translateX(0.2rem)' }}
+                          />
                         </button>
                       </td>
                     </tr>
@@ -392,7 +413,7 @@ const BranchManagementView = ({
           <Pagination
             currentPage={currentPage}
             totalPages={totalPages}
-            totalItems={filteredProducts.length}
+            totalItems={total}
             itemsPerPage={itemsPerPage}
             onPageChange={onSetCurrentPage}
             itemName="productos"
@@ -415,7 +436,7 @@ const BranchManagementView = ({
               </div>
 
               <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
-                Estás por eliminar <strong>{selectedRows.size} producto(s)</strong> de la sucursal <strong>{selectedBranch.nombre}</strong>.
+                Estás por eliminar <strong>{selectAllGlobal ? `${total} producto(s)` : `${selectedRows.size} producto(s)`}</strong> de la sucursal <strong>{selectedBranch.nombre}</strong>.
                 <br />Esta acción no se puede deshacer.
               </div>
 
@@ -460,7 +481,7 @@ const BranchManagementView = ({
               </div>
 
               <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-                Aplicar a <strong>{selectedRows.size} producto(s)</strong> seleccionado(s)
+                Aplicar a <strong>{selectAllGlobal ? `${total} producto(s)` : `${selectedRows.size} producto(s)`}</strong> seleccionado(s)
               </div>
 
               <div className="space-y-4">
@@ -537,7 +558,7 @@ const BranchManagementView = ({
               </div>
 
               <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-                Aplicar a <strong>{selectedRows.size} producto(s)</strong> seleccionado(s)
+                Aplicar a <strong>{selectAllGlobal ? `${total} producto(s)` : `${selectedRows.size} producto(s)`}</strong> seleccionado(s)
               </div>
 
               <div className="space-y-4">
@@ -614,7 +635,7 @@ const BranchManagementView = ({
               </div>
 
               <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-                Aplicar a <strong>{selectedRows.size} producto(s)</strong> seleccionado(s)
+                Aplicar a <strong>{selectAllGlobal ? `${total} producto(s)` : `${selectedRows.size} producto(s)`}</strong> seleccionado(s)
               </div>
 
               <div className="space-y-4">

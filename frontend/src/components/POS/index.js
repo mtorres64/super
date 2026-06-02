@@ -32,6 +32,10 @@ const POS = () => {
   const [loadingLastTicket, setLoadingLastTicket] = useState(false);
   const [loadingReturn, setLoadingReturn] = useState(false);
   const [productsLoading, setProductsLoading] = useState(true);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const searchTimerRef = useRef(null);
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [isAutoScanning, setIsAutoScanning] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -85,7 +89,6 @@ const POS = () => {
   }, [user]);
 
   useEffect(() => {
-    fetchProducts();
     fetchCategories();
     fetchConfiguration();
     fetchAfipConfig();
@@ -95,6 +98,21 @@ const POS = () => {
       barcodeInputRef.current.focus();
     }
   }, []);
+
+  // Debounce text search: resets to page 1
+  useEffect(() => {
+    clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setCurrentPage(1);
+    }, 400);
+    return () => clearTimeout(searchTimerRef.current);
+  }, [searchTerm]);
+
+  // Reload products when page or search changes
+  useEffect(() => {
+    loadProducts(currentPage, debouncedSearch);
+  }, [currentPage, debouncedSearch]);
 
   const fetchCurrentSession = async () => {
     try {
@@ -127,16 +145,23 @@ const POS = () => {
     }
   };
 
-  const fetchProducts = async () => {
+  const loadProducts = async (page, search) => {
     setProductsLoading(true);
+    const perPage = config?.items_per_page || 10;
     try {
+      let response;
       if (user?.branch_id) {
-        const response = await axios.get(`${API}/branch-products`);
-        setProducts(response.data);
+        response = await axios.get(`${API}/branch-products`, {
+          params: { page, per_page: perPage, ...(search && { search }) }
+        });
       } else {
-        const response = await axios.get(`${API}/products`);
-        setProducts(response.data);
+        response = await axios.get(`${API}/products`, {
+          params: { page, per_page: perPage, ...(search && { search }) }
+        });
       }
+      setProducts(response.data.items || []);
+      setTotal(response.data.total || 0);
+      setTotalPages(response.data.total_pages || 1);
     } catch (error) {
       toast.error('Error al cargar productos');
     } finally {
@@ -157,12 +182,15 @@ const POS = () => {
     if (!code.trim()) return;
 
     try {
-      const branchProducts = products.filter(p => p.codigo_barras === code);
-      if (branchProducts.length > 0) {
-        addToCart(branchProducts[0]);
+      const endpoint = user?.branch_id ? `${API}/branch-products` : `${API}/products`;
+      const response = await axios.get(endpoint, { params: { search: code, per_page: 10, page: 1 } });
+      const items = response.data.items || [];
+      const match = items.find(p => p.codigo_barras === code);
+      if (match) {
+        addToCart(match);
         setBarcode('');
         playSuccessSound();
-        toast.success(`${branchProducts[0].nombre} agregado al carrito`);
+        toast.success(`${match.nombre} agregado al carrito`);
       } else {
         playErrorSound();
         toast.error('Producto no encontrado en esta sucursal');
@@ -259,23 +287,14 @@ const POS = () => {
     }
   };
 
-  const filteredProducts = products.filter(product =>
-    normalize(product.nombre).includes(normalize(searchTerm)) ||
-    (product.codigo_barras && product.codigo_barras.includes(searchTerm))
-  );
-
+  // Filtering and pagination are handled server-side
+  const filteredProducts = products;
   const itemsPerPage = config?.items_per_page || 10;
-  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedProducts = filteredProducts.slice(startIndex, startIndex + itemsPerPage);
+  const paginatedProducts = products;
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
   };
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm]);
 
   useEffect(() => {
     if (cartItemsRef.current) {
@@ -373,7 +392,7 @@ const POS = () => {
       const response = await axios.post(`${API}/sales`, saleData);
 
       playSuccessSound();
-      fetchProducts();
+      loadProducts(currentPage, debouncedSearch);
       const receiptData = response.data;
       if (config?.show_receipt_after_sale ?? true) {
         setSaleReceipt(receiptData);
@@ -389,7 +408,12 @@ const POS = () => {
       }
     } catch (error) {
       playErrorSound();
-      toast.error(error.response?.data?.detail || 'Error al procesar la venta');
+      const detail = error.response?.data?.detail;
+      const msg = Array.isArray(detail)
+        ? detail.map(d => d.msg || JSON.stringify(d)).join(', ')
+        : (typeof detail === 'string' ? detail : null);
+      console.error('Error al procesar venta:', error.response?.status, error.response?.data);
+      toast.error(msg || 'Error al procesar la venta');
     } finally {
       setLoading(false);
     }
@@ -416,13 +440,19 @@ const POS = () => {
   };
   const [priceCheckClosing, closePriceCheckAnim] = useModalClose(closePriceCheck);
 
-  const searchPriceCheck = (query = priceCheckQuery) => {
+  const searchPriceCheck = async (query = priceCheckQuery) => {
     const q = query.trim();
     if (!q) return;
-    const byBarcode = products.find(p => p.codigo_barras === q);
-    if (byBarcode) { setPriceCheckResult([byBarcode]); return; }
-    const byName = products.filter(p => normalize(p.nombre).includes(normalize(q)));
-    setPriceCheckResult(byName.length > 0 ? byName : 'not_found');
+    try {
+      const endpoint = user?.branch_id ? `${API}/branch-products` : `${API}/products`;
+      const response = await axios.get(endpoint, { params: { search: q, per_page: 20, page: 1 } });
+      const items = response.data.items || [];
+      const exact = items.find(p => p.codigo_barras === q);
+      if (exact) { setPriceCheckResult([exact]); return; }
+      setPriceCheckResult(items.length > 0 ? items : 'not_found');
+    } catch {
+      setPriceCheckResult('not_found');
+    }
   };
 
   const addSaleTab = () => {
@@ -448,7 +478,7 @@ const POS = () => {
     try {
       const [salesResponse, productsResponse] = await Promise.all([
         axios.get(`${API}/sales`),
-        axios.get(`${API}/products`)
+        axios.get(`${API}/products`, { params: { page: 1, per_page: 10000 } })
       ]);
       const sales = salesResponse.data;
       if (!sales || sales.length === 0) {
@@ -458,7 +488,7 @@ const POS = () => {
       const sale = sales[0];
 
       const productNames = {};
-      productsResponse.data.forEach(p => { productNames[p.id] = p.nombre; });
+      (productsResponse.data.items || productsResponse.data).forEach(p => { productNames[p.id] = p.nombre; });
 
       const enrichedSale = {
         ...sale,
@@ -489,7 +519,7 @@ const POS = () => {
     try {
       const [salesResponse, productsResponse] = await Promise.all([
         axios.get(`${API}/sales`),
-        axios.get(`${API}/products`)
+        axios.get(`${API}/products`, { params: { page: 1, per_page: 10000 } })
       ]);
       const sales = salesResponse.data;
       if (!sales || sales.length === 0) {
@@ -498,7 +528,7 @@ const POS = () => {
       }
       const sale = sales[0];
       const productNames = {};
-      productsResponse.data.forEach(p => { productNames[p.id] = p.nombre; });
+      (productsResponse.data.items || productsResponse.data).forEach(p => { productNames[p.id] = p.nombre; });
       const enrichedSale = {
         ...sale,
         items: sale.items.map(item => ({
@@ -548,6 +578,7 @@ const POS = () => {
       productsLoading={productsLoading}
       paginatedProducts={paginatedProducts}
       totalPages={totalPages}
+      totalItems={total}
       currentPage={currentPage}
       filteredProducts={filteredProducts}
       itemsPerPage={itemsPerPage}
@@ -584,7 +615,7 @@ const POS = () => {
       user={user}
       returnModal={returnModal}
       setReturnModal={setReturnModal}
-      fetchProducts={fetchProducts}
+      fetchProducts={() => loadProducts(currentPage, debouncedSearch)}
       showPriceCheck={showPriceCheck}
       priceCheckClosing={priceCheckClosing}
       closePriceCheckAnim={closePriceCheckAnim}

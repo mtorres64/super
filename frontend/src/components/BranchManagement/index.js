@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useLocation } from 'react-router-dom';
 import { API } from '../../App';
@@ -23,6 +23,7 @@ const BranchManagement = () => {
   const [savingChanges, setSavingChanges] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [selectedRows, setSelectedRows] = useState(new Set());
+  const [selectAllGlobal, setSelectAllGlobal] = useState(false);
   const [showBulkMargenModal, setShowBulkMargenModal] = useState(false);
   const [bulkMargenTipo, setBulkMargenTipo] = useState('establecer');
   const [bulkMargenValor, setBulkMargenValor] = useState('');
@@ -35,7 +36,14 @@ const BranchManagement = () => {
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [config, setConfig] = useState(null);
+  const [configLoaded, setConfigLoaded] = useState(false);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const searchTimerRef = useRef(null);
+  const prevBranchRef = useRef(null);
+  const [branchProductsCache, setBranchProductsCache] = useState({});
 
   const [formData, setFormData] = useState({
     nombre: '',
@@ -47,8 +55,61 @@ const BranchManagement = () => {
     fetchBranches();
     fetchUsers();
     fetchCategories();
-    axios.get(`${API}/config`).then(r => setConfig(r.data)).catch(() => {});
+    axios.get(`${API}/config`)
+      .then(r => setConfig(r.data))
+      .catch(() => {})
+      .finally(() => setConfigLoaded(true));
   }, []);
+
+  // Debounce search
+  useEffect(() => {
+    clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setCurrentPage(1);
+    }, 400);
+    return () => clearTimeout(searchTimerRef.current);
+  }, [searchTerm]);
+
+  // Re-fetch when branch, page or search changes
+  useEffect(() => {
+    if (!selectedBranch || !configLoaded) return;
+    const perPage = config?.items_per_page || 50;
+    const branchChanged = prevBranchRef.current !== selectedBranch.id;
+    prevBranchRef.current = selectedBranch.id;
+    if (branchChanged) {
+      setBranchProductsCache({});
+      setPendingChanges({});
+      setSelectedRows(new Set());
+      setSelectAllGlobal(false);
+    } else {
+      setSelectAllGlobal(false);
+      setSelectedRows(new Set());
+    }
+    const doFetch = async () => {
+      setLoadingProducts(true);
+      try {
+        const response = await axios.get(`${API}/branches/${selectedBranch.id}/products`, {
+          params: { page: currentPage, per_page: perPage, ...(debouncedSearch && { search: debouncedSearch }) }
+        });
+        const { items, total: t, total_pages } = response.data;
+        setBranchProducts(items);
+        setTotal(t);
+        setTotalPages(total_pages);
+        setBranchProductsCache(prev => {
+          const next = { ...prev };
+          items.forEach(p => { next[p.product_id] = p; });
+          return next;
+        });
+      } catch (error) {
+        const msg = error.response?.data?.detail || error.message || 'Error desconocido';
+        toast.error(`Error al cargar productos: ${msg}`);
+      } finally {
+        setLoadingProducts(false);
+      }
+    };
+    doFetch();
+  }, [selectedBranch, currentPage, debouncedSearch, configLoaded]);
 
   const fetchBranches = async () => {
     try {
@@ -84,17 +145,26 @@ const BranchManagement = () => {
     }
   };
 
-  const fetchBranchProducts = async (branchId) => {
+  const reloadBranchProducts = async () => {
+    if (!selectedBranch) return;
+    const perPage = config?.items_per_page || 50;
     setLoadingProducts(true);
-    setPendingChanges({});
-    setSelectedRows(new Set());
     try {
-      const response = await axios.get(`${API}/branches/${branchId}/products`);
-      setBranchProducts(response.data);
+      const response = await axios.get(`${API}/branches/${selectedBranch.id}/products`, {
+        params: { page: currentPage, per_page: perPage, ...(debouncedSearch && { search: debouncedSearch }) }
+      });
+      const { items, total: t, total_pages } = response.data;
+      setBranchProducts(items);
+      setTotal(t);
+      setTotalPages(total_pages);
+      setBranchProductsCache(prev => {
+        const next = { ...prev };
+        items.forEach(p => { next[p.product_id] = p; });
+        return next;
+      });
     } catch (error) {
       const msg = error.response?.data?.detail || error.message || 'Error desconocido';
       toast.error(`Error al cargar productos: ${msg}`);
-      console.error('fetchBranchProducts error:', error.response?.status, msg);
     } finally {
       setLoadingProducts(false);
     }
@@ -157,7 +227,8 @@ const BranchManagement = () => {
   const selectBranch = (branch) => {
     setSelectedBranch(branch);
     setSearchTerm('');
-    fetchBranchProducts(branch.id);
+    setDebouncedSearch('');
+    setCurrentPage(1);
   };
 
   const goBack = () => {
@@ -178,19 +249,31 @@ const BranchManagement = () => {
   };
 
   const toggleSelectAll = () => {
-    if (filteredProducts.every(p => selectedRows.has(p.product_id))) {
+    if (selectAllGlobal) {
+      setSelectAllGlobal(false);
+      setSelectedRows(new Set());
+      return;
+    }
+    if (sortedProducts.every(p => selectedRows.has(p.product_id))) {
       setSelectedRows(prev => {
         const next = new Set(prev);
-        filteredProducts.forEach(p => next.delete(p.product_id));
+        sortedProducts.forEach(p => next.delete(p.product_id));
         return next;
       });
     } else {
       setSelectedRows(prev => {
         const next = new Set(prev);
-        filteredProducts.forEach(p => next.add(p.product_id));
+        sortedProducts.forEach(p => next.add(p.product_id));
         return next;
       });
     }
+  };
+
+  const handleSelectAllGlobal = () => setSelectAllGlobal(true);
+
+  const handleClearSelection = () => {
+    setSelectAllGlobal(false);
+    setSelectedRows(new Set());
   };
 
   const toggleSelectRow = (productId) => {
@@ -214,26 +297,39 @@ const BranchManagement = () => {
       : 0;
   };
 
-  const applyBulkMargen = () => {
+  const fetchAllBranchProducts = async () => {
+    const res = await axios.get(`${API}/branches/${selectedBranch.id}/products`, {
+      params: { page: 1, per_page: 10000, ...(debouncedSearch && { search: debouncedSearch }) }
+    });
+    const all = res.data.items;
+    setBranchProductsCache(prev => {
+      const next = { ...prev };
+      all.forEach(p => { next[p.product_id] = p; });
+      return next;
+    });
+    return all;
+  };
+
+  const applyBulkMargen = async () => {
     const valor = parseFloat(bulkMargenValor);
-    if (isNaN(valor)) {
-      toast.error('Ingresa un valor de margen válido');
-      return;
-    }
+    if (isNaN(valor)) { toast.error('Ingresa un valor de margen válido'); return; }
+
+    let targetProducts;
+    try {
+      targetProducts = selectAllGlobal
+        ? await fetchAllBranchProducts()
+        : [...selectedRows].map(id => branchProductsCache[id]).filter(Boolean);
+    } catch { toast.error('Error al cargar productos'); return; }
+
     setPendingChanges(prev => {
       const next = { ...prev };
-      for (const productId of selectedRows) {
-        const product = branchProducts.find(p => p.product_id === productId);
-        if (!product) continue;
-        const currentMargenForProduct = getProductCurrentMargen(product, prev[productId]);
+      for (const product of targetProducts) {
+        const productId = product.product_id;
+        const currentMargen = getProductCurrentMargen(product, prev[productId]);
         let newMargen;
-        if (bulkMargenTipo === 'establecer') {
-          newMargen = valor;
-        } else if (bulkMargenTipo === 'incrementar') {
-          newMargen = parseFloat((currentMargenForProduct + valor).toFixed(2));
-        } else {
-          newMargen = parseFloat((currentMargenForProduct - valor).toFixed(2));
-        }
+        if (bulkMargenTipo === 'establecer') newMargen = valor;
+        else if (bulkMargenTipo === 'incrementar') newMargen = parseFloat((currentMargen + valor).toFixed(2));
+        else newMargen = parseFloat((currentMargen - valor).toFixed(2));
         const newPrecio = product.precio_global > 0
           ? parseFloat((product.precio_global * (1 + newMargen / 100)).toFixed(2))
           : product.precio_global;
@@ -243,103 +339,111 @@ const BranchManagement = () => {
     });
     closeBulkMargenModal();
     setBulkMargenValor('');
-    toast.success(`Margen aplicado a ${selectedRows.size} producto(s). Recuerda guardar los cambios.`);
+    toast.success(`Margen aplicado a ${targetProducts.length} producto(s). Recuerda guardar los cambios.`);
   };
 
-  const applyBulkStockMin = () => {
+  const applyBulkStockMin = async () => {
     const valor = parseInt(bulkStockMinValor, 10);
-    if (isNaN(valor) || valor < 0) {
-      toast.error('Ingresa un valor válido');
-      return;
-    }
+    if (isNaN(valor) || valor < 0) { toast.error('Ingresa un valor válido'); return; }
+
+    let targetProducts;
+    try {
+      targetProducts = selectAllGlobal
+        ? await fetchAllBranchProducts()
+        : [...selectedRows].map(id => branchProductsCache[id]).filter(Boolean);
+    } catch { toast.error('Error al cargar productos'); return; }
+
     setPendingChanges(prev => {
       const next = { ...prev };
-      for (const productId of selectedRows) {
-        const product = branchProducts.find(p => p.product_id === productId);
-        if (!product) continue;
+      for (const product of targetProducts) {
+        const productId = product.product_id;
         const current = prev[productId]?.stock_minimo !== undefined
           ? prev[productId].stock_minimo
           : (product.stock_minimo_sucursal || 0);
         let newVal;
-        if (bulkStockMinTipo === 'establecer') {
-          newVal = valor;
-        } else if (bulkStockMinTipo === 'incrementar') {
-          newVal = Math.max(0, current + valor);
-        } else {
-          newVal = Math.max(0, current - valor);
-        }
+        if (bulkStockMinTipo === 'establecer') newVal = valor;
+        else if (bulkStockMinTipo === 'incrementar') newVal = Math.max(0, current + valor);
+        else newVal = Math.max(0, current - valor);
         next[productId] = { ...next[productId], stock_minimo: newVal };
       }
       return next;
     });
     closeBulkStockMinModal();
     setBulkStockMinValor('');
-    toast.success(`Stock mínimo aplicado a ${selectedRows.size} producto(s). Recuerda guardar los cambios.`);
+    toast.success(`Stock mínimo aplicado a ${targetProducts.length} producto(s). Recuerda guardar los cambios.`);
   };
 
-  const applyBulkStock = () => {
+  const applyBulkStock = async () => {
     const valor = parseInt(bulkStockValor, 10);
-    if (isNaN(valor) || valor < 0) {
-      toast.error('Ingresa un valor válido');
-      return;
-    }
+    if (isNaN(valor) || valor < 0) { toast.error('Ingresa un valor válido'); return; }
+
+    let targetProducts;
+    try {
+      targetProducts = selectAllGlobal
+        ? await fetchAllBranchProducts()
+        : [...selectedRows].map(id => branchProductsCache[id]).filter(Boolean);
+    } catch { toast.error('Error al cargar productos'); return; }
+
     setPendingChanges(prev => {
       const next = { ...prev };
-      for (const productId of selectedRows) {
-        const product = branchProducts.find(p => p.product_id === productId);
-        if (!product) continue;
+      for (const product of targetProducts) {
+        const productId = product.product_id;
         const current = prev[productId]?.stock !== undefined
           ? prev[productId].stock
           : (product.stock_sucursal ?? 0);
         let newVal;
-        if (bulkStockTipo === 'establecer') {
-          newVal = valor;
-        } else if (bulkStockTipo === 'incrementar') {
-          newVal = Math.max(0, current + valor);
-        } else {
-          newVal = Math.max(0, current - valor);
-        }
+        if (bulkStockTipo === 'establecer') newVal = valor;
+        else if (bulkStockTipo === 'incrementar') newVal = Math.max(0, current + valor);
+        else newVal = Math.max(0, current - valor);
         next[productId] = { ...next[productId], stock: newVal };
       }
       return next;
     });
     closeBulkStockModal();
     setBulkStockValor('');
-    toast.success(`Stock aplicado a ${selectedRows.size} producto(s). Recuerda guardar los cambios.`);
+    toast.success(`Stock aplicado a ${targetProducts.length} producto(s). Recuerda guardar los cambios.`);
   };
 
   const handleBulkDelete = async () => {
     setBulkDeleting(true);
-    let successCount = 0;
-    let errorCount = 0;
-    for (const productId of selectedRows) {
-      const product = branchProducts.find(p => p.product_id === productId);
-      if (!product?.branch_product_id) { errorCount++; continue; }
-      try {
-        await axios.delete(`${API}/branch-products/${product.branch_product_id}`);
-        successCount++;
-      } catch {
-        errorCount++;
+    try {
+      if (selectAllGlobal) {
+        const res = await axios.delete(`${API}/branch-products/bulk`, {
+          data: { branch_id: selectedBranch.id, delete_all: true, search: debouncedSearch || null }
+        });
+        toast.success(`${res.data.deleted} producto(s) eliminado(s) de la sucursal`);
+      } else {
+        const toDelete = [...selectedRows]
+          .map(productId => branchProductsCache[productId])
+          .filter(p => p?.branch_product_id);
+        const skipped = selectedRows.size - toDelete.length;
+        if (toDelete.length > 0) {
+          const res = await axios.delete(`${API}/branch-products/bulk`, {
+            data: { ids: toDelete.map(p => p.branch_product_id) }
+          });
+          if (res.data.deleted > 0) toast.success(`${res.data.deleted} producto(s) eliminado(s) de la sucursal`);
+        }
+        if (skipped > 0) toast.error(`${skipped} producto(s) sin guardar previo, no pudieron eliminarse`);
       }
+      closeBulkDeleteModalAnim();
+      setSelectedRows(new Set());
+      setSelectAllGlobal(false);
+      await reloadBranchProducts();
+    } catch {
+      toast.error('Error al eliminar productos');
+    } finally {
+      setBulkDeleting(false);
     }
-    if (successCount > 0) toast.success(`${successCount} producto(s) eliminado(s) de la sucursal`);
-    if (errorCount > 0) toast.error(`${errorCount} producto(s) con error al eliminar`);
-    closeBulkDeleteModalAnim();
-    setSelectedRows(new Set());
-    await fetchBranchProducts(selectedBranch.id);
-    setBulkDeleting(false);
   };
 
   const saveProductChanges = async () => {
     const entries = Object.entries(pendingChanges);
     if (entries.length === 0) return;
     setSavingChanges(true);
-    let successCount = 0;
-    let errorCount = 0;
-    for (const [productId, changes] of entries) {
-      const product = branchProducts.find(p => p.product_id === productId);
-      if (!product) continue;
-      try {
+    const results = await Promise.allSettled(
+      entries.map(async ([productId, changes]) => {
+        const product = branchProductsCache[productId];
+        if (!product) return;
         if (product.branch_product_id) {
           await axios.put(`${API}/branch-products/${product.branch_product_id}`, changes);
         } else {
@@ -352,15 +456,14 @@ const BranchManagement = () => {
             stock_minimo: changes.stock_minimo ?? 10
           });
         }
-        successCount++;
-      } catch (error) {
-        errorCount++;
-        console.error(`Error al actualizar producto ${productId}:`, error);
-      }
-    }
+      })
+    );
+    const successCount = results.filter(r => r.status === 'fulfilled').length;
+    const errorCount = results.filter(r => r.status === 'rejected').length;
     if (successCount > 0) toast.success(`${successCount} producto(s) actualizado(s)`);
     if (errorCount > 0) toast.error(`${errorCount} producto(s) con error`);
-    await fetchBranchProducts(selectedBranch.id);
+    setPendingChanges({});
+    await reloadBranchProducts();
     setSavingChanges(false);
   };
 
@@ -371,7 +474,7 @@ const BranchManagement = () => {
         activo: !product.activo_sucursal
       });
       toast.success('Estado actualizado');
-      fetchBranchProducts(selectedBranch.id);
+      reloadBranchProducts();
     } catch (error) {
       toast.error('Error al cambiar estado del producto');
     }
@@ -409,25 +512,19 @@ const BranchManagement = () => {
     return users.filter(u => u.branch_id === branchId).length;
   };
 
-  const filteredProducts = branchProducts.filter(p =>
-    p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (p.codigo_barras && p.codigo_barras.includes(searchTerm))
-  );
-
-  const { sortedItems: sortedProducts, sortConfig, requestSort } = useSortableData(filteredProducts);
-
-  const itemsPerPage = config?.items_per_page || 10;
-  const totalPages = Math.ceil(sortedProducts.length / itemsPerPage);
-  const paginatedProducts = sortedProducts.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  // Sort current page client-side; filtering and pagination handled by the server
+  const { sortedItems: sortedProducts, sortConfig, requestSort } = useSortableData(branchProducts);
+  const filteredProducts = sortedProducts;
+  const itemsPerPage = config?.items_per_page || 50;
+  const paginatedProducts = sortedProducts;
 
   const handleSearch = (value) => {
     setSearchTerm(value);
-    setCurrentPage(1);
   };
 
   const hasPendingChanges = Object.keys(pendingChanges).length > 0;
-  const allFilteredSelected = filteredProducts.length > 0 && filteredProducts.every(p => selectedRows.has(p.product_id));
-  const someFilteredSelected = filteredProducts.some(p => selectedRows.has(p.product_id));
+  const allFilteredSelected = selectAllGlobal || (sortedProducts.length > 0 && sortedProducts.every(p => selectedRows.has(p.product_id)));
+  const someFilteredSelected = selectAllGlobal || sortedProducts.some(p => selectedRows.has(p.product_id));
 
   const handlePendingMargenChange = (productId, margen, precioGlobal) => {
     const newPrecio = precioGlobal > 0
@@ -463,6 +560,7 @@ const BranchManagement = () => {
       savingChanges={savingChanges}
       showExportMenu={showExportMenu}
       selectedRows={selectedRows}
+      selectAllGlobal={selectAllGlobal}
       showBulkMargenModal={showBulkMargenModal}
       bulkMargenTipo={bulkMargenTipo}
       bulkMargenValor={bulkMargenValor}
@@ -482,6 +580,7 @@ const BranchManagement = () => {
       bulkStockMinModalClosing={bulkStockMinModalClosing}
       bulkStockModalClosing={bulkStockModalClosing}
       filteredProducts={sortedProducts}
+      total={total}
       itemsPerPage={itemsPerPage}
       totalPages={totalPages}
       paginatedProducts={paginatedProducts}
@@ -517,6 +616,8 @@ const BranchManagement = () => {
       onSetShowBulkStockModal={setShowBulkStockModal}
       onSetShowBulkDeleteModal={setShowBulkDeleteModal}
       onSetSelectedRows={setSelectedRows}
+      onSelectAllGlobal={handleSelectAllGlobal}
+      onClearSelection={handleClearSelection}
       onSetCurrentPage={setCurrentPage}
       onSearch={handleSearch}
       onApplyBulkMargen={applyBulkMargen}

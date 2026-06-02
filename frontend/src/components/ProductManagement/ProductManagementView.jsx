@@ -21,6 +21,7 @@ const ProductManagementView = ({
   user,
   navigate,
   products,
+  total,
   categories,
   loading,
   showModal,
@@ -39,11 +40,15 @@ const ProductManagementView = ({
   importFile,
   setImportFile,
   importLoading,
+  importProgress,
   templateLoading,
   importResult,
   fileInputRef,
   selectedRows,
   setSelectedRows,
+  selectAllGlobal,
+  handleSelectAllGlobal,
+  handleClearSelection,
   showBulkDeleteModal,
   setShowBulkDeleteModal,
   bulkDeleting,
@@ -78,6 +83,8 @@ const ProductManagementView = ({
   handlePageChange,
   toggleSelectRow,
   toggleSelectAll,
+  handleBulkSetControlStock,
+  handleToggleControlStock,
   addComboItem,
   removeComboItem,
   updateComboItemCantidad,
@@ -106,7 +113,7 @@ const ProductManagementView = ({
             Gestión de Productos
           </h1>
           <p className="text-gray-600">
-            {products.length} productos registrados
+            {total} productos registrados
           </p>
           <button
             onClick={() => navigate('/branches', { state: { branchId: user?.branch_id } })}
@@ -163,23 +170,50 @@ const ProductManagementView = ({
       </div>
 
       {/* Bulk Actions Bar */}
-      {selectedRows.size > 0 && (
-        <div className="flex items-center gap-3 mb-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-          <span className="text-sm text-blue-700 font-medium">{selectedRows.size} seleccionado(s)</span>
-          <button
-            onClick={() => setShowBulkDeleteModal(true)}
-            className="btn btn-sm bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
-          >
-            <Trash2 className="w-4 h-4" />
-            Eliminar seleccionados
-          </button>
-          <button
-            onClick={() => setSelectedRows(new Set())}
-            className="text-gray-400 hover:text-gray-600 ml-auto"
-            title="Deseleccionar todo"
-          >
-            <X className="w-4 h-4" />
-          </button>
+      {(selectedRows.size > 0 || selectAllGlobal) && (
+        <div className="flex flex-col gap-2 mb-3">
+          <div className="flex items-center gap-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+            <span className="text-sm text-blue-700 font-medium">
+              {selectAllGlobal ? `${total} seleccionado(s) (todos)` : `${selectedRows.size} seleccionado(s)`}
+            </span>
+            <button
+              onClick={() => handleBulkSetControlStock(true)}
+              className="btn btn-sm bg-green-50 text-green-700 border border-green-200 hover:bg-green-100"
+            >
+              Activar control stock
+            </button>
+            <button
+              onClick={() => handleBulkSetControlStock(false)}
+              className="btn btn-sm bg-yellow-50 text-yellow-700 border border-yellow-200 hover:bg-yellow-100"
+            >
+              Desactivar control stock
+            </button>
+            <button
+              onClick={() => setShowBulkDeleteModal(true)}
+              className="btn btn-sm bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
+            >
+              <Trash2 className="w-4 h-4" />
+              Eliminar seleccionados
+            </button>
+            <button
+              onClick={handleClearSelection}
+              className="text-gray-400 hover:text-gray-600 ml-auto"
+              title="Deseleccionar todo"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          {!selectAllGlobal && paginatedProducts.length > 0 && paginatedProducts.every(p => selectedRows.has(p.id)) && total > paginatedProducts.length && (
+            <div className="px-4 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800 flex items-center gap-3">
+              <span>Solo están seleccionados los {paginatedProducts.length} productos de esta página.</span>
+              <button
+                onClick={handleSelectAllGlobal}
+                className="font-semibold text-yellow-900 underline hover:text-yellow-700 whitespace-nowrap"
+              >
+                Seleccionar los {total} productos
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -203,6 +237,7 @@ const ProductManagementView = ({
               <th style={{ textAlign: 'center' }} onClick={() => requestSort('codigo_barras')} className="cursor-pointer select-none hover:bg-gray-50">Código <SortIcon columnKey="codigo_barras" sortConfig={sortConfig} /></th>
               <th style={{ textAlign: 'center' }}>Categoría</th>
               <th style={{ textAlign: 'center' }}>Clase</th>
+              <th style={{ textAlign: 'center' }}>Control Stock</th>
               <th style={{ textAlign: 'center' }} onClick={() => requestSort('stock_minimo')} className="cursor-pointer select-none hover:bg-gray-50">Stock Mínimo <SortIcon columnKey="stock_minimo" sortConfig={sortConfig} /></th>
               <th style={{ textAlign: 'center' }}>Estado</th>
               <th style={{ textAlign: 'center' }}>Acciones</th>
@@ -240,18 +275,28 @@ const ProductManagementView = ({
                   </span>
                 </td>
                 <td className="text-center">
-                  <div className="flex flex-col gap-1 items-center">
-                    {product.kind === 'combo' ? (
-                      <span className="px-2 py-1 text-xs font-medium bg-purple-100 text-purple-800 rounded-full flex items-center gap-1 w-fit">
-                        <Layers className="w-3 h-3" /> Combo
-                      </span>
-                    ) : (
-                      <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full w-fit">Normal</span>
-                    )}
-                    {product.kind !== 'combo' && !product.control_stock && (
-                      <span className="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-700 rounded-full w-fit">Sin stock</span>
-                    )}
-                  </div>
+                  {product.kind === 'combo' ? (
+                    <span className="px-2 py-1 text-xs font-medium bg-purple-100 text-purple-800 rounded-full flex items-center gap-1 w-fit mx-auto">
+                      <Layers className="w-3 h-3" /> Combo
+                    </span>
+                  ) : (
+                    <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full w-fit mx-auto block">Normal</span>
+                  )}
+                </td>
+                <td className="text-center">
+                  <button
+                    type="button"
+                    disabled={product.kind === 'combo'}
+                    onClick={() => handleToggleControlStock(product)}
+                    title={product.kind === 'combo' ? 'No aplica en combos' : product.control_stock ? 'Activo — clic para desactivar' : 'Inactivo — clic para activar'}
+                    className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-40"
+                    style={{ background: product.control_stock ? '#22c55e' : '#d1d5db' }}
+                  >
+                    <span
+                      className="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform"
+                      style={{ transform: product.control_stock ? 'translateX(1.1rem)' : 'translateX(0.2rem)' }}
+                    />
+                  </button>
                 </td>
                 <td className="text-center">
                   <span className="font-medium text-gray-900">
@@ -286,7 +331,7 @@ const ProductManagementView = ({
         <Pagination
           currentPage={currentPage}
           totalPages={totalPages}
-          totalItems={filteredProducts.length}
+          totalItems={total}
           itemsPerPage={itemsPerPage}
           onPageChange={handlePageChange}
           itemName="productos"
@@ -652,15 +697,30 @@ const ProductManagementView = ({
                   </div>
                 </div>
 
+                {importLoading && (
+                  <div className="mt-4 space-y-1">
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Procesando productos...</span>
+                      <span>{importProgress}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                      <div
+                        className="h-2.5 rounded-full bg-green-500 transition-all duration-200"
+                        style={{ width: `${importProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex justify-end space-x-3 mt-6">
-                  <button type="button" onClick={closeImportModalAnim} className="btn btn-secondary">
+                  <button type="button" onClick={closeImportModalAnim} className="btn btn-secondary" disabled={importLoading}>
                     Cancelar
                   </button>
                   <button type="submit" className="btn btn-primary" disabled={importLoading}>
                     {importLoading ? (
                       <span className="flex items-center gap-2">
                         <div className="spinner w-4 h-4"></div>
-                        Importando...
+                        Procesando... {importProgress}%
                       </span>
                     ) : (
                       <span className="flex items-center gap-2">
@@ -793,7 +853,7 @@ const ProductManagementView = ({
             </div>
 
             <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
-              Estás por eliminar <strong>{selectedRows.size} producto(s)</strong> de forma permanente.
+              Estás por eliminar <strong>{selectAllGlobal ? `${total} producto(s)` : `${selectedRows.size} producto(s)`}</strong> de forma permanente.
               <br />Esta acción no se puede deshacer.
             </div>
 

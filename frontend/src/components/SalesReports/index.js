@@ -226,11 +226,11 @@ const SalesReports = () => {
     try {
       const [returnsResponse, productsResponse] = await Promise.all([
         axios.get(`${API}/sales/${sale.id}/returns`),
-        axios.get(`${API}/products`)
+        axios.get(`${API}/products`, { params: { page: 1, per_page: 10000 } })
       ]);
 
       const productNames = {};
-      productsResponse.data.forEach(p => { productNames[p.id] = p.nombre; });
+      (productsResponse.data.items || productsResponse.data).forEach(p => { productNames[p.id] = p.nombre; });
 
       const enrichedSale = {
         ...sale,

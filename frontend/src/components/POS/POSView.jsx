@@ -49,6 +49,7 @@ const POSView = ({
   productsLoading,
   paginatedProducts,
   totalPages,
+  totalItems,
   currentPage,
   filteredProducts,
   itemsPerPage,
@@ -302,7 +303,7 @@ const POSView = ({
                     <Pagination
                       currentPage={currentPage}
                       totalPages={totalPages}
-                      totalItems={filteredProducts.length}
+                      totalItems={totalItems}
                       itemsPerPage={itemsPerPage}
                       onPageChange={handlePageChange}
                     />
@@ -454,10 +455,12 @@ const POSView = ({
                   <span className="total-label">Subtotal:</span>
                   <span className="total-value">{config?.currency_symbol || '$'}{formatAmount(calculateSubtotal())}</span>
                 </div>
+                {(config?.tax_rate ?? 0) > 0 && (
                 <div className="total-row">
                   <span className="total-label">Impuestos ({((config?.tax_rate ?? 0.12) * 100).toFixed(1)}%):</span>
                   <span className="total-value">{config?.currency_symbol || '$'}{formatAmount(calculateTax())}</span>
                 </div>
+                )}
                 {(() => {
                   const adj = calculatePaymentAdjustment();
                   const pct = (config?.payment_method_adjustments || {})[paymentMethod] ?? 0;

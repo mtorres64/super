@@ -47,6 +47,7 @@ if (localStorage.getItem('dark_mode') === 'true') {
 const resetTheme = () => {
   const root = document.documentElement;
   root.style.removeProperty('--primary');
+  root.style.removeProperty('--primary-rgb');
   root.style.removeProperty('--primary-dark');
   root.style.removeProperty('--primary-darker');
   root.style.removeProperty('--primary-light');
@@ -72,6 +73,11 @@ const applyTheme = (token) => {
     const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
     return (r*299 + g*587 + b*114) / 1000;
   };
+  const toRgb = (hex) => {
+    const h = hex.replace('#','');
+    const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+    return `${r}, ${g}, ${b}`;
+  };
   const contrast = (hex) => brightness(hex) > 155 ? '#1f2937' : 'white';
   const darken = (hex, amt) => {
     const h = hex.replace('#','');
@@ -95,6 +101,7 @@ const applyTheme = (token) => {
     if (saved) {
       const theme = JSON.parse(saved);
       root.style.setProperty('--primary',        theme.primary);
+      root.style.setProperty('--primary-rgb',    toRgb(theme.primary));
       root.style.setProperty('--primary-dark',   theme.dark);
       root.style.setProperty('--primary-darker', theme.darker);
       root.style.setProperty('--primary-light',  theme.light);
@@ -111,6 +118,7 @@ const applyTheme = (token) => {
     if (data?.primary_color) {
       const c = data.primary_color;
       root.style.setProperty('--primary',        c);
+      root.style.setProperty('--primary-rgb',    toRgb(c));
       root.style.setProperty('--primary-dark',   darken(c, 25));
       root.style.setProperty('--primary-darker', darken(c, 45));
       root.style.setProperty('--primary-light',  rgba(c, 0.1));
@@ -290,7 +298,20 @@ const Layout = ({ children }) => {
         />
       )}
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} stockAlertCount={stockAlertCount} notifCount={notifCount} />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div
+        className="flex-1 flex flex-col overflow-hidden"
+        style={{
+          backgroundImage: `
+            linear-gradient(
+              to bottom,
+              rgba(var(--primary-rgb, 16, 185, 129), 0.08) 0%,
+              rgba(var(--primary-rgb, 16, 185, 129), 0.00) 42%,
+              rgba(255, 255, 255, 0.15) 68%,
+              rgba(255, 255, 255, 0.40) 100%
+            )
+          `,
+        }}
+      >
         <div className="mobile-topbar">
           <button className="hamburger-btn" onClick={() => setSidebarOpen(true)}>
             <Menu className="w-6 h-6" />
@@ -320,10 +341,7 @@ const Layout = ({ children }) => {
         )}
         <main
           className="flex-1 overflow-auto"
-          style={{
-            backgroundColor: 'white',
-            backgroundImage: 'linear-gradient(to bottom, var(--primary-light) 0%, transparent 360px)',
-          }}
+          style={{ backgroundColor: 'transparent' }}
         >
           {children}
         </main>

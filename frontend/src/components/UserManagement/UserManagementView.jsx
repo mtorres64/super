@@ -8,8 +8,6 @@ import {
   Save,
   X,
   Building2,
-  ToggleLeft,
-  ToggleRight
 } from 'lucide-react';
 import SortIcon from '../ui/SortIcon';
 
@@ -100,13 +98,16 @@ const UserManagementView = ({
                 </td>
                 <td>
                   <button
+                    type="button"
                     onClick={() => toggleUserActive(user)}
-                    className="flex items-center gap-1 text-sm"
+                    title={user.activo ? 'Activo — clic para desactivar' : 'Inactivo — clic para activar'}
+                    className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-1"
+                    style={{ background: user.activo ? '#22c55e' : '#d1d5db' }}
                   >
-                    {user.activo
-                      ? <><ToggleRight className="w-5 h-5 text-green-500" /><span className="text-green-700">Activo</span></>
-                      : <><ToggleLeft className="w-5 h-5 text-gray-400" /><span className="text-gray-500">Inactivo</span></>
-                    }
+                    <span
+                      className="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform"
+                      style={{ transform: user.activo ? 'translateX(1.1rem)' : 'translateX(0.2rem)' }}
+                    />
                   </button>
                 </td>
                 <td className="text-center">
