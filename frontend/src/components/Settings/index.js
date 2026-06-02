@@ -54,6 +54,8 @@ export const applyTheme = (theme) => {
   root.style.setProperty('--primary-light',  theme.light);
   root.style.setProperty('--primary-bg',     theme.bg);
   root.style.setProperty('--primary-text',   getContrastColor(theme.primary));
+  const _rgb = hexToRgb(theme.primary);
+  if (_rgb) root.style.setProperty('--primary-rgb', `${_rgb.r}, ${_rgb.g}, ${_rgb.b}`);
   if (theme.secondary) {
     root.style.setProperty('--secondary',       theme.secondary);
     root.style.setProperty('--secondary-dark',  darkenHex(theme.secondary, 20));
