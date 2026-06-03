@@ -37,6 +37,8 @@ const ComprasView = ({
   setShowPriceModal,
   priceUpdates,
   setPriceUpdates,
+  priceModalMargins,
+  setPriceModalMargins,
   priceModalItemsList,
   proveedores,
   loadingProveedores,
@@ -543,6 +545,7 @@ const ComprasView = ({
                         <th className="px-3 py-2 text-right font-medium text-gray-600">Costo ant.</th>
                         <th className="px-3 py-2 text-right font-medium text-gray-600">Nuevo costo</th>
                         <th className="px-3 py-2 text-right font-medium text-gray-600">Precio actual</th>
+                        <th className="px-3 py-2 text-right font-medium text-gray-600">Margen %</th>
                         <th className="px-3 py-2 text-right font-medium text-gray-600">P. sugerido</th>
                         <th className="px-3 py-2 text-center font-medium text-gray-600">Actualizar</th>
                       </tr>
@@ -559,6 +562,20 @@ const ComprasView = ({
                           </td>
                           <td className="px-3 py-2 text-right text-gray-700">
                             {item.precio_actual != null ? `$${formatMoney(item.precio_actual)}` : '—'}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <div className="flex items-center justify-end gap-0.5">
+                              <input
+                                type="number"
+                                value={item.margenEditable}
+                                onChange={e => setPriceModalMargins(prev => ({ ...prev, [item.origIndex]: e.target.value }))}
+                                className="w-16 text-right border border-gray-300 rounded px-1 py-0.5 text-sm focus:outline-none focus:border-green-500"
+                                placeholder="0"
+                                min="0"
+                                step="0.1"
+                              />
+                              <span className="text-gray-500 text-xs">%</span>
+                            </div>
                           </td>
                           <td className="px-3 py-2 text-right">
                             {item.precioSugerido != null ? (

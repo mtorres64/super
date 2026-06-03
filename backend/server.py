@@ -873,6 +873,8 @@ class CompraItem(BaseModel):
     subtotal: float
     product_id: Optional[str] = None
     actualizar_precio: bool = False
+    nuevo_precio: Optional[float] = None
+    nuevo_margen: Optional[float] = None
 
 class Compra(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -1042,6 +1044,7 @@ async def get_branch_products_admin(
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=10000),
     search: Optional[str] = Query(None),
+    all: bool = Query(False),
     user: User = Depends(get_current_user)
 ):
     if user.rol not in [UserRole.ADMIN, UserRole.SUPERVISOR]:
@@ -1054,14 +1057,17 @@ async def get_branch_products_admin(
         regex = {"$regex": search, "$options": "i"}
         query["$or"] = [{"nombre": regex}, {"codigo_barras": regex}]
     total = await db.products.count_documents(query)
-    skip = (page - 1) * per_page
-    products = await db.products.find(query).skip(skip).limit(per_page).to_list(per_page)
+    if all:
+        products = await db.products.find(query).to_list(None)
+    else:
+        skip = (page - 1) * per_page
+        products = await db.products.find(query).skip(skip).limit(per_page).to_list(per_page)
     product_ids = [p.get("id") for p in products]
     bps = await db.branch_products.find({
         "product_id": {"$in": product_ids},
         "branch_id": branch_id,
         "empresa_id": user.empresa_id
-    }).to_list(per_page)
+    }).to_list(None)
     bp_map = {bp["product_id"]: bp for bp in bps}
     result = []
     for product in products:
@@ -1087,8 +1093,8 @@ async def get_branch_products_admin(
         "items": result,
         "total": total,
         "page": page,
-        "per_page": per_page,
-        "total_pages": max(1, -(-total // per_page))
+        "per_page": len(result) if all else per_page,
+        "total_pages": 1 if all else max(1, -(-total // per_page))
     }
 
 @api_router.get("/branches/{branch_id}", response_model=Branch)
@@ -2862,8 +2868,13 @@ async def create_compra(
                 if bp:
                     bp_update: dict = {"costo": item.precio_unitario}
                     if item.actualizar_precio:
-                        margen = bp.get("margen") or 0
-                        bp_update["precio"] = round(item.precio_unitario * (1 + margen / 100), 2)
+                        if item.nuevo_precio is not None:
+                            bp_update["precio"] = item.nuevo_precio
+                        else:
+                            margen = bp.get("margen") or 0
+                            bp_update["precio"] = round(item.precio_unitario * (1 + margen / 100), 2)
+                        if item.nuevo_margen is not None:
+                            bp_update["margen"] = item.nuevo_margen
                     await db.branch_products.update_one(
                         {"id": bp["id"]},
                         {"$set": bp_update, "$inc": {"stock": int(item.cantidad)}}

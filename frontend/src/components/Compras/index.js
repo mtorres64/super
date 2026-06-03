@@ -60,6 +60,7 @@ const Compras = () => {
   const [showPriceModal, setShowPriceModal] = useState(false);
   const [pendingPayload, setPendingPayload] = useState(null);
   const [priceUpdates, setPriceUpdates] = useState({});
+  const [priceModalMargins, setPriceModalMargins] = useState({});
 
   // Proveedores state
   const [proveedores, setProveedores] = useState([]);
@@ -89,8 +90,9 @@ const Compras = () => {
   const fetchBranchProducts = async (branchId) => {
     if (!branchId) { setBranchProducts([]); return; }
     try {
-      const res = await axios.get(`${API}/branches/${branchId}/products`);
-      const activos = res.data.filter(p => p.activo_sucursal !== false);
+      const res = await axios.get(`${API}/branches/${branchId}/products`, { params: { all: true } });
+      const items = Array.isArray(res.data) ? res.data : (res.data.items || []);
+      const activos = items.filter(p => p.activo_sucursal !== false);
       setBranchProducts(activos);
       if (activos.length === 0) {
         toast.info('Esta sucursal no tiene productos activos cargados');
@@ -238,23 +240,37 @@ const Compras = () => {
     setShowPriceModal(false);
     setPendingPayload(null);
     setPriceUpdates({});
+    setPriceModalMargins({});
   };
 
-  const buildPayload = (priceUpdatesMap = {}) => {
+  const buildPayload = (priceUpdatesMap = {}, marginsMap = {}) => {
     const itemsValidos = compraForm.items.filter(it => it.descripcion.trim());
     return {
       sucursal_id: compraForm.sucursal_id || null,
       proveedor_id: compraForm.proveedor_id || null,
       numero_factura: compraForm.numero_factura.trim(),
       fecha: new Date(compraForm.fecha).toISOString(),
-      items: itemsValidos.map((it, origIndex) => ({
-        descripcion: it.descripcion,
-        cantidad: parseFloat(it.cantidad) || 0,
-        precio_unitario: parseFloat(it.precio_unitario) || 0,
-        subtotal: parseFloat(it.subtotal) || 0,
-        product_id: it.product_id || null,
-        actualizar_precio: priceUpdatesMap[origIndex] ?? false
-      })),
+      items: itemsValidos.map((it, origIndex) => {
+        const willUpdate = priceUpdatesMap[origIndex] ?? false;
+        const costoNuevo = parseFloat(it.precio_unitario) || 0;
+        const margenStr = marginsMap[origIndex];
+        const nuevoMargen = willUpdate && margenStr !== undefined && margenStr !== ''
+          ? parseFloat(margenStr)
+          : null;
+        const nuevoPrecio = willUpdate && nuevoMargen != null
+          ? parseFloat((costoNuevo * (1 + nuevoMargen / 100)).toFixed(2))
+          : null;
+        return {
+          descripcion: it.descripcion,
+          cantidad: parseFloat(it.cantidad) || 0,
+          precio_unitario: costoNuevo,
+          subtotal: parseFloat(it.subtotal) || 0,
+          product_id: it.product_id || null,
+          actualizar_precio: willUpdate,
+          nuevo_precio: nuevoPrecio,
+          nuevo_margen: nuevoMargen,
+        };
+      }),
       subtotal: compraForm.subtotal,
       impuestos: parseFloat(compraForm.impuestos) || 0,
       total: compraForm.total,
@@ -291,8 +307,13 @@ const Compras = () => {
 
     if (itemsConProducto.length > 0) {
       const initialUpdates = {};
-      itemsConProducto.forEach(it => { initialUpdates[it.origIndex] = false; });
+      const initialMargins = {};
+      itemsConProducto.forEach(it => {
+        initialUpdates[it.origIndex] = false;
+        initialMargins[it.origIndex] = it.margen_actual != null ? String(it.margen_actual) : '';
+      });
       setPriceUpdates(initialUpdates);
+      setPriceModalMargins(initialMargins);
       setPendingPayload(itemsConProducto);
       setShowPriceModal(true);
     } else {
@@ -302,7 +323,7 @@ const Compras = () => {
 
   const handleConfirmPriceModal = async (applyUpdates) => {
     setShowPriceModal(false);
-    await submitCompra(buildPayload(applyUpdates ? priceUpdates : {}));
+    await submitCompra(buildPayload(applyUpdates ? priceUpdates : {}, applyUpdates ? priceModalMargins : {}));
   };
 
   const handleDeleteCompra = async (compra) => {
@@ -434,11 +455,14 @@ const Compras = () => {
 
   const priceModalItemsList = (pendingPayload || []).map(it => {
     const costoNuevo = parseFloat(it.precio_unitario) || 0;
-    const margen = it.margen_actual;
-    const precioSugerido = costoNuevo > 0 && margen != null
+    const margenStr = priceModalMargins[it.origIndex];
+    const margen = margenStr !== undefined && margenStr !== ''
+      ? parseFloat(margenStr)
+      : it.margen_actual;
+    const precioSugerido = costoNuevo > 0 && margen != null && !isNaN(margen)
       ? parseFloat((costoNuevo * (1 + margen / 100)).toFixed(2))
       : null;
-    return { ...it, costoNuevo, precioSugerido };
+    return { ...it, costoNuevo, precioSugerido, margenEditable: margenStr ?? (it.margen_actual != null ? String(it.margen_actual) : '') };
   });
 
   return (
@@ -463,6 +487,8 @@ const Compras = () => {
       setShowPriceModal={setShowPriceModal}
       priceUpdates={priceUpdates}
       setPriceUpdates={setPriceUpdates}
+      priceModalMargins={priceModalMargins}
+      setPriceModalMargins={setPriceModalMargins}
       priceModalItemsList={priceModalItemsList}
       proveedores={proveedores}
       loadingProveedores={loadingProveedores}
