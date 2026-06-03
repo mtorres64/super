@@ -119,7 +119,6 @@ const BarcodeScanner = ({ onScan, onClose }) => {
           pauseRef.current = true;
           setTimeout(() => { pauseRef.current = false; }, 1500);
 
-          playSuccessSound();
           onScanRef.current(decodedText);
           setScannedCount(prev => prev + 1);
           toast.success(`Código escaneado: ${decodedText}`);
@@ -145,28 +144,6 @@ const BarcodeScanner = ({ onScan, onClose }) => {
       }
     }
     setScanning(false);
-  };
-
-  const playSuccessSound = () => {
-    try {
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-
-      oscillator.frequency.value = 800;
-      oscillator.type = 'sine';
-
-      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
-
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.2);
-    } catch (error) {
-      console.log('Could not play sound:', error);
-    }
   };
 
   const handleClose = () => {
