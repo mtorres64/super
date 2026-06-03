@@ -139,7 +139,7 @@ const BranchManagement = () => {
   const fetchCategories = async () => {
     try {
       const response = await axios.get(`${API}/categories`);
-      setCategories(response.data);
+      setCategories([...response.data].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')));
     } catch (error) {
       console.error('Error al cargar categorías');
     }

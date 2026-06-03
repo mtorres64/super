@@ -82,16 +82,17 @@ const POS = () => {
   const searchingRef = useRef(false);
 
   useEffect(() => {
-    if (user?.branch_id) {
+    const branchId = user?.branch_id || currentSession?.branch_id;
+    if (branchId) {
       axios.get(`${API}/branches`)
         .then(res => {
           setBranchCount(res.data.length);
-          const branch = res.data.find(b => b.id === user.branch_id);
+          const branch = res.data.find(b => b.id === branchId);
           if (branch) setBranchName(branch.nombre);
         })
         .catch(() => {});
     }
-  }, [user]);
+  }, [user, currentSession]);
 
   useEffect(() => {
     fetchCategories();
@@ -604,6 +605,7 @@ const POS = () => {
       isMobile={isMobile}
       playSuccessSound={playSuccessSound}
       getCategoryName={getCategoryName}
+      categories={categories}
       sessionDisabledStyle={sessionDisabledStyle}
       cartItemsRef={cartItemsRef}
       loadingLastTicket={loadingLastTicket}

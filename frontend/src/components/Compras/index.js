@@ -62,6 +62,10 @@ const Compras = () => {
   const [priceUpdates, setPriceUpdates] = useState({});
   const [priceModalMargins, setPriceModalMargins] = useState({});
 
+  // Delete confirmation modal
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
   // Proveedores state
   const [proveedores, setProveedores] = useState([]);
   const [loadingProveedores, setLoadingProveedores] = useState(true);
@@ -326,10 +330,21 @@ const Compras = () => {
     await submitCompra(buildPayload(applyUpdates ? priceUpdates : {}, applyUpdates ? priceModalMargins : {}));
   };
 
-  const handleDeleteCompra = async (compra) => {
-    if (!window.confirm(`¿Eliminar la factura ${compra.numero_factura}?`)) return;
+  const handleDeleteCompra = (compra) => {
+    setDeleteTarget(compra);
+    setShowDeleteModal(true);
+  };
+
+  const closeDeleteModal = () => {
+    setShowDeleteModal(false);
+    setDeleteTarget(null);
+  };
+
+  const confirmDeleteCompra = async () => {
+    if (!deleteTarget) return;
+    closeDeleteModalAnim();
     try {
-      await axios.delete(`${API}/compras/${compra.id}`);
+      await axios.delete(`${API}/compras/${deleteTarget.id}`);
       toast.success('Factura eliminada');
       fetchCompras();
     } catch {
@@ -387,6 +402,7 @@ const Compras = () => {
 
   const [compraModalClosing, closeCompraModalAnim] = useModalClose(closeCompraModal);
   const [proveedorModalClosing, closeProveedorModalAnim] = useModalClose(closeProveedorModal);
+  const [deleteModalClosing, closeDeleteModalAnim] = useModalClose(closeDeleteModal);
 
   const handleProveedorSubmit = async (e) => {
     e.preventDefault();
@@ -513,6 +529,11 @@ const Compras = () => {
       handleCompraSubmit={handleCompraSubmit}
       handleConfirmPriceModal={handleConfirmPriceModal}
       handleDeleteCompra={handleDeleteCompra}
+      showDeleteModal={showDeleteModal}
+      deleteTarget={deleteTarget}
+      deleteModalClosing={deleteModalClosing}
+      closeDeleteModalAnim={closeDeleteModalAnim}
+      confirmDeleteCompra={confirmDeleteCompra}
       handleItemChange={handleItemChange}
       handleSelectProduct={handleSelectProduct}
       handleDescriptionFocus={handleDescriptionFocus}

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { formatAmount } from '../../lib/utils';
 import BarcodeScanner from '../BarcodeScanner';
 import ReturnModal from '../ReturnModal';
+import { getCategoryIcon } from '../../utils/categoryIcons';
 import TicketModal from '../TicketModal';
 import Pagination from '../Pagination';
 import {
@@ -62,6 +63,7 @@ const POSView = ({
   isMobile,
   playSuccessSound,
   getCategoryName,
+  categories,
   sessionDisabledStyle,
   cartItemsRef,
   loadingLastTicket,
@@ -142,9 +144,9 @@ const POSView = ({
           </h1>
           <p className="text-gray-600">
             Cajero: {user?.nombre}
-            {user?.branch_id && (
+            {branchName && (
               <span className="ml-3 px-2 py-0.5 text-xs font-medium bg-green-100 rounded-full" style={{ color: '#052e16' }}>
-                {branchName ? branchName : 'Sucursal asignada'}{branchCount > 1 ? ' — precios diferenciados' : ''}
+                {branchName}{branchCount > 1 ? ' — precios diferenciados' : ''}
               </span>
             )}
           </p>
@@ -299,7 +301,12 @@ const POSView = ({
                       <div className="product-stock">
                         Stock: {product.stock}
                       </div>
-                      <div className="text-xs text-gray-500 mt-1">
+                      <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                        {(() => {
+                          const cat = categories?.find(c => c.id === product.categoria_id);
+                          const CatIcon = getCategoryIcon(cat?.nombre, cat?.icono);
+                          return <CatIcon className="w-3 h-3 shrink-0" />;
+                        })()}
                         {getCategoryName(product.categoria_id)}
                       </div>
                       {product.codigo_barras && (
@@ -406,8 +413,8 @@ const POSView = ({
               <div className="flex gap-2">
                 <button
                   onClick={openLastTicket}
-                  className="btn btn-sm"
-                  style={{ background: 'var(--secondary)', color: 'var(--secondary-text)' }}
+                  className="btn btn-secondary btn-sm"
+                  style={{ background: 'var(--secondary)', color: 'var(--secondary-text)', borderColor: 'var(--secondary)' }}
                   title="Ver último ticket"
                   disabled={loadingLastTicket}
                 >

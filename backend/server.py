@@ -683,11 +683,13 @@ class Category(BaseModel):
     empresa_id: str
     nombre: str
     descripcion: Optional[str] = None
+    icono: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class CategoryCreate(BaseModel):
     nombre: str
     descripcion: Optional[str] = None
+    icono: Optional[str] = None
 
 class ComboItem(BaseModel):
     product_id: str

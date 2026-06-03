@@ -631,8 +631,8 @@ const SettingsView = ({
                           <ZapOff className="w-5 h-5 text-gray-400 mr-3" />
                         )}
                         <div>
-                          <h4 className="font-medium text-gray-900">Animaciones de modales</h4>
-                          <p className="text-sm text-gray-500">Animación de entrada y salida en ventanas emergentes</p>
+                          <h4 className="font-medium text-gray-900">Animaciones</h4>
+                          <p className="text-sm text-gray-500">Efectos de entrada/salida en modales y animaciones de interfaz</p>
                         </div>
                       </div>
                       <label className="switch">

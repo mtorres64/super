@@ -26,10 +26,10 @@ const ProductManagement = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [newCategory, setNewCategory] = useState({ nombre: '', descripcion: '' });
+  const [newCategory, setNewCategory] = useState({ nombre: '', descripcion: '', icono: '' });
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
-  const [editCategoryData, setEditCategoryData] = useState({ nombre: '', descripcion: '' });
+  const [editCategoryData, setEditCategoryData] = useState({ nombre: '', descripcion: '', icono: '' });
   const [categoryToDelete, setCategoryToDelete] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -100,7 +100,7 @@ const ProductManagement = () => {
   const fetchCategories = async () => {
     try {
       const response = await axios.get(`${API}/categories`);
-      setCategories(response.data);
+      setCategories([...response.data].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')));
     } catch (error) {
       toast.error('Error al cargar categorías');
     }
@@ -222,6 +222,10 @@ const ProductManagement = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!formData.categoria_id) {
+      toast.error('Seleccioná una categoría válida');
+      return;
+    }
 
     try {
       const productData = {
@@ -261,7 +265,7 @@ const ProductManagement = () => {
       await axios.post(`${API}/categories`, newCategory);
       toast.success('Categoría creada exitosamente');
       fetchCategories();
-      setNewCategory({ nombre: '', descripcion: '' });
+      setNewCategory({ nombre: '', descripcion: '', icono: '' });
       closeCategoryModal();
     } catch (error) {
       toast.error('Error al crear la categoría');
@@ -294,7 +298,7 @@ const ProductManagement = () => {
 
   const startEditCategory = (cat) => {
     setEditingCategory(cat);
-    setEditCategoryData({ nombre: cat.nombre, descripcion: cat.descripcion || '' });
+    setEditCategoryData({ nombre: cat.nombre, descripcion: cat.descripcion || '', icono: cat.icono || '' });
   };
 
   const getCategoryName = (categoryId) => {

@@ -63,6 +63,11 @@ const ComprasView = ({
   handleCompraSubmit,
   handleConfirmPriceModal,
   handleDeleteCompra,
+  showDeleteModal,
+  deleteTarget,
+  deleteModalClosing,
+  closeDeleteModalAnim,
+  confirmDeleteCompra,
   handleItemChange,
   handleSelectProduct,
   handleDescriptionFocus,
@@ -681,6 +686,47 @@ const ComprasView = ({
           document.body
         );
       })()}
+
+      {/* ── MODAL CONFIRMAR ELIMINACIÓN ── */}
+      {showDeleteModal && (
+        <div className={`modal-overlay${deleteModalClosing ? ' closing' : ''}`} onClick={closeDeleteModalAnim}>
+          <div
+            className={`modal-content${deleteModalClosing ? ' closing' : ''}`}
+            style={{ maxWidth: '420px' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h2 className="modal-title flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-red-500" />
+                Eliminar factura
+              </h2>
+              <button onClick={closeDeleteModalAnim} className="modal-close">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="modal-body">
+              <p className="text-sm text-gray-600 mb-6">
+                ¿Estás seguro que querés eliminar la factura{' '}
+                <strong className="text-gray-800">{deleteTarget?.numero_factura}</strong>?
+                Esta acción no se puede deshacer.
+              </p>
+              <div className="modal-footer">
+                <button type="button" onClick={closeDeleteModalAnim} className="btn btn-secondary">
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDeleteCompra}
+                  className="btn btn-danger"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Eliminar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── MODAL PROVEEDOR ── */}
       {showProveedorModal && (

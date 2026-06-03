@@ -1,21 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Plus,
-  Edit,
-  Trash2,
-  Package,
-  Search,
-  Save,
-  X,
-  Download,
-  Upload,
-  FileText,
-  Tag,
-  Layers,
-  Minus
+  Plus, Edit, Trash2, Package, Search, Save, X,
+  Download, Upload, FileText, Tag, Layers, Minus,
 } from 'lucide-react';
 import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
+import { getCategoryIcon, ICON_OPTIONS } from '../../utils/categoryIcons';
 
 const ProductManagementView = ({
   user,
@@ -105,10 +95,26 @@ const ProductManagementView = ({
   requestSort,
 }) => {
   const [categorySearch, setCategorySearch] = useState('');
+  const [categoryInputText, setCategoryInputText] = useState('');
+  const [showCategoryAc, setShowCategoryAc] = useState(false);
 
   useEffect(() => {
     if (!showCategoryModal) setCategorySearch('');
   }, [showCategoryModal]);
+
+  useEffect(() => {
+    if (showModal) {
+      const cat = categories.find(c => c.id === formData.categoria_id);
+      setCategoryInputText(cat ? cat.nombre : '');
+    } else {
+      setCategoryInputText('');
+      setShowCategoryAc(false);
+    }
+  }, [showModal]); // only sync on modal open/close
+
+  const filteredCategoryOptions = categories.filter(c =>
+    c.nombre.toLowerCase().includes(categoryInputText.toLowerCase())
+  );
 
   if (loading) {
     return (
@@ -285,9 +291,16 @@ const ProductManagementView = ({
                   </span>
                 </td>
                 <td className="text-center">
-                  <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
-                    {getCategoryName(product.categoria_id)}
-                  </span>
+                  {(() => {
+                    const cat = categories.find(c => c.id === product.categoria_id);
+                    const CatIcon = getCategoryIcon(cat?.nombre, cat?.icono);
+                    return (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+                        <CatIcon className="w-3 h-3" />
+                        {cat?.nombre || 'Sin categoría'}
+                      </span>
+                    );
+                  })()}
                 </td>
                 <td className="text-center">
                   {product.kind === 'combo' ? (
@@ -419,21 +432,50 @@ const ProductManagementView = ({
 
                 {/* Row 3: Categoría | Precio | Precio/kg */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="form-group">
+                  <div className="form-group" style={{ position: 'relative' }}>
                     <label className="form-label">Categoría *</label>
-                    <select
-                      className="form-select"
-                      value={formData.categoria_id}
-                      onChange={(e) => setFormData({...formData, categoria_id: e.target.value})}
-                      required
-                    >
-                      <option value="">Seleccionar...</option>
-                      {categories.map(category => (
-                        <option key={category.id} value={category.id}>
-                          {category.nombre}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="relative">
+                      {formData.categoria_id && (() => {
+                        const selCat = categories.find(c => c.id === formData.categoria_id);
+                        const SelIcon = getCategoryIcon(categoryInputText, selCat?.icono);
+                        return <SelIcon className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />;
+                      })()}
+                      <input
+                        type="text"
+                        className={`form-input${formData.categoria_id ? ' pl-8' : ''}${!formData.categoria_id && categoryInputText ? ' border-red-400' : ''}`}
+                        value={categoryInputText}
+                        onChange={e => {
+                          setCategoryInputText(e.target.value);
+                          setShowCategoryAc(true);
+                          setFormData({ ...formData, categoria_id: '' });
+                        }}
+                        onFocus={() => setShowCategoryAc(true)}
+                        onBlur={() => setTimeout(() => setShowCategoryAc(false), 150)}
+                        placeholder="Buscar categoría..."
+                        autoComplete="off"
+                      />
+                    </div>
+                    {showCategoryAc && filteredCategoryOptions.length > 0 && (
+                      <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg shadow-xl max-h-48 overflow-y-auto" style={{ top: '100%', left: 0 }}>
+                        {filteredCategoryOptions.map(cat => {
+                          const CatIcon = getCategoryIcon(cat.nombre, cat.icono);
+                          return (
+                            <div
+                              key={cat.id}
+                              className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-800 flex items-center gap-2"
+                              onMouseDown={() => {
+                                setFormData({ ...formData, categoria_id: cat.id });
+                                setCategoryInputText(cat.nombre);
+                                setShowCategoryAc(false);
+                              }}
+                            >
+                              <CatIcon className="w-4 h-4 text-gray-400 shrink-0" />
+                              {cat.nombre}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                   <div className="form-group">
                     <label className="form-label">Precio Unitario *</label>
@@ -823,14 +865,17 @@ const ProductManagementView = ({
             </div>
 
             {/* Lista de categorías existentes */}
-            <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '1.25rem' }}>
+            <div style={{ maxHeight: '180px', overflowY: 'auto', marginBottom: '1rem' }}>
               {categories.length === 0 ? (
                 <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '1.5rem 0', fontSize: '0.9rem' }}>
                   No hay categorías creadas aún.
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {categories.filter(cat => cat.nombre.toLowerCase().includes(categorySearch.toLowerCase())).map(cat => (
+                  {[...categories]
+                    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+                    .filter(cat => cat.nombre.toLowerCase().includes(categorySearch.toLowerCase()))
+                    .map(cat => (
                     <div key={cat.id}>
                       {editingCategory?.id === cat.id ? (
                         <form
@@ -851,6 +896,26 @@ const ProductManagementView = ({
                               autoFocus
                               style={{ fontSize: '0.875rem' }}
                             />
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                              {ICON_OPTIONS.map(({ key, Icon, label }) => (
+                                <button
+                                  key={key}
+                                  type="button"
+                                  title={label}
+                                  onClick={() => setEditCategoryData({ ...editCategoryData, icono: editCategoryData.icono === key ? '' : key })}
+                                  style={{
+                                    padding: '0.3rem',
+                                    borderRadius: '5px',
+                                    border: editCategoryData.icono === key ? '2px solid var(--color-primary)' : '1px solid var(--border-color)',
+                                    background: editCategoryData.icono === key ? 'var(--color-primary-light, #d1fae5)' : 'var(--bg-primary)',
+                                    cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  }}
+                                >
+                                  <Icon style={{ width: '0.875rem', height: '0.875rem', color: editCategoryData.icono === key ? 'var(--color-primary)' : 'var(--text-secondary)' }} />
+                                </button>
+                              ))}
+                            </div>
                             <input
                               type="text"
                               className="form-input"
@@ -901,27 +966,27 @@ const ProductManagementView = ({
                           padding: '0.625rem 0.875rem', borderRadius: '8px',
                           border: '1px solid var(--border-color)', background: 'var(--bg-primary)'
                         }}>
-                          <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            {(() => { const I = getCategoryIcon(cat.nombre, cat.icono); return <I style={{ width: '1rem', height: '1rem', color: 'var(--text-secondary)', flexShrink: 0 }} />; })()}
                             <span style={{ fontWeight: 500, fontSize: '0.9rem' }}>{cat.nombre}</span>
                             {cat.descripcion && (
-                              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: '0.5rem' }}>
+                              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: '0.25rem' }}>
                                 {cat.descripcion}
                               </span>
                             )}
                           </div>
                           <div style={{ display: 'flex', gap: '0.4rem' }}>
                             <button
-                              className="btn btn-secondary"
+                              className="btn btn-sm"
                               onClick={() => startEditCategory(cat)}
-                              style={{ padding: '0.25rem 0.5rem' }}
+                              style={{ padding: '0.25rem 0.5rem', background: 'var(--secondary)', color: 'var(--secondary-text)', borderColor: 'var(--secondary)' }}
                               title="Editar"
                             >
                               <Edit className="w-3 h-3" />
                             </button>
                             <button
-                              className="btn"
+                              className="quantity-btn"
                               onClick={() => setCategoryToDelete(cat.id)}
-                              style={{ padding: '0.25rem 0.5rem', color: '#dc2626', background: 'transparent', border: '1px solid #fca5a5' }}
                               title="Eliminar"
                             >
                               <Trash2 className="w-3 h-3" />
@@ -951,6 +1016,29 @@ const ProductManagementView = ({
                     onChange={(e) => setNewCategory({ ...newCategory, nombre: e.target.value })}
                     required
                   />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Ícono</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
+                    {ICON_OPTIONS.map(({ key, Icon, label }) => (
+                      <button
+                        key={key}
+                        type="button"
+                        title={label}
+                        onClick={() => setNewCategory({ ...newCategory, icono: newCategory.icono === key ? '' : key })}
+                        style={{
+                          padding: '0.375rem',
+                          borderRadius: '6px',
+                          border: newCategory.icono === key ? '2px solid var(--color-primary)' : '1px solid var(--border-color)',
+                          background: newCategory.icono === key ? 'var(--color-primary-light, #d1fae5)' : 'var(--bg-primary)',
+                          cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}
+                      >
+                        <Icon style={{ width: '1rem', height: '1rem', color: newCategory.icono === key ? 'var(--color-primary)' : 'var(--text-secondary)' }} />
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="form-group">
                   <label className="form-label">Descripción</label>
