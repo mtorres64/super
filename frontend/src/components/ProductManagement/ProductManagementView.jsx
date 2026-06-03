@@ -276,12 +276,23 @@ const ProductManagementView = ({
                   />
                 </td>
                 <td>
-                  <div>
-                    <div className="font-medium text-gray-900">
-                      {product.nombre}
-                    </div>
-                    <div className="text-sm text-gray-500 capitalize">
-                      {product.tipo.replace('_', ' ')}
+                  <div className="flex items-center gap-3">
+                    {(() => {
+                      const cat = categories.find(c => c.id === product.categoria_id);
+                      const CatIcon = getCategoryIcon(cat?.nombre, cat?.icono);
+                      return (
+                        <div className="w-9 h-9 rounded-full bg-gray-100 flex-shrink-0 flex items-center justify-center">
+                          <CatIcon className="w-4 h-4 text-gray-500" />
+                        </div>
+                      );
+                    })()}
+                    <div>
+                      <div className="font-medium text-gray-900">
+                        {product.nombre}
+                      </div>
+                      <div className="text-sm text-gray-500 capitalize">
+                        {product.tipo.replace('_', ' ')}
+                      </div>
                     </div>
                   </div>
                 </td>

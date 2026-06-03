@@ -19,8 +19,8 @@ const ReturnModalView = ({
   allSelected,
   total,
 }) => (
-  <div className={`modal-overlay${closing ? ' closing' : ''}`}>
-    <div className={`modal-content${closing ? ' closing' : ''}`} style={{ maxWidth: '560px', width: '100%' }}>
+  <div className={`ticket-modal-overlay${closing ? ' closing' : ''}`}>
+    <div className={`ticket-modal-container${closing ? ' closing' : ''}`} style={{ maxWidth: '560px', width: '100%' }}>
       <div className="modal-header">
         <h3 className="modal-title">
           <RotateCcw className="w-5 h-5 inline mr-2" />

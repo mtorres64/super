@@ -16,8 +16,8 @@ const BarcodeScannerView = ({
 }) => {
   if (cameraPermission === null) {
     return (
-      <div className={`modal-overlay${closing ? ' closing' : ''}`}>
-        <div className={`modal-content${closing ? ' closing' : ''}`}>
+      <div className={`ticket-modal-overlay${closing ? ' closing' : ''}`}>
+        <div className={`ticket-modal-container${closing ? ' closing' : ''}`}>
           <div className="modal-header">
             <h3 className="modal-title">Verificando Cámara...</h3>
             <button onClick={onClose} className="modal-close">
@@ -38,8 +38,8 @@ const BarcodeScannerView = ({
 
   if (cameraPermission === false) {
     return (
-      <div className={`modal-overlay${closing ? ' closing' : ''}`}>
-        <div className={`modal-content${closing ? ' closing' : ''}`}>
+      <div className={`ticket-modal-overlay${closing ? ' closing' : ''}`}>
+        <div className={`ticket-modal-container${closing ? ' closing' : ''}`}>
           <div className="modal-header">
             <h3 className="modal-title">Acceso a Cámara Requerido</h3>
             <button onClick={onClose} className="modal-close">
@@ -70,8 +70,8 @@ const BarcodeScannerView = ({
   }
 
   return (
-    <div className="modal-overlay">
-      <div className={`modal-content max-w-lg${closing ? ' closing' : ''}`}>
+    <div className={`ticket-modal-overlay${closing ? ' closing' : ''}`}>
+      <div className={`ticket-modal-container${closing ? ' closing' : ''}`} style={{ maxWidth: '32rem', width: '100%' }}>
         <div className="modal-header">
           <h3 className="modal-title">
             <Scan className="w-5 h-5 inline mr-2" />

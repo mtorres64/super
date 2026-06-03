@@ -629,6 +629,7 @@ const BranchManagement = () => {
       onCloseBulkStockMinModal={closeBulkStockMinModal}
       onCloseBulkStockModal={closeBulkStockModal}
       getCategoryName={getCategoryName}
+      categories={categories}
       getUsersInBranch={getUsersInBranch}
       getProductCurrentMargen={getProductCurrentMargen}
     />

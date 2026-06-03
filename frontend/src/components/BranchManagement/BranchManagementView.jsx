@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
+import { getCategoryIcon } from '../../utils/categoryIcons';
 
 const BranchManagementView = ({
   loading,
@@ -101,6 +102,7 @@ const BranchManagementView = ({
   onCloseBulkStockMinModal,
   onCloseBulkStockModal,
   getCategoryName,
+  categories,
   getUsersInBranch,
   getProductCurrentMargen,
   sortConfig,
@@ -307,18 +309,38 @@ const BranchManagementView = ({
                         />
                       </td>
                       <td>
-                        <div className="font-medium text-gray-900">{product.nombre}</div>
-                        {product.codigo_barras && (
-                          <div className="text-xs text-blue-600">{product.codigo_barras}</div>
-                        )}
-                        <div className="text-xs text-gray-400 capitalize">
-                          {product.tipo?.replace('_', ' ')}
+                        <div className="flex items-center gap-3">
+                          {(() => {
+                            const cat = categories.find(c => c.id === product.categoria_id);
+                            const CatIcon = getCategoryIcon(cat?.nombre, cat?.icono);
+                            return (
+                              <div className="w-9 h-9 rounded-full bg-gray-100 flex-shrink-0 flex items-center justify-center">
+                                <CatIcon className="w-4 h-4 text-gray-500" />
+                              </div>
+                            );
+                          })()}
+                          <div>
+                            <div className="font-medium text-gray-900">{product.nombre}</div>
+                            {product.codigo_barras && (
+                              <div className="text-xs text-blue-600">{product.codigo_barras}</div>
+                            )}
+                            <div className="text-xs text-gray-400 capitalize">
+                              {product.tipo?.replace('_', ' ')}
+                            </div>
+                          </div>
                         </div>
                       </td>
                       <td>
-                        <span className="px-2 py-1 text-xs font-medium bg-blue-100 rounded-full" style={{ color: '#1e3a5f' }}>
-                          {getCategoryName(product.categoria_id)}
-                        </span>
+                        {(() => {
+                          const cat = categories.find(c => c.id === product.categoria_id);
+                          const CatIcon = getCategoryIcon(cat?.nombre, cat?.icono);
+                          return (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-blue-100 rounded-full" style={{ color: '#1e3a5f' }}>
+                              <CatIcon className="w-3 h-3" />
+                              {getCategoryName(product.categoria_id)}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="text-center">
                         <span className="text-gray-500">${product.precio_global?.toFixed(2)}</span>
