@@ -21,7 +21,11 @@ import {
   Printer,
   X,
   RotateCcw,
-  Tag
+  Tag,
+  BarChart2,
+  Package,
+  FileText,
+  LayoutDashboard
 } from 'lucide-react';
 
 const POSView = ({
@@ -202,19 +206,29 @@ const POSView = ({
         </div>
 
         {/* Search + Products (dimmed when no session) */}
-        <div style={{ ...sessionDisabledStyle, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div style={{ ...sessionDisabledStyle, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, gap: '1rem' }}>
           {/* Search Section */}
           <div className="pos-search">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
                   type="text"
                   placeholder="Buscar productos..."
                   className="form-input pl-10"
+                  style={searchTerm ? { paddingRight: '2.25rem' } : {}}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
               </div>
 
               <div className="flex gap-2">
@@ -309,6 +323,42 @@ const POSView = ({
                     />
                   </div>
                 )}
+
+                {/* Quick Access Links */}
+                <div style={{ borderTop: '1px solid var(--border-color)', marginTop: '1rem', paddingTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <Link to="/cash" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.3rem 0.75rem', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 500, background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', textDecoration: 'none' }}>
+                    <DollarSign className="w-3 h-3" />
+                    Caja
+                  </Link>
+                  <Link to="/sales" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.3rem 0.75rem', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 500, background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', textDecoration: 'none' }}>
+                    <FileText className="w-3 h-3" />
+                    Historial de ventas
+                  </Link>
+                  {(user?.rol === 'admin' || user?.rol === 'supervisor') && (
+                    <>
+                      <Link to="/reports" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.3rem 0.75rem', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 500, background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', textDecoration: 'none' }}>
+                        <BarChart2 className="w-3 h-3" />
+                        Reportes
+                      </Link>
+                      <Link to="/compras" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.3rem 0.75rem', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 500, background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', textDecoration: 'none' }}>
+                        <ShoppingCart className="w-3 h-3" />
+                        Compras
+                      </Link>
+                    </>
+                  )}
+                  {user?.rol === 'admin' && (
+                    <>
+                      <Link to="/products" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.3rem 0.75rem', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 500, background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', textDecoration: 'none' }}>
+                        <Package className="w-3 h-3" />
+                        Productos
+                      </Link>
+                      <Link to="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.3rem 0.75rem', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 500, background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', textDecoration: 'none' }}>
+                        <LayoutDashboard className="w-3 h-3" />
+                        Dashboard
+                      </Link>
+                    </>
+                  )}
+                </div>
               </>
             )}
           </div>

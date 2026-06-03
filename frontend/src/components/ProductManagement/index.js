@@ -28,6 +28,9 @@ const ProductManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [newCategory, setNewCategory] = useState({ nombre: '', descripcion: '' });
   const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [editCategoryData, setEditCategoryData] = useState({ nombre: '', descripcion: '' });
+  const [categoryToDelete, setCategoryToDelete] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -263,6 +266,35 @@ const ProductManagement = () => {
     } catch (error) {
       toast.error('Error al crear la categoría');
     }
+  };
+
+  const handleUpdateCategory = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.put(`${API}/categories/${editingCategory.id}`, editCategoryData);
+      toast.success('Categoría actualizada');
+      fetchCategories();
+      setEditingCategory(null);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error al actualizar la categoría');
+    }
+  };
+
+  const handleDeleteCategory = async (categoryId) => {
+    try {
+      await axios.delete(`${API}/categories/${categoryId}`);
+      toast.success('Categoría eliminada');
+      setCategoryToDelete(null);
+      fetchCategories();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error al eliminar la categoría');
+      setCategoryToDelete(null);
+    }
+  };
+
+  const startEditCategory = (cat) => {
+    setEditingCategory(cat);
+    setEditCategoryData({ nombre: cat.nombre, descripcion: cat.descripcion || '' });
   };
 
   const getCategoryName = (categoryId) => {
@@ -556,7 +588,16 @@ const ProductManagement = () => {
       closeCategoryModal={closeCategoryModal}
       closeBulkDeleteModal={closeBulkDeleteModal}
       handleSubmit={handleSubmit}
+      editingCategory={editingCategory}
+      setEditingCategory={setEditingCategory}
+      editCategoryData={editCategoryData}
+      setEditCategoryData={setEditCategoryData}
+      categoryToDelete={categoryToDelete}
+      setCategoryToDelete={setCategoryToDelete}
       handleCreateCategory={handleCreateCategory}
+      handleUpdateCategory={handleUpdateCategory}
+      handleDeleteCategory={handleDeleteCategory}
+      startEditCategory={startEditCategory}
       handleExport={handleExport}
       handleImport={handleImport}
       handleBulkDelete={handleBulkDelete}

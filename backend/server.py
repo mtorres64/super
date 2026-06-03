@@ -1490,6 +1490,29 @@ async def get_categories(user: User = Depends(get_current_user)):
     categories = await db.categories.find({"empresa_id": user.empresa_id}).to_list(1000)
     return [Category(**cat) for cat in categories]
 
+@api_router.put("/categories/{category_id}", response_model=Category)
+async def update_category(category_id: str, category_data: CategoryCreate, user: User = Depends(require_role([UserRole.ADMIN]))):
+    category = await db.categories.find_one({"id": category_id, "empresa_id": user.empresa_id})
+    if not category:
+        raise HTTPException(status_code=404, detail="Categoría no encontrada")
+    await db.categories.update_one(
+        {"id": category_id},
+        {"$set": {"nombre": category_data.nombre, "descripcion": category_data.descripcion}}
+    )
+    updated = await db.categories.find_one({"id": category_id})
+    return Category(**updated)
+
+@api_router.delete("/categories/{category_id}")
+async def delete_category(category_id: str, user: User = Depends(require_role([UserRole.ADMIN]))):
+    category = await db.categories.find_one({"id": category_id, "empresa_id": user.empresa_id})
+    if not category:
+        raise HTTPException(status_code=404, detail="Categoría no encontrada")
+    products_count = await db.products.count_documents({"categoria_id": category_id, "empresa_id": user.empresa_id})
+    if products_count > 0:
+        raise HTTPException(status_code=400, detail=f"No se puede eliminar: {products_count} producto(s) usan esta categoría")
+    await db.categories.delete_one({"id": category_id})
+    return {"message": "Categoría eliminada"}
+
 # Branch Product routes
 @api_router.post("/branch-products", response_model=BranchProduct)
 async def create_branch_product(product_data: BranchProductCreate, user: User = Depends(require_role([UserRole.ADMIN]))):

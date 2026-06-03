@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Plus,
   Edit,
@@ -74,8 +74,17 @@ const ProductManagementView = ({
   closeImportModalAnim,
   closeCategoryModal,
   closeBulkDeleteModal,
+  editingCategory,
+  setEditingCategory,
+  editCategoryData,
+  setEditCategoryData,
+  categoryToDelete,
+  setCategoryToDelete,
   handleSubmit,
   handleCreateCategory,
+  handleUpdateCategory,
+  handleDeleteCategory,
+  startEditCategory,
   handleExport,
   handleImport,
   handleBulkDelete,
@@ -95,6 +104,12 @@ const ProductManagementView = ({
   sortConfig,
   requestSort,
 }) => {
+  const [categorySearch, setCategorySearch] = useState('');
+
+  useEffect(() => {
+    if (!showCategoryModal) setCategorySearch('');
+  }, [showCategoryModal]);
+
   if (loading) {
     return (
       <div className="p-6">
@@ -163,8 +178,8 @@ const ProductManagementView = ({
             className="btn"
             style={{ background: 'var(--tertiary)', color: 'var(--tertiary-text)' }}
           >
-            <Plus className="w-4 h-4" />
-            Nueva Categoría
+            <Tag className="w-4 h-4" />
+            Categorías
           </button>
         </div>
       </div>
@@ -779,58 +794,181 @@ const ProductManagementView = ({
         </div>
       )}
 
-      {/* Category Modal */}
+      {/* Category Management Modal */}
       {showCategoryModal && (
-        <div className={`modal-overlay${categoryModalClosing ? ' closing' : ''}`}>
-          <div className={`modal-content${categoryModalClosing ? ' closing' : ''}`}>
+        <div className={`ticket-modal-overlay${categoryModalClosing ? ' closing' : ''}`}>
+          <div className={`ticket-modal-container${categoryModalClosing ? ' closing' : ''}`} style={{ maxWidth: '560px', width: '90%' }}>
             <div className="modal-header">
-              <h3 className="modal-title">Nueva Categoría</h3>
-              <button
-                onClick={closeCategoryModal}
-                className="modal-close"
-              >
+              <h3 className="modal-title flex items-center gap-2">
+                <Tag className="w-5 h-5" />
+                Gestión de Categorías
+              </h3>
+              <button onClick={closeCategoryModal} className="modal-close">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
+            {/* Buscador */}
+            <div style={{ marginBottom: '0.75rem' }}>
+              <div className="input-icon-wrap">
+                <span className="input-icon"><Search size={15} /></span>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Buscar categoría..."
+                  value={categorySearch}
+                  onChange={(e) => setCategorySearch(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Lista de categorías existentes */}
+            <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '1.25rem' }}>
+              {categories.length === 0 ? (
+                <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '1.5rem 0', fontSize: '0.9rem' }}>
+                  No hay categorías creadas aún.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {categories.filter(cat => cat.nombre.toLowerCase().includes(categorySearch.toLowerCase())).map(cat => (
+                    <div key={cat.id}>
+                      {editingCategory?.id === cat.id ? (
+                        <form
+                          onSubmit={handleUpdateCategory}
+                          style={{
+                            display: 'flex', gap: '0.5rem', alignItems: 'flex-start',
+                            padding: '0.625rem', borderRadius: '8px',
+                            background: 'var(--bg-secondary)', border: '1px solid var(--border-color)'
+                          }}
+                        >
+                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={editCategoryData.nombre}
+                              onChange={(e) => setEditCategoryData({ ...editCategoryData, nombre: e.target.value })}
+                              required
+                              autoFocus
+                              style={{ fontSize: '0.875rem' }}
+                            />
+                            <input
+                              type="text"
+                              className="form-input"
+                              placeholder="Descripción (opcional)"
+                              value={editCategoryData.descripcion}
+                              onChange={(e) => setEditCategoryData({ ...editCategoryData, descripcion: e.target.value })}
+                              style={{ fontSize: '0.875rem' }}
+                            />
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.4rem', paddingTop: '2px' }}>
+                            <button type="submit" className="btn btn-primary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}>
+                              <Save className="w-3 h-3" />
+                            </button>
+                            <button type="button" className="btn btn-secondary" onClick={() => setEditingCategory(null)} style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}>
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </form>
+                      ) : categoryToDelete === cat.id ? (
+                        <div style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '0.625rem 0.875rem', borderRadius: '8px',
+                          background: '#fef2f2', border: '1px solid #fca5a5'
+                        }}>
+                          <span style={{ fontSize: '0.875rem', color: '#991b1b' }}>
+                            ¿Eliminar <strong>{cat.nombre}</strong>?
+                          </span>
+                          <div style={{ display: 'flex', gap: '0.4rem' }}>
+                            <button
+                              className="btn"
+                              onClick={() => handleDeleteCategory(cat.id)}
+                              style={{ padding: '0.25rem 0.75rem', fontSize: '0.8rem', background: '#dc2626', color: '#fff' }}
+                            >
+                              Eliminar
+                            </button>
+                            <button
+                              className="btn btn-secondary"
+                              onClick={() => setCategoryToDelete(null)}
+                              style={{ padding: '0.25rem 0.75rem', fontSize: '0.8rem' }}
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '0.625rem 0.875rem', borderRadius: '8px',
+                          border: '1px solid var(--border-color)', background: 'var(--bg-primary)'
+                        }}>
+                          <div>
+                            <span style={{ fontWeight: 500, fontSize: '0.9rem' }}>{cat.nombre}</span>
+                            {cat.descripcion && (
+                              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: '0.5rem' }}>
+                                {cat.descripcion}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.4rem' }}>
+                            <button
+                              className="btn btn-secondary"
+                              onClick={() => startEditCategory(cat)}
+                              style={{ padding: '0.25rem 0.5rem' }}
+                              title="Editar"
+                            >
+                              <Edit className="w-3 h-3" />
+                            </button>
+                            <button
+                              className="btn"
+                              onClick={() => setCategoryToDelete(cat.id)}
+                              style={{ padding: '0.25rem 0.5rem', color: '#dc2626', background: 'transparent', border: '1px solid #fca5a5' }}
+                              title="Eliminar"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Separador */}
+            <div style={{ borderTop: '1px solid var(--border-color)', marginBottom: '1rem' }} />
+
+            {/* Formulario nueva categoría */}
+            <p style={{ fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.75rem' }}>Nueva Categoría</p>
             <form onSubmit={handleCreateCategory}>
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <div className="form-group">
-                  <label className="form-label">Nombre de la Categoría *</label>
+                  <label className="form-label">Nombre *</label>
                   <input
                     type="text"
                     className="form-input"
                     value={newCategory.nombre}
-                    onChange={(e) => setNewCategory({...newCategory, nombre: e.target.value})}
+                    onChange={(e) => setNewCategory({ ...newCategory, nombre: e.target.value })}
                     required
                   />
                 </div>
-
                 <div className="form-group">
                   <label className="form-label">Descripción</label>
-                  <textarea
+                  <input
+                    type="text"
                     className="form-input"
-                    rows="3"
                     value={newCategory.descripcion}
-                    onChange={(e) => setNewCategory({...newCategory, descripcion: e.target.value})}
-                  ></textarea>
+                    onChange={(e) => setNewCategory({ ...newCategory, descripcion: e.target.value })}
+                  />
                 </div>
               </div>
-
-              <div className="flex justify-end space-x-3 mt-6">
-                <button
-                  type="button"
-                  onClick={closeCategoryModal}
-                  className="btn btn-secondary"
-                >
-                  Cancelar
+              <div className="flex justify-end space-x-3 mt-4">
+                <button type="button" onClick={closeCategoryModal} className="btn btn-secondary">
+                  Cerrar
                 </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                >
-                  <Save className="w-4 h-4" />
-                  Crear Categoría
+                <button type="submit" className="btn btn-primary">
+                  <Plus className="w-4 h-4" />
+                  Crear
                 </button>
               </div>
             </form>

@@ -23,6 +23,7 @@ const POS = () => {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [config, setConfig] = useState(null);
+  const [configLoaded, setConfigLoaded] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [barcode, setBarcode] = useState('');
   const [tabs, setTabs] = useState([{ id: 1, cart: [], paymentMethod: 'efectivo', colorIndex: 0 }]);
@@ -109,10 +110,11 @@ const POS = () => {
     return () => clearTimeout(searchTimerRef.current);
   }, [searchTerm]);
 
-  // Reload products when page or search changes
+  // Reload products when page or search changes (wait for config first)
   useEffect(() => {
+    if (!configLoaded) return;
     loadProducts(currentPage, debouncedSearch);
-  }, [currentPage, debouncedSearch]);
+  }, [currentPage, debouncedSearch, configLoaded]);
 
   const fetchCurrentSession = async () => {
     try {
@@ -133,6 +135,8 @@ const POS = () => {
       setConfig(response.data);
     } catch (error) {
       console.error('Error loading configuration');
+    } finally {
+      setConfigLoaded(true);
     }
   };
 
