@@ -113,11 +113,10 @@ const UserManagementView = ({
                 <td className="text-center">
                   <button
                     onClick={() => openModal(user)}
-                    className="btn btn-sm flex items-center gap-1 mx-auto"
-                    style={{ background: 'var(--tertiary)', color: 'var(--tertiary-text)' }}
+                    className="btn-edit mx-auto"
                     title="Editar"
                   >
-                    <Edit className="w-3 h-3" />
+                    <Edit className="w-4 h-4" />
                   </button>
                 </td>
               </tr>

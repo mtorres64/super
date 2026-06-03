@@ -470,6 +470,24 @@ body {
   border-radius: var(--radius-md);
 }
 
+.btn-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.btn-edit:hover {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
 /* ================================================
    DASHBOARD
    ================================================ */

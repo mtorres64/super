@@ -13,6 +13,7 @@ const BarcodeScanner = ({ onScan, onClose }) => {
   const html5QrcodeRef = useRef(null);
   const mountedRef = useRef(true);
   const lastScannedRef = useRef({ code: null, time: 0 });
+  const pauseRef = useRef(false);
   const onScanRef = useRef(onScan);
   useEffect(() => { onScanRef.current = onScan; }, [onScan]);
   const [closing, animatedClose] = useModalClose(onClose);
@@ -103,23 +104,24 @@ const BarcodeScanner = ({ onScan, onClose }) => {
         config,
         (decodedText) => {
           if (!mountedRef.current) return;
+          if (pauseRef.current) return;
 
           const now = Date.now();
           if (
             lastScannedRef.current.code === decodedText &&
-            now - lastScannedRef.current.time < 600
+            now - lastScannedRef.current.time < 2500
           ) {
             return;
           }
           lastScannedRef.current = { code: decodedText, time: now };
 
-          console.log('Barcode scanned:', decodedText);
+          // Bloquea nuevos escaneos del mismo código durante 1500ms
+          pauseRef.current = true;
+          setTimeout(() => { pauseRef.current = false; }, 1500);
 
           playSuccessSound();
-
           onScanRef.current(decodedText);
           setScannedCount(prev => prev + 1);
-
           toast.success(`Código escaneado: ${decodedText}`);
         },
         () => {

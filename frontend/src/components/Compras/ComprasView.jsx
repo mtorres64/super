@@ -181,11 +181,10 @@ const ComprasView = ({
                         <div className="flex gap-2">
                           <button
                             onClick={() => openCompraModal(compra)}
-                            className="btn btn-sm flex items-center gap-1"
-                            style={{ background: 'var(--secondary)', color: 'var(--secondary-text)' }}
+                            className="btn-edit"
                             title="Editar"
                           >
-                            <Edit className="w-3 h-3" />
+                            <Edit className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleDeleteCompra(compra)}
@@ -266,7 +265,7 @@ const ComprasView = ({
                         <div className="flex gap-2">
                           <button
                             onClick={() => openProveedorModal(prov)}
-                            className="btn btn-secondary btn-sm"
+                            className="btn-edit"
                             title="Editar"
                           >
                             <Edit className="w-4 h-4" />

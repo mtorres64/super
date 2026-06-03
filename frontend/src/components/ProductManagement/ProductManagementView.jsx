@@ -355,7 +355,8 @@ const ProductManagementView = ({
                   <div className="">
                     <button
                       onClick={() => openModal(product)}
-                      className="text-blue-600 hover:text-blue-800"
+                      className="btn-edit"
+                      title="Editar"
                     >
                       <Edit className="w-4 h-4" />
                     </button>
@@ -988,12 +989,11 @@ const ProductManagementView = ({
                           </div>
                           <div style={{ display: 'flex', gap: '0.4rem' }}>
                             <button
-                              className="btn btn-sm"
+                              className="btn-edit"
                               onClick={() => startEditCategory(cat)}
-                              style={{ padding: '0.25rem 0.5rem', background: 'var(--secondary)', color: 'var(--secondary-text)', borderColor: 'var(--secondary)' }}
                               title="Editar"
                             >
-                              <Edit className="w-3 h-3" />
+                              <Edit className="w-4 h-4" />
                             </button>
                             <button
                               className="quantity-btn"

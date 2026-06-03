@@ -10,8 +10,6 @@ import {
   X,
   Users,
   Package,
-  ToggleLeft,
-  ToggleRight,
   Download,
   FileText,
   ChevronDown,
@@ -796,7 +794,7 @@ const BranchManagementView = ({
                 </span>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
                 <button
                   onClick={() => onSelectBranch(branch)}
                   className="flex-1 btn btn-primary btn-sm"
@@ -807,19 +805,22 @@ const BranchManagementView = ({
                 </button>
                 <button
                   onClick={() => onOpenModal(branch)}
-                  className="btn btn-secondary btn-sm"
+                  className="btn-edit"
+                  title="Editar"
                 >
                   <Edit className="w-4 h-4" />
                 </button>
                 <button
+                  type="button"
                   onClick={() => onToggleBranchActive(branch)}
-                  className="btn btn-secondary btn-sm"
-                  title={branch.activo ? 'Desactivar sucursal' : 'Activar sucursal'}
+                  title={branch.activo ? 'Activo — clic para desactivar' : 'Inactivo — clic para activar'}
+                  className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-1"
+                  style={{ background: branch.activo ? '#22c55e' : '#d1d5db' }}
                 >
-                  {branch.activo
-                    ? <ToggleRight className="w-4 h-4 text-green-600" />
-                    : <ToggleLeft className="w-4 h-4 text-gray-400" />
-                  }
+                  <span
+                    className="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform"
+                    style={{ transform: branch.activo ? 'translateX(1.1rem)' : 'translateX(0.2rem)' }}
+                  />
                 </button>
               </div>
             </div>
