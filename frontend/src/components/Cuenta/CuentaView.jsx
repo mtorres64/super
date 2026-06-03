@@ -12,6 +12,8 @@ import {
   CheckCircle2,
   X,
   Download,
+  Users,
+  Store,
 } from 'lucide-react';
 
 const WA_ICON_GREEN = (
@@ -32,18 +34,21 @@ const TIER_CONFIG = [
     label: 'Emprendedor',
     badgeCls: 'bg-emerald-100 text-emerald-700',
     features: ['POS / Ventas', 'Caja', 'Inventario', 'Notificaciones'],
+    limits: { usuarios: '2 usuarios', sucursales: '1 sucursal' },
   },
   {
     key: 'profesional',
     label: 'Profesional',
     badgeCls: 'bg-blue-100 text-blue-700',
     features: ['Todo Emprendedor', 'Reportes de Ventas', 'Compras y Proveedores', 'Alertas de Stock', 'Usuarios y Roles', 'Configuración'],
+    limits: { usuarios: 'Hasta 5 usuarios', sucursales: '1 sucursal' },
   },
   {
     key: 'empresarial',
     label: 'Empresarial',
     badgeCls: 'bg-violet-100 text-violet-700',
     features: ['Todo Profesional', 'Multi-sucursal'],
+    limits: { usuarios: 'Usuarios ilimitados', sucursales: 'Sucursales ilimitadas' },
   },
 ];
 
@@ -57,7 +62,7 @@ const PlanSelector = ({ planes, suscripcion, creandoPago, whatsappNumero, accion
         <p className="text-sm font-medium text-gray-700 mb-3">Elegí tu plan:</p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {TIER_CONFIG.map((tier) => {
-            const { key, label, badgeCls, features } = tier;
+            const { key, label, badgeCls, features, limits } = tier;
             const priceMensual = planes?.tiers?.[key]?.precio_mensual;
             const isCurrentTier = suscripcion?.plan_tier === key;
             return (
@@ -82,6 +87,16 @@ const PlanSelector = ({ planes, suscripcion, creandoPago, whatsappNumero, accion
                         </li>
                       ))}
                     </ul>
+                    <div className="mt-2 pt-2 border-t border-gray-100 space-y-0.5">
+                      <p className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                        <Users className="w-3 h-3 shrink-0" style={{ color: 'var(--primary)' }} />
+                        {limits.usuarios}
+                      </p>
+                      <p className="text-xs font-medium text-gray-600 flex items-center gap-1">
+                        <Store className="w-3 h-3 shrink-0" style={{ color: 'var(--primary)' }} />
+                        {limits.sucursales}
+                      </p>
+                    </div>
                   </div>
                   <div className="border-t border-gray-100 pt-3 mt-auto">
                     <p className="text-lg font-bold text-gray-900 mb-2">

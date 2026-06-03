@@ -19,6 +19,7 @@ import {
   Bell,
   RefreshCw,
   FileDown,
+  Store,
 } from 'lucide-react';
 
 // ─── Fotos de Unsplash ───────────────────────────────────────────
@@ -69,6 +70,7 @@ const TIER_CONFIG = [
     label: 'Emprendedor',
     badgeStyle: { background: '#d1fae5', color: '#065f46' },
     features: ['POS / Ventas', 'Caja', 'Inventario', 'Notificaciones'],
+    limits: { usuarios: '2 usuarios', sucursales: '1 sucursal' },
     popular: false,
   },
   {
@@ -76,6 +78,7 @@ const TIER_CONFIG = [
     label: 'Profesional',
     badgeStyle: { background: '#dbeafe', color: '#1e40af' },
     features: ['Todo Emprendedor', 'Reportes de Ventas', 'Compras y Proveedores', 'Alertas de Stock', 'Usuarios y Roles', 'Configuración'],
+    limits: { usuarios: 'Hasta 5 usuarios', sucursales: '1 sucursal' },
     popular: true,
   },
   {
@@ -83,6 +86,7 @@ const TIER_CONFIG = [
     label: 'Empresarial',
     badgeStyle: { background: '#ede9fe', color: '#5b21b6' },
     features: ['Todo Profesional', 'Multi-sucursal'],
+    limits: { usuarios: 'Usuarios ilimitados', sucursales: 'Sucursales ilimitadas' },
     popular: false,
   },
 ];
@@ -378,6 +382,16 @@ export default function LandingView({
                           </li>
                         ))}
                       </ul>
+                      <div style={{ borderTop: '1px solid #f3f4f6', marginTop: '0.5rem', paddingTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <p style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.825rem', fontWeight: 600, color: '#374151', margin: 0 }}>
+                          <Users style={{ width: 13, height: 13, color: '#10b981', flexShrink: 0 }} />
+                          {tier.limits.usuarios}
+                        </p>
+                        <p style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.825rem', fontWeight: 600, color: '#374151', margin: 0 }}>
+                          <Store style={{ width: 13, height: 13, color: '#10b981', flexShrink: 0 }} />
+                          {tier.limits.sucursales}
+                        </p>
+                      </div>
                     </div>
                     <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: '0.75rem', marginTop: 'auto' }}>
                       <p style={{ fontWeight: 800, color: '#111827', marginBottom: '0.15rem', lineHeight: 1 }}>

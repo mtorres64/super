@@ -76,6 +76,10 @@ const POS = () => {
   const isMobile = () => window.innerWidth < 768;
   const lastKeyTime = useRef(0);
   const cartItemsRef = useRef(null);
+  const barcodeTimerRef = useRef(null);
+  const lastCameraCode = useRef('');
+  const lastCameraTime = useRef(0);
+  const searchingRef = useRef(false);
 
   useEffect(() => {
     if (user?.branch_id) {
@@ -184,6 +188,8 @@ const POS = () => {
 
   const searchProductByBarcode = async (code = barcode) => {
     if (!code.trim()) return;
+    if (searchingRef.current) return;
+    searchingRef.current = true;
 
     try {
       const endpoint = user?.branch_id ? `${API}/branch-products` : `${API}/products`;
@@ -207,6 +213,8 @@ const POS = () => {
     } catch (error) {
       playErrorSound();
       toast.error('Error al buscar producto');
+    } finally {
+      searchingRef.current = false;
     }
   };
 
@@ -223,7 +231,8 @@ const POS = () => {
     lastKeyTime.current = currentTime;
 
     if (value.length >= 8 && isAutoScanning) {
-      setTimeout(() => {
+      clearTimeout(barcodeTimerRef.current);
+      barcodeTimerRef.current = setTimeout(() => {
         searchProductByBarcode(value);
         setIsAutoScanning(false);
       }, scanTimeout);
@@ -239,6 +248,10 @@ const POS = () => {
   };
 
   const handleCameraScan = (scannedCode) => {
+    const now = Date.now();
+    if (scannedCode === lastCameraCode.current && now - lastCameraTime.current < 2000) return;
+    lastCameraCode.current = scannedCode;
+    lastCameraTime.current = now;
     setBarcode(scannedCode);
     searchProductByBarcode(scannedCode);
   };
