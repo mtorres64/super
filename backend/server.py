@@ -1607,7 +1607,7 @@ async def get_branch_products(
     ]
 
     if search:
-        regex = {"$regex": search, "$options": "i"}
+        regex = {"$regex": re.escape(search), "$options": "i"}
         base_pipeline.append({"$match": {"$or": [{"nombre": regex}, {"codigo_barras": regex}]}})
 
     count_result = await db.branch_products.aggregate(base_pipeline + [{"$count": "total"}]).to_list(1)
@@ -1678,7 +1678,7 @@ async def get_products(
 ):
     query = {"empresa_id": user.empresa_id, "activo": True}
     if search:
-        regex = {"$regex": search, "$options": "i"}
+        regex = {"$regex": re.escape(search), "$options": "i"}
         query["$or"] = [{"nombre": regex}, {"codigo_barras": regex}]
     total = await db.products.count_documents(query)
     skip = (page - 1) * per_page
@@ -2005,7 +2005,7 @@ async def bulk_update_control_stock(data: BulkUpdateControlStockRequest, user: U
     if data.delete_all:
         query = {"empresa_id": user.empresa_id}
         if data.search:
-            regex = {"$regex": data.search, "$options": "i"}
+            regex = {"$regex": re.escape(data.search), "$options": "i"}
             query["$or"] = [{"nombre": regex}, {"codigo_barras": regex}]
         products = await db.products.find(query, {"id": 1}).to_list(None)
         ids = [p["id"] for p in products]
@@ -2053,7 +2053,7 @@ async def bulk_delete_products(data: BulkDeleteRequest, user: User = Depends(req
     if data.delete_all:
         query = {"empresa_id": user.empresa_id}
         if data.search:
-            regex = {"$regex": data.search, "$options": "i"}
+            regex = {"$regex": re.escape(data.search), "$options": "i"}
             query["$or"] = [{"nombre": regex}, {"codigo_barras": regex}]
         products_to_delete = await db.products.find(query, {"id": 1}).to_list(None)
         ids = [p["id"] for p in products_to_delete]
