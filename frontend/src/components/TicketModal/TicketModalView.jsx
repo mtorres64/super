@@ -11,6 +11,13 @@ const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, t
 
   const handlePrint = onPrint || (() => window.print());
 
+  const totalReturns = returns.reduce((s, r) => s + r.total, 0);
+  const netSubtotal = sale.subtotal - totalReturns;
+  const pct = (config?.payment_method_adjustments || {})[sale.metodo_pago] ?? 0;
+  const storedAdj = sale.total - sale.subtotal - (sale.impuestos || 0);
+  const netAdj = totalReturns > 0 ? (netSubtotal * pct / 100) : storedAdj;
+  const netTotal = netSubtotal + (sale.impuestos || 0) + netAdj;
+
   return (
     <div className={`ticket-modal-overlay${closing ? ' closing' : ''}`}>
       <div className={`ticket-modal-container${closing ? ' closing' : ''}`}>
@@ -123,7 +130,7 @@ const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, t
 
           <div className="ticket-total-row">
             <span>Subtotal:</span>
-            <span>{sym}{formatAmount(sale.subtotal)}</span>
+            <span>{sym}{formatAmount(netSubtotal)}</span>
           </div>
           {sale.impuestos > 0 && (
             <div className="ticket-total-row">
@@ -131,23 +138,20 @@ const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, t
               <span>{sym}{formatAmount(sale.impuestos)}</span>
             </div>
           )}
-          {(() => {
-            const adjAmount = sale.total - sale.subtotal - sale.impuestos;
-            if (Math.abs(adjAmount) < 0.001) return null;
-            const pct = (config?.payment_method_adjustments || {})[sale.metodo_pago] ?? 0;
+          {Math.abs(netAdj) >= 0.001 && (() => {
             const label = pct < 0
-              ? `Descuento ${sale.metodo_pago} (${Math.abs(pct)}%):`
+              ? `Descuento efectivo (${Math.abs(pct)}%):`
               : `Recargo ${sale.metodo_pago} (${pct}%):`;
             return (
-              <div className="ticket-total-row" style={{ color: adjAmount < 0 ? '#16a34a' : '#dc2626' }}>
+              <div className="ticket-total-row" style={{ color: netAdj < 0 ? '#16a34a' : '#dc2626' }}>
                 <span>{label}</span>
-                <span>{adjAmount < 0 ? '-' : '+'}{sym}{formatAmount(Math.abs(adjAmount))}</span>
+                <span>{netAdj < 0 ? '-' : '+'}{sym}{formatAmount(Math.abs(netAdj))}</span>
               </div>
             );
           })()}
           <div className="ticket-total-row ticket-total-final">
             <span>TOTAL:</span>
-            <span>{sym}{formatAmount(sale.total - returns.reduce((s, r) => s + r.total, 0))}</span>
+            <span>{sym}{formatAmount(netTotal)}</span>
           </div>
 
           {sale.cae && (
