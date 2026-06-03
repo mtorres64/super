@@ -6,6 +6,7 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import io
+import re
 import json
 import logging
 from pathlib import Path
@@ -1056,7 +1057,7 @@ async def get_branch_products_admin(
         raise HTTPException(status_code=404, detail="Branch not found")
     query = {"empresa_id": user.empresa_id, "activo": True}
     if search:
-        regex = {"$regex": search, "$options": "i"}
+        regex = {"$regex": re.escape(search), "$options": "i"}
         query["$or"] = [{"nombre": regex}, {"codigo_barras": regex}]
     total = await db.products.count_documents(query)
     if all:
@@ -1505,7 +1506,7 @@ async def update_category(category_id: str, category_data: CategoryCreate, user:
         raise HTTPException(status_code=404, detail="Categoría no encontrada")
     await db.categories.update_one(
         {"id": category_id},
-        {"$set": {"nombre": category_data.nombre, "descripcion": category_data.descripcion}}
+        {"$set": {"nombre": category_data.nombre, "descripcion": category_data.descripcion, "icono": category_data.icono}}
     )
     updated = await db.categories.find_one({"id": category_id})
     return Category(**updated)
@@ -1560,7 +1561,7 @@ async def bulk_delete_branch_products(data: BranchProductBulkDeleteRequest, user
     if data.delete_all and data.branch_id:
         query = {"branch_id": data.branch_id, "empresa_id": user.empresa_id}
         if data.search:
-            regex = {"$regex": data.search, "$options": "i"}
+            regex = {"$regex": re.escape(data.search), "$options": "i"}
             matching_products = await db.products.find(
                 {"empresa_id": user.empresa_id, "$or": [{"nombre": regex}, {"codigo_barras": regex}]},
                 {"id": 1}
