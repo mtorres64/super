@@ -119,7 +119,9 @@ const POSView = ({
   }, [focusedIdx]);
 
   const handleSearchKeyDown = (e) => {
-    if (e.key === 'ArrowDown') {
+    if (e.key === 'Escape') {
+      e.target.select();
+    } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       setFocusedIdx(i => Math.min(i + 1, paginatedProducts.length - 1));
     } else if (e.key === 'ArrowUp') {
@@ -128,6 +130,10 @@ const POSView = ({
     } else if (e.key === 'Enter') {
       if (focusedIdx >= 0 && paginatedProducts[focusedIdx]) {
         addToCart(paginatedProducts[focusedIdx]);
+        playSuccessSound();
+        setFocusedIdx(-1);
+      } else if (paginatedProducts.length === 1) {
+        addToCart(paginatedProducts[0]);
         playSuccessSound();
         setFocusedIdx(-1);
       } else {
@@ -566,6 +572,7 @@ const POSView = ({
                         }
                       }}
                       onBlur={() => commitWeightDraft(item.id)}
+                      onClick={(e) => e.target.select()}
                       onKeyDown={(e) => { if (e.key === 'Enter') { e.target.blur(); } }}
                       className="quantity-input"
                     />
