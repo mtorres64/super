@@ -226,6 +226,7 @@ const Settings = () => {
     setDarkMode(enabled);
     document.documentElement.classList.toggle('dark', enabled);
     localStorage.setItem('dark_mode', enabled ? 'true' : 'false');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', enabled ? '#1e1e1e' : '#ffffff');
   };
 
   // ── Funciones AFIP ──────────────────────────────────────────────────────────

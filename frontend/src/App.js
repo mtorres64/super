@@ -42,6 +42,7 @@ if (localStorage.getItem('dark_mode') === 'true') {
   const path = window.location.pathname;
   if (path !== '/login' && path !== '/') {
     document.documentElement.classList.add('dark');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#1e1e1e');
   }
 }
 
@@ -235,6 +236,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token');
     localStorage.removeItem('dark_mode');
     document.documentElement.classList.remove('dark');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#ffffff');
     delete axios.defaults.headers.common['Authorization'];
     // Restaurar colores por defecto (verde) al cerrar sesión
     resetTheme();
