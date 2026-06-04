@@ -61,13 +61,30 @@ const BranchManagement = () => {
       .finally(() => setConfigLoaded(true));
   }, []);
 
-  // Confirm text search on Enter press
+  // Auto-search while typing (from 2nd character), with debounce
+  useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (searchTerm.length === 0) {
+      setDebouncedSearch('');
+      setCurrentPage(1);
+    } else if (searchTerm.length >= 2) {
+      searchTimerRef.current = setTimeout(() => {
+        setDebouncedSearch(searchTerm);
+        setCurrentPage(1);
+      }, 350);
+    }
+    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
+  }, [searchTerm]);
+
+  // Confirm text search on Enter press (immediate, no debounce)
   const commitSearch = () => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     setDebouncedSearch(searchTerm);
     setCurrentPage(1);
   };
 
   const clearSearch = () => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     setSearchTerm('');
     setDebouncedSearch('');
     setCurrentPage(1);

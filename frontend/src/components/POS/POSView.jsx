@@ -109,6 +109,32 @@ const POSView = ({
   branchCount,
 }) => {
   const [weightInputDraft, setWeightInputDraft] = React.useState({});
+  const [focusedIdx, setFocusedIdx] = React.useState(-1);
+
+  React.useEffect(() => { setFocusedIdx(-1); }, [paginatedProducts]);
+  React.useEffect(() => {
+    if (focusedIdx >= 0) {
+      document.querySelector('[data-pos-focused="true"]')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [focusedIdx]);
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setFocusedIdx(i => Math.min(i + 1, paginatedProducts.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setFocusedIdx(i => Math.max(i - 1, -1));
+    } else if (e.key === 'Enter') {
+      if (focusedIdx >= 0 && paginatedProducts[focusedIdx]) {
+        addToCart(paginatedProducts[focusedIdx]);
+        playSuccessSound();
+        setFocusedIdx(-1);
+      } else {
+        commitSearch();
+      }
+    }
+  };
 
   const commitWeightDraft = (itemId) => {
     if (weightInputDraft[itemId] !== undefined) {
@@ -165,7 +191,7 @@ const POSView = ({
         </div>
 
         {/* Cash Session Alert + Scanner Info */}
-        <div className="hidden md:flex mb-6 flex-col md:flex-row gap-4">
+        <div className="hidden md:flex mb-2 flex-col md:flex-row gap-4">
         {sessionLoading ? (
           <div className="flex-1 bg-gray-50 border border-gray-200 p-4 rounded-lg">
             <div className="flex items-center">
@@ -192,7 +218,7 @@ const POSView = ({
             </div>
           </div>
         ) : (
-          <div className="flex-1 p-4 rounded-lg pos-session-open" style={{ background: 'var(--primary-bg)', borderLeft: '4px solid var(--primary)' }}>
+          <div className="flex-1 py-2 px-4 rounded-lg pos-session-open" style={{ background: 'var(--primary-bg)', borderLeft: '4px solid var(--primary)' }}>
             <div className="flex items-center">
               <div className="mr-3" style={{ color: 'var(--primary)' }}>✅</div>
               <div>
@@ -206,12 +232,12 @@ const POSView = ({
         )}
 
         {/* Scanner Info */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex-1">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg py-2 px-3 flex-1">
           <div className="flex items-center text-sm text-blue-800">
             <Scan className="w-4 h-4 mr-2" />
             <span className="font-medium">Modos de escaneado:</span>
           </div>
-          <div className="mt-1 text-xs text-blue-700 space-y-1">
+          <div className="text-xs text-blue-700">
             <p>• <strong>Escáner USB/Bluetooth:</strong> Simplemente escanea, se detecta automáticamente</p>
             <p>• <strong>Cámara web:</strong> Usa el botón de cámara para escanear visualmente</p>
             <p>• <strong>Manual:</strong> Ingresa el código y presiona Enter</p>
@@ -234,16 +260,18 @@ const POSView = ({
                   value={searchTerm}
                   autoComplete="on"
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') commitSearch(); }}
+                  onKeyDown={handleSearchKeyDown}
                 />
                 {searchTerm && (
-                  <button
-                    type="button"
-                    onClick={clearSearch}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                  productsLoading
+                    ? <div className="absolute right-3 top-1/2 -translate-y-1/2 spinner w-4 h-4" />
+                    : <button
+                        type="button"
+                        onClick={clearSearch}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
                 )}
               </div>
 
@@ -300,15 +328,17 @@ const POSView = ({
               </div>
             ) : (
               <>
+                <div className={`products-scroll-area${(config?.product_view_mode || 'cards') === 'cards' ? ' products-scroll-area--cards' : ''}`}>
                 {(config?.product_view_mode || 'cards') === 'rows' ? (
                   <div className="products-rows">
-                    {paginatedProducts.map(product => {
+                    {paginatedProducts.map((product, idx) => {
                       const cat = categories?.find(c => c.id === product.categoria_id);
                       const CatIcon = getCategoryIcon(cat?.nombre, cat?.icono);
                       return (
                         <div
                           key={product.id}
-                          className="product-row"
+                          className={`product-row${focusedIdx === idx ? ' focused' : ''}`}
+                          data-pos-focused={focusedIdx === idx ? 'true' : undefined}
                           onClick={() => { addToCart(product); if (isMobile()) playSuccessSound(); }}
                         >
                           <div>
@@ -332,10 +362,11 @@ const POSView = ({
                   </div>
                 ) : (
                   <div className="products-grid">
-                    {paginatedProducts.map(product => (
+                    {paginatedProducts.map((product, idx) => (
                       <div
                         key={product.id}
-                        className="product-card"
+                        className={`product-card${focusedIdx === idx ? ' focused' : ''}`}
+                        data-pos-focused={focusedIdx === idx ? 'true' : undefined}
                         onClick={() => { addToCart(product); if (isMobile()) playSuccessSound(); }}
                       >
                         <div className="product-name">{product.nombre}</div>
@@ -363,6 +394,7 @@ const POSView = ({
                     ))}
                   </div>
                 )}
+                </div>
 
                 {/* Pagination */}
                 {totalPages > 1 && (

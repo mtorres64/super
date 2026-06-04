@@ -99,6 +99,31 @@ const ProductManagementView = ({
   const [categorySearch, setCategorySearch] = useState('');
   const [categoryInputText, setCategoryInputText] = useState('');
   const [showCategoryAc, setShowCategoryAc] = useState(false);
+  const [focusedIdx, setFocusedIdx] = useState(-1);
+
+  useEffect(() => { setFocusedIdx(-1); }, [paginatedProducts]);
+  useEffect(() => {
+    if (focusedIdx >= 0) {
+      document.querySelector('[data-pm-focused="true"]')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [focusedIdx]);
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setFocusedIdx(i => Math.min(i + 1, paginatedProducts.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setFocusedIdx(i => Math.max(i - 1, -1));
+    } else if (e.key === 'Enter') {
+      if (focusedIdx >= 0 && paginatedProducts[focusedIdx]) {
+        openModal(paginatedProducts[focusedIdx]);
+        setFocusedIdx(-1);
+      } else {
+        commitSearch();
+      }
+    }
+  };
 
   useEffect(() => {
     if (!showCategoryModal) setCategorySearch('');
@@ -118,7 +143,7 @@ const ProductManagementView = ({
     c.nombre.toLowerCase().includes(categoryInputText.toLowerCase())
   );
 
-  if (loading) {
+  if (loading && paginatedProducts.length === 0) {
     return (
       <div className="p-6">
         <div className="flex items-center justify-center h-64">
@@ -167,16 +192,18 @@ const ProductManagementView = ({
               className="form-input pl-10"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') commitSearch(); }}
+              onKeyDown={handleSearchKeyDown}
             />
             {searchTerm && (
-              <button
-                type="button"
-                onClick={clearSearch}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              loading
+                ? <div className="absolute right-3 top-1/2 -translate-y-1/2 spinner w-4 h-4" />
+                : <button
+                    type="button"
+                    onClick={clearSearch}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
             )}
           </div>
 
@@ -277,8 +304,12 @@ const ProductManagementView = ({
             </tr>
           </thead>
           <tbody>
-            {paginatedProducts.map(product => (
-              <tr key={product.id} className={selectedRows.has(product.id) ? 'bg-blue-50' : ''}>
+            {paginatedProducts.map((product, idx) => (
+              <tr
+                key={product.id}
+                data-pm-focused={focusedIdx === idx ? 'true' : undefined}
+                className={focusedIdx === idx ? 'bg-green-50 outline outline-2 outline-green-400' : selectedRows.has(product.id) ? 'bg-blue-50' : ''}
+              >
                 <td>
                   <input
                     type="checkbox"

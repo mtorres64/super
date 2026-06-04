@@ -164,6 +164,7 @@ const POS = () => {
     }
   };
 
+
   const fetchAfipConfig = async () => {
     try {
       const response = await axios.get(`${API}/afip/config`);
