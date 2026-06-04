@@ -105,15 +105,34 @@ const POS = () => {
     }
   }, []);
 
-  // Debounce text search: resets to page 1
+  // Auto-search while typing (from 2nd character), with debounce
   useEffect(() => {
-    clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = setTimeout(() => {
-      setDebouncedSearch(searchTerm);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (searchTerm.length === 0) {
+      setDebouncedSearch('');
       setCurrentPage(1);
-    }, 400);
-    return () => clearTimeout(searchTimerRef.current);
+    } else if (searchTerm.length >= 2) {
+      searchTimerRef.current = setTimeout(() => {
+        setDebouncedSearch(searchTerm);
+        setCurrentPage(1);
+      }, 350);
+    }
+    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
   }, [searchTerm]);
+
+  // Confirm text search on Enter press (immediate, no debounce)
+  const commitSearch = () => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    setDebouncedSearch(searchTerm);
+    setCurrentPage(1);
+  };
+
+  const clearSearch = () => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    setSearchTerm('');
+    setDebouncedSearch('');
+    setCurrentPage(1);
+  };
 
   // Reload products when page or search changes (wait for config first)
   useEffect(() => {
@@ -585,6 +604,8 @@ const POS = () => {
       TAB_COLORS={TAB_COLORS}
       searchTerm={searchTerm}
       setSearchTerm={setSearchTerm}
+      commitSearch={commitSearch}
+      clearSearch={clearSearch}
       barcode={barcode}
       barcodeInputRef={barcodeInputRef}
       handleBarcodeInput={handleBarcodeInput}

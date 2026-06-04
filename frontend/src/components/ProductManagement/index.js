@@ -111,15 +111,17 @@ const ProductManagement = () => {
     fetchConfiguration();
   }, []);
 
-  // Debounce search: updates debouncedSearch 400ms after typing, resetting to page 1
-  useEffect(() => {
-    clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = setTimeout(() => {
-      setDebouncedSearch(searchTerm);
-      setCurrentPage(1);
-    }, 400);
-    return () => clearTimeout(searchTimerRef.current);
-  }, [searchTerm]);
+  // Confirm text search on Enter press
+  const commitSearch = () => {
+    setDebouncedSearch(searchTerm);
+    setCurrentPage(1);
+  };
+
+  const clearSearch = () => {
+    setSearchTerm('');
+    setDebouncedSearch('');
+    setCurrentPage(1);
+  };
 
   // Fetch products from server when page, search or config changes
   useEffect(() => {
@@ -543,6 +545,8 @@ const ProductManagement = () => {
       editingProduct={editingProduct}
       searchTerm={searchTerm}
       setSearchTerm={setSearchTerm}
+      commitSearch={commitSearch}
+      clearSearch={clearSearch}
       newCategory={newCategory}
       setNewCategory={setNewCategory}
       showCategoryModal={showCategoryModal}

@@ -18,6 +18,8 @@ const ProductManagementView = ({
   editingProduct,
   searchTerm,
   setSearchTerm,
+  commitSearch,
+  clearSearch,
   newCategory,
   setNewCategory,
   showCategoryModal,
@@ -165,7 +167,17 @@ const ProductManagementView = ({
               className="form-input pl-10"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') commitSearch(); }}
             />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={clearSearch}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
 
 

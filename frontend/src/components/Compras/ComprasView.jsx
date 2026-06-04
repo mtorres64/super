@@ -290,7 +290,7 @@ const ComprasView = ({
 
       {/* ── MODAL FACTURA (incluye confirmación de precios en el mismo overlay) ── */}
       {showCompraModal && (
-        <div className={`modal-overlay${compraModalClosing ? ' closing' : ''}`} onClick={showPriceModal ? undefined : closeCompraModalAnim}>
+        <div className={`modal-overlay${compraModalClosing ? ' closing' : ''}`}>
           <div
             className={`modal-content${compraModalClosing ? ' closing' : ''}`}
             style={{ maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto' }}

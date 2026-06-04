@@ -43,6 +43,8 @@ const POSView = ({
   TAB_COLORS,
   searchTerm,
   setSearchTerm,
+  commitSearch,
+  clearSearch,
   barcode,
   barcodeInputRef,
   handleBarcodeInput,
@@ -106,6 +108,16 @@ const POSView = ({
   branchName,
   branchCount,
 }) => {
+  const [weightInputDraft, setWeightInputDraft] = React.useState({});
+
+  const commitWeightDraft = (itemId) => {
+    if (weightInputDraft[itemId] !== undefined) {
+      const val = parseFloat(weightInputDraft[itemId]);
+      if (!isNaN(val) && val > 0) updateQuantity(itemId, val);
+      setWeightInputDraft(prev => { const next = { ...prev }; delete next[itemId]; return next; });
+    }
+  };
+
   return (
     <div className="pos-page">
       {/* Vista móvil: caja cerrada */}
@@ -220,12 +232,14 @@ const POSView = ({
                   className="form-input pl-10"
                   style={searchTerm ? { paddingRight: '2.25rem' } : {}}
                   value={searchTerm}
+                  autoComplete="on"
                   onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') commitSearch(); }}
                 />
                 {searchTerm && (
                   <button
                     type="button"
-                    onClick={() => setSearchTerm('')}
+                    onClick={clearSearch}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
                     <X className="h-4 w-4" />
@@ -277,46 +291,78 @@ const POSView = ({
             </div>
           </div>
 
-          {/* Products Grid */}
+          {/* Products Grid / Rows */}
           <div className="pos-products">
-            {productsLoading ? (
+            {productsLoading && paginatedProducts.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full py-16 text-gray-500">
                 <div className="spinner w-10 h-10 mb-4"></div>
                 <p className="text-sm">Cargando productos...</p>
               </div>
             ) : (
               <>
-                <div className="products-grid">
-                  {paginatedProducts.map(product => (
-                    <div
-                      key={product.id}
-                      className="product-card"
-                      onClick={() => { addToCart(product); if (isMobile()) playSuccessSound(); }}
-                    >
-                      <div className="product-name">{product.nombre}</div>
-                      <div className="product-price">
-                        {config?.currency_symbol || '$'}{formatAmount(product.tipo === 'por_peso' && product.precio_por_peso ? product.precio_por_peso : product.precio)}
-                        {product.tipo === 'por_peso' && '/kg'}
-                      </div>
-                      <div className="product-stock">
-                        Stock: {product.stock}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                        {(() => {
-                          const cat = categories?.find(c => c.id === product.categoria_id);
-                          const CatIcon = getCategoryIcon(cat?.nombre, cat?.icono);
-                          return <CatIcon className="w-3 h-3 shrink-0" />;
-                        })()}
-                        {getCategoryName(product.categoria_id)}
-                      </div>
-                      {product.codigo_barras && (
-                        <div className="text-xs text-blue-600 mt-1">
-                          Código: {product.codigo_barras}
+                {(config?.product_view_mode || 'cards') === 'rows' ? (
+                  <div className="products-rows">
+                    {paginatedProducts.map(product => {
+                      const cat = categories?.find(c => c.id === product.categoria_id);
+                      const CatIcon = getCategoryIcon(cat?.nombre, cat?.icono);
+                      return (
+                        <div
+                          key={product.id}
+                          className="product-row"
+                          onClick={() => { addToCart(product); if (isMobile()) playSuccessSound(); }}
+                        >
+                          <div>
+                            <div className="product-row-name">{product.nombre}</div>
+                            <div className="product-row-meta">
+                              <CatIcon className="w-3 h-3 shrink-0" />
+                              {getCategoryName(product.categoria_id)}
+                              {product.codigo_barras && (
+                                <span className="product-row-code ml-2">· {product.codigo_barras}</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="product-row-price">
+                            {config?.currency_symbol || '$'}{formatAmount(product.tipo === 'por_peso' && product.precio_por_peso ? product.precio_por_peso : product.precio)}
+                            {product.tipo === 'por_peso' && '/kg'}
+                          </div>
+                          <div className="product-row-stock">Stock: {product.stock}</div>
                         </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="products-grid">
+                    {paginatedProducts.map(product => (
+                      <div
+                        key={product.id}
+                        className="product-card"
+                        onClick={() => { addToCart(product); if (isMobile()) playSuccessSound(); }}
+                      >
+                        <div className="product-name">{product.nombre}</div>
+                        <div className="product-price">
+                          {config?.currency_symbol || '$'}{formatAmount(product.tipo === 'por_peso' && product.precio_por_peso ? product.precio_por_peso : product.precio)}
+                          {product.tipo === 'por_peso' && '/kg'}
+                        </div>
+                        <div className="product-stock">
+                          Stock: {product.stock}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                          {(() => {
+                            const cat = categories?.find(c => c.id === product.categoria_id);
+                            const CatIcon = getCategoryIcon(cat?.nombre, cat?.icono);
+                            return <CatIcon className="w-3 h-3 shrink-0" />;
+                          })()}
+                          {getCategoryName(product.categoria_id)}
+                        </div>
+                        {product.codigo_barras && (
+                          <div className="text-xs text-blue-600 mt-1">
+                            Código: {product.codigo_barras}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Pagination */}
                 {totalPages > 1 && (
@@ -466,7 +512,10 @@ const POSView = ({
 
                   <div className="cart-item-controls">
                     <button
-                      onClick={() => updateQuantity(item.id, parseFloat((item.quantity - (item.tipo === 'por_peso' ? 0.1 : 1)).toFixed(3)))}
+                      onClick={() => {
+                        setWeightInputDraft(prev => { const next = { ...prev }; delete next[item.id]; return next; });
+                        updateQuantity(item.id, parseFloat((item.quantity - (item.tipo === 'por_peso' ? 0.1 : 1)).toFixed(3)));
+                      }}
                       className="quantity-btn"
                     >
                       <Minus className="w-4 h-4" />
@@ -474,20 +523,26 @@ const POSView = ({
 
                     <input
                       type="number"
-                      min={item.tipo === 'por_peso' ? '0.01' : '1'}
-                      step={item.tipo === 'por_peso' ? '0.1' : '1'}
-                      value={item.quantity}
+                      min={item.tipo === 'por_peso' ? '0.001' : '1'}
+                      step={item.tipo === 'por_peso' ? '0.001' : '1'}
+                      value={weightInputDraft[item.id] !== undefined ? weightInputDraft[item.id] : item.quantity}
                       onChange={(e) => {
-                        const val = item.tipo === 'por_peso'
-                          ? parseFloat(e.target.value) || 0.1
-                          : parseInt(e.target.value) || 1;
-                        updateQuantity(item.id, val);
+                        if (item.tipo === 'por_peso') {
+                          setWeightInputDraft(prev => ({ ...prev, [item.id]: e.target.value }));
+                        } else {
+                          updateQuantity(item.id, parseInt(e.target.value) || 1);
+                        }
                       }}
+                      onBlur={() => commitWeightDraft(item.id)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.target.blur(); } }}
                       className="quantity-input"
                     />
 
                     <button
-                      onClick={() => updateQuantity(item.id, parseFloat((item.quantity + (item.tipo === 'por_peso' ? 0.1 : 1)).toFixed(3)))}
+                      onClick={() => {
+                        setWeightInputDraft(prev => { const next = { ...prev }; delete next[item.id]; return next; });
+                        updateQuantity(item.id, parseFloat((item.quantity + (item.tipo === 'por_peso' ? 0.1 : 1)).toFixed(3)));
+                      }}
                       className="quantity-btn"
                     >
                       <Plus className="w-4 h-4" />

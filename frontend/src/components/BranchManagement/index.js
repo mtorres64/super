@@ -61,15 +61,17 @@ const BranchManagement = () => {
       .finally(() => setConfigLoaded(true));
   }, []);
 
-  // Debounce search
-  useEffect(() => {
-    clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = setTimeout(() => {
-      setDebouncedSearch(searchTerm);
-      setCurrentPage(1);
-    }, 400);
-    return () => clearTimeout(searchTimerRef.current);
-  }, [searchTerm]);
+  // Confirm text search on Enter press
+  const commitSearch = () => {
+    setDebouncedSearch(searchTerm);
+    setCurrentPage(1);
+  };
+
+  const clearSearch = () => {
+    setSearchTerm('');
+    setDebouncedSearch('');
+    setCurrentPage(1);
+  };
 
   // Re-fetch when branch, page or search changes
   useEffect(() => {
@@ -620,6 +622,8 @@ const BranchManagement = () => {
       onClearSelection={handleClearSelection}
       onSetCurrentPage={setCurrentPage}
       onSearch={handleSearch}
+      onCommitSearch={commitSearch}
+      onClearSearch={clearSearch}
       onApplyBulkMargen={applyBulkMargen}
       onApplyBulkStockMin={applyBulkStockMin}
       onApplyBulkStock={applyBulkStock}

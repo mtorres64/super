@@ -13,6 +13,7 @@ import {
   Volume2,
   VolumeX,
   Grid3X3,
+  List,
   Palette,
   Check,
   Wifi,
@@ -644,6 +645,34 @@ const SettingsView = ({
                         <span className="slider"></span>
                       </label>
                     </div>
+                  </div>
+                </div>
+
+                {/* Product View Mode */}
+                <div className="bg-gray-50 rounded-lg p-6">
+                  <h4 className="font-medium text-gray-900 mb-4">Vista de Productos</h4>
+                  <p className="text-sm text-gray-500 mb-4">Elige cómo se muestran los productos en el punto de venta</p>
+
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => updateConfig('product_view_mode', 'cards')}
+                      className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all cursor-pointer ${(config?.product_view_mode || 'cards') === 'cards' ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}
+                    >
+                      <Grid3X3 className={`w-6 h-6 ${(config?.product_view_mode || 'cards') === 'cards' ? 'text-green-600' : 'text-gray-400'}`} />
+                      <span className={`text-sm font-medium ${(config?.product_view_mode || 'cards') === 'cards' ? 'text-green-700' : 'text-gray-600'}`}>Tarjetas</span>
+                      <span className="text-xs text-gray-400 text-center">Cuadrícula con tarjetas grandes</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => updateConfig('product_view_mode', 'rows')}
+                      className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all cursor-pointer ${config?.product_view_mode === 'rows' ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}
+                    >
+                      <List className={`w-6 h-6 ${config?.product_view_mode === 'rows' ? 'text-green-600' : 'text-gray-400'}`} />
+                      <span className={`text-sm font-medium ${config?.product_view_mode === 'rows' ? 'text-green-700' : 'text-gray-600'}`}>Filas</span>
+                      <span className="text-xs text-gray-400 text-center">Lista compacta en filas</span>
+                    </button>
                   </div>
                 </div>
 

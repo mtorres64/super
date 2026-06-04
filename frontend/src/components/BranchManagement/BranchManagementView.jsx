@@ -91,6 +91,8 @@ const BranchManagementView = ({
   onClearSelection,
   onSetCurrentPage,
   onSearch,
+  onCommitSearch,
+  onClearSearch,
   onApplyBulkMargen,
   onApplyBulkStockMin,
   onApplyBulkStock,
@@ -188,9 +190,20 @@ const BranchManagementView = ({
               type="text"
               placeholder="Buscar productos..."
               className="form-input pl-10"
+              style={searchTerm ? { paddingRight: '2.25rem' } : {}}
               value={searchTerm}
               onChange={(e) => onSearch(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') onCommitSearch(); }}
             />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={onClearSearch}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
 

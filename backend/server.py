@@ -599,6 +599,9 @@ class Configuration(BaseModel):
     # Pagination Settings
     items_per_page: int = 10
 
+    # POS Display Settings
+    product_view_mode: str = "cards"  # "cards" | "rows"
+
     # Company Branding
     company_logo: Optional[str] = None  # URL or base64 of logo
 
@@ -640,6 +643,7 @@ class ConfigurationUpdate(BaseModel):
     show_receipt_after_sale: Optional[bool] = None
     receipt_width: Optional[int] = None
     items_per_page: Optional[int] = None
+    product_view_mode: Optional[str] = None
     company_logo: Optional[str] = None
     primary_color: Optional[str] = None
     secondary_color: Optional[str] = None
