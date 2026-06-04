@@ -23,6 +23,7 @@ import OwnerPanel from './components/OwnerPanel';
 import SalesReports from './components/SalesReports';
 import StockAlerts from './components/StockAlerts';
 import Notificaciones from './components/Notificaciones';
+import Manual from './components/Manual';
 import { Toaster } from './components/ui/sonner';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -560,6 +561,14 @@ function App() {
               }
             />
             <Route path="/owner" element={<OwnerPanel />} />
+            <Route
+              path="/manual"
+              element={
+                <ProtectedRoute allowedRoles={['admin', 'supervisor', 'cajero']}>
+                  <Manual />
+                </ProtectedRoute>
+              }
+            />
           </Routes>
         </BrowserRouter>
         <Toaster />

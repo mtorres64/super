@@ -7,7 +7,7 @@ import {
   Unlock,
   TrendingUp,
   FileText,
-  AlertCircle,
+  BookOpen,
   Clock
 } from 'lucide-react';
 
@@ -220,21 +220,24 @@ const CashManagerView = ({
           </div>
         </Link>
 
-        <div className="group block p-6 bg-white rounded-lg shadow border-2 border-orange-200">
+        <Link
+          to="/manual"
+          className="group block p-6 bg-white rounded-lg shadow hover:shadow-md transition-shadow border-2 border-orange-200 hover:border-orange-300"
+        >
           <div className="flex items-center">
-            <div className="bg-orange-500 p-3 rounded-lg text-white">
-              <AlertCircle className="w-6 h-6" />
+            <div className="bg-orange-500 p-3 rounded-lg text-white group-hover:scale-110 transition-transform">
+              <BookOpen className="w-6 h-6" />
             </div>
             <div className="ml-4">
               <h3 className="text-lg font-medium text-gray-900">
                 Ayuda
               </h3>
               <p className="text-sm text-gray-500">
-                Soporte técnico
+                Manual del sistema
               </p>
             </div>
           </div>
-        </div>
+        </Link>
       </div>
 
       {/* Open Cash Modal */}

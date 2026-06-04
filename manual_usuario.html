@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PULS Market — Manual del Sistema</title>
+<style>
+  /* ── Reset & Base ─────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; font-size: 15px; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #f8fafc;
+    color: #1e293b;
+    line-height: 1.6;
+  }
+  a { color: #10b981; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ── Variables ────────────────────────────────── */
+  :root {
+    --green:       #10b981;
+    --green-dark:  #059669;
+    --green-darker:#047857;
+    --green-light: #d1fae5;
+    --green-bg:    #ecfdf5;
+    --sidebar-w:   260px;
+    --header-h:    64px;
+  }
+
+  /* ── Print ────────────────────────────────────── */
+  @media print {
+    .sidebar, .top-bar { display: none !important; }
+    .content { margin-left: 0 !important; padding: 1.5rem !important; }
+    .section { page-break-inside: avoid; }
+    .cover { page-break-after: always; min-height: auto; }
+    .screenshot-placeholder { border: 1px dashed #ccc; }
+    h2 { page-break-before: always; }
+    h2:first-of-type { page-break-before: avoid; }
+  }
+
+  /* ── Top Bar ──────────────────────────────────── */
+  .top-bar {
+    position: fixed; top: 0; left: 0; right: 0;
+    height: var(--header-h);
+    background: white;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex; align-items: center;
+    padding: 0 1.5rem;
+    z-index: 100;
+    gap: 1rem;
+  }
+  .top-bar .logo { display: flex; align-items: center; gap: .5rem; font-weight: 700; font-size: 1.1rem; color: var(--green-dark); }
+  .top-bar .logo span { color: #1e293b; }
+  .top-bar .subtitle { color: #64748b; font-size: .85rem; margin-left: auto; }
+
+  /* ── Sidebar ──────────────────────────────────── */
+  .sidebar {
+    position: fixed; top: var(--header-h); left: 0; bottom: 0;
+    width: var(--sidebar-w);
+    background: white;
+    border-right: 1px solid #e2e8f0;
+    overflow-y: auto;
+    padding: 1rem 0 2rem;
+    z-index: 90;
+  }
+  .sidebar-section { padding: .5rem 1rem .25rem; font-size: .7rem; font-weight: 700; text-transform: uppercase; color: #94a3b8; letter-spacing: .06em; margin-top: .75rem; }
+  .sidebar a {
+    display: flex; align-items: center; gap: .5rem;
+    padding: .45rem 1.25rem;
+    font-size: .82rem; color: #475569;
+    border-left: 3px solid transparent;
+    transition: all .15s;
+  }
+  .sidebar a:hover { background: var(--green-bg); color: var(--green-dark); border-left-color: var(--green); text-decoration: none; }
+  .sidebar a .num { background: var(--green-light); color: var(--green-darker); border-radius: 9999px; font-size: .68rem; font-weight: 700; padding: .05rem .4rem; min-width: 20px; text-align: center; }
+
+  /* ── Content ──────────────────────────────────── */
+  .content { margin-left: var(--sidebar-w); margin-top: var(--header-h); padding: 2.5rem 2rem 4rem; max-width: 900px; }
+
+  /* ── Cover ────────────────────────────────────── */
+  .cover {
+    min-height: calc(100vh - var(--header-h));
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 4rem 2rem;
+    background: linear-gradient(135deg, var(--green-bg) 0%, white 60%);
+    border-radius: 1rem; margin-bottom: 3rem;
+  }
+  .cover .cover-logo { font-size: 3rem; font-weight: 900; color: var(--green-dark); letter-spacing: -.05em; }
+  .cover .cover-logo span { color: #1e293b; }
+  .cover h1 { font-size: 2rem; font-weight: 700; color: #1e293b; margin: 1rem 0 .5rem; }
+  .cover .cover-sub { color: #64748b; font-size: 1.05rem; max-width: 480px; }
+  .cover .cover-meta { margin-top: 2.5rem; display: flex; gap: 2rem; flex-wrap: wrap; justify-content: center; }
+  .cover .cover-badge { background: white; border: 1px solid #e2e8f0; border-radius: .75rem; padding: .6rem 1.2rem; font-size: .82rem; color: #475569; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .cover .cover-badge strong { display: block; color: #1e293b; font-size: .95rem; }
+
+  /* ── Section ──────────────────────────────────── */
+  .section { margin-bottom: 3rem; }
+  h2 {
+    font-size: 1.5rem; font-weight: 700; color: #1e293b;
+    padding-bottom: .6rem; margin-bottom: 1.25rem;
+    border-bottom: 2px solid var(--green-light);
+    display: flex; align-items: center; gap: .6rem;
+  }
+  h2 .sec-num { background: var(--green); color: white; border-radius: .4rem; font-size: .85rem; font-weight: 800; padding: .15rem .55rem; }
+  h3 { font-size: 1.1rem; font-weight: 600; color: #334155; margin: 1.5rem 0 .6rem; }
+  h4 { font-size: .95rem; font-weight: 600; color: #475569; margin: 1rem 0 .4rem; }
+  p { margin-bottom: .75rem; color: #475569; }
+
+  /* ── Screenshot Placeholder ───────────────────── */
+  .screenshot {
+    background: #f1f5f9;
+    border: 2px dashed #cbd5e1;
+    border-radius: .75rem;
+    padding: 1.5rem;
+    margin: 1.25rem 0;
+    text-align: center;
+  }
+  .screenshot .sc-icon { font-size: 2rem; margin-bottom: .5rem; }
+  .screenshot .sc-title { font-weight: 700; color: #475569; font-size: .9rem; margin-bottom: .4rem; }
+  .screenshot .sc-desc { font-size: .8rem; color: #94a3b8; max-width: 500px; margin: 0 auto; }
+  .screenshot-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+
+  /* ── Steps ────────────────────────────────────── */
+  .steps { list-style: none; counter-reset: step; margin: .75rem 0 1rem; }
+  .steps li {
+    counter-increment: step;
+    display: flex; gap: .75rem;
+    padding: .6rem 0;
+    border-bottom: 1px solid #f1f5f9;
+    align-items: flex-start;
+  }
+  .steps li:last-child { border-bottom: none; }
+  .steps li::before {
+    content: counter(step);
+    background: var(--green); color: white;
+    border-radius: 9999px; min-width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .75rem; font-weight: 700; flex-shrink: 0; margin-top: 1px;
+  }
+
+  /* ── Note / Tip ───────────────────────────────── */
+  .note { background: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 0 .5rem .5rem 0; padding: .75rem 1rem; margin: 1rem 0; font-size: .85rem; }
+  .note strong { color: #92400e; }
+  .tip { background: var(--green-bg); border-left: 4px solid var(--green); border-radius: 0 .5rem .5rem 0; padding: .75rem 1rem; margin: 1rem 0; font-size: .85rem; }
+  .tip strong { color: var(--green-darker); }
+  .danger { background: #fff1f2; border-left: 4px solid #f43f5e; border-radius: 0 .5rem .5rem 0; padding: .75rem 1rem; margin: 1rem 0; font-size: .85rem; }
+  .danger strong { color: #9f1239; }
+
+  /* ── Table ────────────────────────────────────── */
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .85rem; }
+  th { background: var(--green-bg); color: var(--green-darker); font-weight: 700; padding: .6rem .75rem; text-align: left; border-bottom: 2px solid var(--green-light); }
+  td { padding: .5rem .75rem; border-bottom: 1px solid #f1f5f9; color: #475569; }
+  tr:hover td { background: #f8fafc; }
+
+  /* ── Badge ────────────────────────────────────── */
+  .badge { display: inline-flex; align-items: center; padding: .15rem .55rem; border-radius: 9999px; font-size: .72rem; font-weight: 600; }
+  .badge-green  { background: #d1fae5; color: #065f46; }
+  .badge-blue   { background: #dbeafe; color: #1e40af; }
+  .badge-purple { background: #ede9fe; color: #5b21b6; }
+  .badge-gray   { background: #f1f5f9; color: #475569; }
+  .badge-red    { background: #ffe4e6; color: #9f1239; }
+  .badge-yellow { background: #fef9c3; color: #713f12; }
+
+  /* ── Role Chips ───────────────────────────────── */
+  .roles { display: flex; gap: .35rem; flex-wrap: wrap; margin: .25rem 0; }
+
+  /* ── Kbd ──────────────────────────────────────── */
+  kbd { background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: .3rem; padding: .1rem .4rem; font-size: .8rem; font-family: monospace; }
+
+  /* ── Divider ──────────────────────────────────── */
+  hr { border: none; border-top: 1px solid #e2e8f0; margin: 2rem 0; }
+
+  /* ── Callout cards ────────────────────────────── */
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .75rem; margin: 1rem 0; }
+  .card { background: white; border: 1px solid #e2e8f0; border-radius: .75rem; padding: 1rem; }
+  .card .card-icon { font-size: 1.5rem; margin-bottom: .4rem; }
+  .card .card-title { font-weight: 700; font-size: .9rem; color: #1e293b; margin-bottom: .25rem; }
+  .card .card-desc { font-size: .78rem; color: #64748b; }
+
+  /* ── Breadcrumb ───────────────────────────────── */
+  .breadcrumb { display: flex; align-items: center; gap: .35rem; font-size: .78rem; color: #94a3b8; margin-bottom: 1rem; padding: .5rem .75rem; background: white; border: 1px solid #e2e8f0; border-radius: .5rem; }
+  .breadcrumb span { color: #10b981; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════ TOP BAR -->
+<div class="top-bar">
+  <div class="logo">PULS <span>Market</span></div>
+  <div class="subtitle">Manual del Sistema · v1.0 · Junio 2026</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ SIDEBAR -->
+<nav class="sidebar">
+  <div class="sidebar-section">Introducción</div>
+  <a href="#cover"><span class="num">—</span> Portada</a>
+  <a href="#intro"><span class="num">1</span> ¿Qué es PULS Market?</a>
+
+  <div class="sidebar-section">Acceso</div>
+  <a href="#registro"><span class="num">2</span> Registro de empresa</a>
+  <a href="#login"><span class="num">3</span> Inicio de sesión</a>
+  <a href="#interfaz"><span class="num">4</span> Interfaz principal</a>
+
+  <div class="sidebar-section">Operación diaria</div>
+  <a href="#dashboard"><span class="num">5</span> Dashboard</a>
+  <a href="#caja"><span class="num">6</span> Gestión de Caja</a>
+  <a href="#pos"><span class="num">7</span> Punto de Venta</a>
+  <a href="#devoluciones"><span class="num">8</span> Devoluciones</a>
+
+  <div class="sidebar-section">Administración</div>
+  <a href="#productos"><span class="num">9</span> Productos</a>
+  <a href="#categorias"><span class="num">10</span> Categorías</a>
+  <a href="#sucursales"><span class="num">11</span> Sucursales</a>
+  <a href="#compras"><span class="num">12</span> Compras</a>
+  <a href="#usuarios"><span class="num">13</span> Usuarios</a>
+
+  <div class="sidebar-section">Reportes y Alertas</div>
+  <a href="#reportes"><span class="num">14</span> Reportes de Ventas</a>
+  <a href="#stock-alerts"><span class="num">15</span> Alertas de Stock</a>
+  <a href="#notificaciones"><span class="num">16</span> Notificaciones</a>
+
+  <div class="sidebar-section">Cuenta y Configuración</div>
+  <a href="#configuracion"><span class="num">17</span> Configuración</a>
+  <a href="#cuenta"><span class="num">18</span> Cuenta y Suscripción</a>
+  <a href="#owner"><span class="num">19</span> Panel de Administrador</a>
+
+  <div class="sidebar-section">Apéndices</div>
+  <a href="#roles"><span class="num">A</span> Roles y Permisos</a>
+  <a href="#planes"><span class="num">B</span> Planes de Suscripción</a>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════════════ CONTENT -->
+<main class="content">
+
+  <!-- ── PORTADA ─────────────────────────────────────────────────── -->
+  <div class="cover" id="cover">
+    <div class="cover-logo">PULS <span>Market</span></div>
+    <h1>Manual del Sistema</h1>
+    <p class="cover-sub">Guía completa de uso para todos los roles: Administrador, Supervisor y Cajero.</p>
+    <div class="cover-meta">
+      <div class="cover-badge"><strong>Versión</strong>1.0.0</div>
+      <div class="cover-badge"><strong>Fecha</strong>Junio 2026</div>
+      <div class="cover-badge"><strong>Plataforma</strong>Web (navegador)</div>
+      <div class="cover-badge"><strong>Idioma</strong>Español</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ SECCIÓN 1: INTRODUCCIÓN ═══════════════════ -->
+  <div class="section" id="intro">
+    <h2><span class="sec-num">1</span> ¿Qué es PULS Market?</h2>
+    <p>
+      <strong>PULS Market</strong> es un sistema de Punto de Venta (POS) basado en la nube, diseñado especialmente para supermercados y comercios minoristas. Permite gestionar ventas, inventario, caja, compras a proveedores y reportes desde cualquier dispositivo con acceso a Internet, sin necesidad de instalar ningún programa.
+    </p>
+
+    <h3>Características principales</h3>
+    <div class="card-grid">
+      <div class="card"><div class="card-icon">🛒</div><div class="card-title">Punto de Venta</div><div class="card-desc">Ventas rápidas con escáner de código de barras y múltiples métodos de pago.</div></div>
+      <div class="card"><div class="card-icon">📦</div><div class="card-title">Inventario en tiempo real</div><div class="card-desc">Control de stock por sucursal con alertas automáticas de mínimo.</div></div>
+      <div class="card"><div class="card-icon">💰</div><div class="card-title">Gestión de Caja</div><div class="card-desc">Apertura, cierre y arqueo de caja con historial completo de movimientos.</div></div>
+      <div class="card"><div class="card-icon">🏢</div><div class="card-title">Multi-Sucursal</div><div class="card-desc">Administrá múltiples locales con precios e inventarios independientes.</div></div>
+      <div class="card"><div class="card-icon">📊</div><div class="card-title">Reportes</div><div class="card-desc">Estadísticas de ventas por período, cajero o sucursal exportables a Excel.</div></div>
+      <div class="card"><div class="card-icon">👥</div><div class="card-title">Roles y Usuarios</div><div class="card-desc">Administrador, Supervisor y Cajero con accesos diferenciados.</div></div>
+    </div>
+
+    <h3>Estructura de roles</h3>
+    <table>
+      <thead><tr><th>Rol</th><th>Descripción</th><th>Accesos principales</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge badge-purple">Administrador</span></td><td>Dueño o encargado general del negocio</td><td>Acceso completo a todos los módulos</td></tr>
+        <tr><td><span class="badge badge-blue">Supervisor</span></td><td>Encargado de turno o gerente de sucursal</td><td>Caja, POS, Compras, Reportes, Alertas</td></tr>
+        <tr><td><span class="badge badge-green">Cajero</span></td><td>Personal de atención y ventas</td><td>Caja, POS, Alertas de stock</td></tr>
+      </tbody>
+    </table>
+
+    <div class="tip"><strong>💡 Consejo:</strong> Para aprovechar todas las funcionalidades del sistema, asegurate de elegir el plan de suscripción adecuado para tu negocio (ver <a href="#planes">Apéndice B</a>).</div>
+  </div>
+
+  <!-- ═══════════════════ SECCIÓN 2: REGISTRO ═══════════════════════ -->
+  <div class="section" id="registro">
+    <h2><span class="sec-num">2</span> Registro de empresa</h2>
+    <p>El primer paso es registrar tu empresa en PULS Market. Este proceso solo se realiza una vez y crea el perfil principal de Administrador.</p>
+
+    <div class="breadcrumb">🌐 Página de inicio → <span>Registrar empresa</span></div>
+
+    <h3>Pasos para registrarse</h3>
+    <ol class="steps">
+      <li>Ingresá al sistema desde tu navegador y hacé clic en el botón <strong>"Registrar empresa"</strong> en la página de inicio.</li>
+      <li>Completá el formulario con los datos de tu empresa:<br>
+        &nbsp;&nbsp;• <strong>Nombre de la empresa</strong> (obligatorio)<br>
+        &nbsp;&nbsp;• <strong>Correo electrónico</strong> del administrador (será el usuario principal)<br>
+        &nbsp;&nbsp;• <strong>Contraseña</strong> (mínimo 8 caracteres)<br>
+        &nbsp;&nbsp;• <strong>Nombre y apellido</strong> del administrador
+      </li>
+      <li>Hacé clic en <strong>"Crear cuenta"</strong>.</li>
+      <li>Revisá tu casilla de correo electrónico. Recibirás un código OTP (6 dígitos) para verificar tu dirección de email.</li>
+      <li>Ingresá el código OTP en el campo de verificación y confirmá.</li>
+      <li>¡Listo! Serás redirigido al panel principal con un <strong>período de prueba gratuito de 15 días</strong>.</li>
+    </ol>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Formulario de Registro de Empresa</div>
+      <div class="sc-desc">Página de fondo verde con el logo PULS Market arriba, formulario centrado con campos: Nombre de empresa, Email, Contraseña, Nombre y Apellido. Botón verde "Crear cuenta" al pie. Enlace "¿Ya tenés cuenta? Iniciar sesión".</div>
+    </div>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Pantalla de Verificación OTP</div>
+      <div class="sc-desc">Pantalla con 6 casillas para ingresar el código de 6 dígitos recibido por email. Texto "Revisá tu casilla de correo". Botón "Verificar código" y enlace "Reenviar código".</div>
+    </div>
+
+    <div class="note"><strong>⚠️ Importante:</strong> El código OTP tiene una validez de 10 minutos. Si no lo recibís, revisá la carpeta de spam o hacé clic en "Reenviar código".</div>
+
+    <h3>Recuperación de contraseña</h3>
+    <p>Si olvidaste tu contraseña, podés recuperarla desde la pantalla de inicio de sesión:</p>
+    <ol class="steps">
+      <li>Hacé clic en <strong>"¿Olvidaste tu contraseña?"</strong> en la pantalla de login.</li>
+      <li>Ingresá tu dirección de correo electrónico registrada.</li>
+      <li>Recibirás un email con instrucciones para restablecer la contraseña.</li>
+      <li>Seguí el enlace del email, ingresá la nueva contraseña y confirmala.</li>
+    </ol>
+  </div>
+
+  <!-- ═══════════════════ SECCIÓN 3: LOGIN ══════════════════════════ -->
+  <div class="section" id="login">
+    <h2><span class="sec-num">3</span> Inicio de sesión</h2>
+    <p>Todos los usuarios del sistema (Administrador, Supervisor y Cajero) acceden por la misma pantalla de inicio de sesión.</p>
+
+    <div class="breadcrumb">🌐 Página de inicio → <span>Iniciar sesión</span></div>
+
+    <ol class="steps">
+      <li>Ingresá tu <strong>correo electrónico</strong> y <strong>contraseña</strong>.</li>
+      <li>Hacé clic en <strong>"Ingresar"</strong>.</li>
+      <li>El sistema detecta automáticamente tu rol y te redirige al panel correspondiente.</li>
+    </ol>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Pantalla de Inicio de Sesión</div>
+      <div class="sc-desc">Página con fondo verde degradado. Panel blanco centrado con el logo PULS Market, campos "Email" y "Contraseña", checkbox "Recordarme", botón verde "Ingresar". Enlace "¿Olvidaste tu contraseña?" debajo del botón.</div>
+    </div>
+
+    <div class="tip"><strong>💡 Sesión:</strong> La sesión dura 8 horas (un turno completo de trabajo). Al cerrarla o cumplirse el tiempo, deberás ingresar nuevamente.</div>
+
+    <h3>Cierre de sesión</h3>
+    <p>Para salir del sistema de forma segura, hacé clic en tu nombre de usuario en la esquina inferior del menú lateral y seleccioná <strong>"Cerrar sesión"</strong>.</p>
+  </div>
+
+  <!-- ═══════════════════ SECCIÓN 4: INTERFAZ ═══════════════════════ -->
+  <div class="section" id="interfaz">
+    <h2><span class="sec-num">4</span> Interfaz principal</h2>
+    <p>Una vez dentro del sistema, la interfaz está dividida en tres áreas principales:</p>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Vista General del Sistema (modo claro)</div>
+      <div class="sc-desc">Panel completo con: (1) Barra superior con logo, nombre del usuario, ícono de notificaciones y botón hamburguesa en mobile. (2) Menú lateral izquierdo con ítems según el rol. (3) Área central de contenido con el Dashboard activo.</div>
+    </div>
+
+    <h3>Menú lateral (Sidebar)</h3>
+    <p>El menú lateral muestra las secciones disponibles según el plan y el rol del usuario. Cada ítem tiene un ícono y una etiqueta de texto.</p>
+
+    <table>
+      <thead><tr><th>Sección</th><th>Ícono</th><th>Roles</th></tr></thead>
+      <tbody>
+        <tr><td>Dashboard</td><td>📊</td><td><div class="roles"><span class="badge badge-purple">Admin</span><span class="badge badge-blue">Supervisor</span><span class="badge badge-green">Cajero</span></div></td></tr>
+        <tr><td>Gestión de Caja</td><td>💳</td><td><div class="roles"><span class="badge badge-purple">Admin</span><span class="badge badge-blue">Supervisor</span><span class="badge badge-green">Cajero</span></div></td></tr>
+        <tr><td>Punto de Venta</td><td>🛒</td><td><div class="roles"><span class="badge badge-purple">Admin</span><span class="badge badge-blue">Supervisor</span><span class="badge badge-green">Cajero</span></div></td></tr>
+        <tr><td>Productos</td><td>📦</td><td><div class="roles"><span class="badge badge-purple">Admin</span></div></td></tr>
+        <tr><td>Sucursales</td><td>🏢</td><td><div class="roles"><span class="badge badge-purple">Admin</span></div></td></tr>
+        <tr><td>Reportes</td><td>📈</td><td><div class="roles"><span class="badge badge-purple">Admin</span><span class="badge badge-blue">Supervisor</span></div></td></tr>
+        <tr><td>Compras</td><td>🛍️</td><td><div class="roles"><span class="badge badge-purple">Admin</span><span class="badge badge-blue">Supervisor</span></div></td></tr>
+        <tr><td>Usuarios</td><td>👥</td><td><div class="roles"><span class="badge badge-purple">Admin</span></div></td></tr>
+        <tr><td>Configuración</td><td>⚙️</td><td><div class="roles"><span class="badge badge-purple">Admin</span></div></td></tr>
+        <tr><td>Cuenta</td><td>💼</td><td><div class="roles"><span class="badge badge-purple">Admin</span></div></td></tr>
+        <tr><td>Alertas de Stock</td><td>⚠️</td><td><div class="roles"><span class="badge badge-purple">Admin</span><span class="badge badge-blue">Supervisor</span><span class="badge badge-green">Cajero</span></div></td></tr>
+        <tr><td>Notificaciones</td><td>🔔</td><td><div class="roles"><span class="badge badge-purple">Admin</span></div></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Barra superior (Topbar)</h3>
+    <p>La barra superior muestra el logo del sistema, el nombre del usuario activo, indicadores de alertas y el botón de menú en dispositivos móviles.</p>
+
+    <div class="tip"><strong>💡 Responsive:</strong> En celulares y tablets, el menú lateral se oculta. Tocá el botón ☰ en la barra superior para abrirlo.</div>
+
+    <h3>Cambio de tema (modo oscuro)</h3>
+    <p>El sistema soporta modo oscuro. Podés activarlo desde la Configuración de la empresa o desde el botón de tema en la barra superior (si está habilitado por el administrador).</p>
+  </div>
+
+  <!-- ═══════════════════ SECCIÓN 5: DASHBOARD ══════════════════════ -->
+  <div class="section" id="dashboard">
+    <h2><span class="sec-num">5</span> Dashboard</h2>
+    <div class="roles">
+      <span class="badge badge-purple">Admin</span>
+      <span class="badge badge-blue">Supervisor</span>
+      <span class="badge badge-green">Cajero</span>
+    </div>
+    <br/>
+    <p>El Dashboard es la pantalla de inicio del sistema. Muestra un resumen rápido del estado del negocio en tiempo real.</p>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Dashboard Principal</div>
+      <div class="sc-desc">Pantalla dividida en: (1) Fila de tarjetas de resumen: "Ventas de hoy" (importe total), "Transacciones" (cantidad de ventas), "Productos activos" (total en inventario), "Alertas de stock" (productos bajo mínimo). (2) Gráfico de barras con ventas de los últimos 7 días. (3) Accesos rápidos a las secciones más usadas según el rol.</div>
+    </div>
+
+    <h3>Tarjetas de resumen</h3>
+    <table>
+      <thead><tr><th>Tarjeta</th><th>Descripción</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Ventas de hoy</strong></td><td>Suma total en pesos de todas las ventas del día actual en la sucursal activa.</td></tr>
+        <tr><td><strong>Transacciones</strong></td><td>Cantidad de operaciones de venta realizadas hoy.</td></tr>
+        <tr><td><strong>Productos activos</strong></td><td>Total de productos con estado "activo" en el inventario.</td></tr>
+        <tr><td><strong>Alertas de stock</strong></td><td>Cantidad de productos cuyo stock está por debajo del mínimo configurado.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="note"><strong>⚠️ Nota:</strong> Las estadísticas del Dashboard corresponden a la sucursal asignada al usuario. El Administrador ve datos consolidados de todas las sucursales.</div>
+  </div>
+
+  <!-- ═══════════════════ SECCIÓN 6: CAJA ═══════════════════════════ -->
+  <div class="section" id="caja">
+    <h2><span class="sec-num">6</span> Gestión de Caja</h2>
+    <div class="roles">
+      <span class="badge badge-purple">Admin</span>
+      <span class="badge badge-blue">Supervisor</span>
+      <span class="badge badge-green">Cajero</span>
+    </div>
+    <br/>
+    <p>La Gestión de Caja permite controlar las sesiones de trabajo de cada cajero, incluyendo apertura, cierre y arqueo detallado. <strong>Antes de realizar cualquier venta, es obligatorio abrir una sesión de caja.</strong></p>
+
+    <div class="breadcrumb">🏠 Menú lateral → <span>Gestión de Caja</span></div>
+
+    <h3>Abrir una sesión de caja</h3>
+    <ol class="steps">
+      <li>Ingresá a <strong>Gestión de Caja</strong> desde el menú lateral.</li>
+      <li>Si no hay una sesión abierta, verás el formulario de apertura. Completá el <strong>monto inicial</strong> (efectivo disponible al inicio del turno).</li>
+      <li>Hacé clic en <strong>"Abrir caja"</strong>.</li>
+      <li>El sistema registra la hora de apertura y el monto inicial. Ya podés comenzar a vender.</li>
+    </ol>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Apertura de Caja</div>
+      <div class="sc-desc">Panel con fondo blanco. Campo numérico "Monto inicial en caja" con símbolo $. Botón verde "Abrir caja". Debajo, historial de sesiones anteriores en una tabla con columnas: Fecha, Apertura, Cierre, Monto inicial, Estado.</div>
+    </div>
+
+    <div class="danger"><strong>🚫 Restricción:</strong> Solo puede haber <strong>una sesión de caja abierta por usuario</strong> a la vez. Si intentás abrir otra, el sistema lo impedirá hasta que cierres la sesión activa.</div>
+
+    <h3>Operaciones durante el turno</h3>
+    <p>Una vez abierta la caja, el panel muestra en tiempo real:</p>
+    <ul style="margin: .5rem 0 1rem 1.5rem; color: #475569;">
+      <li>Monto inicial</li>
+      <li>Total de ventas en efectivo, tarjeta y transferencia</li>
+      <li>Retiros y devoluciones</li>
+      <li>Saldo estimado actual</li>
+    </ul>
+
+    <h3>Cerrar una sesión de caja</h3>
+    <ol class="steps">
+      <li>Con la sesión abierta, hacé clic en <strong>"Cerrar caja"</strong>.</li>
+      <li>Ingresá el <strong>monto real en caja</strong> (lo que contás físicamente).</li>
+      <li>El sistema calcula automáticamente la diferencia (sobrante o faltante).</li>
+      <li>Confirmá el cierre haciendo clic en <strong>"Confirmar cierre"</strong>.</li>
+      <li>Se genera un reporte de la sesión con todos los movimientos.</li>
+    </ol>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Cierre de Caja — Resumen</div>
+      <div class="sc-desc">Modal con fondo blanco. Tabla resumen con: Monto inicial, Total ventas efectivo, Total ventas tarjeta, Total ventas transferencia, Total retiros, Total devoluciones. Campo "Monto final (conteo físico)". Indicador de diferencia en verde (sobrante) o rojo (faltante). Botón "Confirmar cierre".</div>
+    </div>
+
+    <h3>Reporte de sesión de caja</h3>
+    <p>Después del cierre o desde el historial de sesiones, podés ver el reporte completo de cualquier sesión:</p>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Reporte de Sesión de Caja</div>
+      <div class="sc-desc">Página con encabezado de la sesión (fecha, usuario, sucursal). Sección "Resumen financiero" con tarjetas de totales por método de pago. Tabla "Movimientos" con columnas: Hora, Tipo (Apertura / Venta / Retiro / Devolución / Cierre), Descripción, Monto. Botón "Exportar a Excel".</div>
+    </div>
+
+    <h3>Tipos de movimiento de caja</h3>
+    <table>
+      <thead><tr><th>Tipo</th><th>Descripción</th><th>Efecto en caja</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge badge-green">Apertura</span></td><td>Monto inicial al comenzar el turno</td><td>+ Ingreso</td></tr>
+        <tr><td><span class="badge badge-blue">Venta</span></td><td>Cada venta realizada en efectivo</td><td>+ Ingreso</td></tr>
+        <tr><td><span class="badge badge-yellow">Retiro</span></td><td>Extracción de efectivo de la caja</td><td>− Egreso</td></tr>
+        <tr><td><span class="badge badge-red">Devolución</span></td><td>Reintegro de efectivo al cliente</td><td>− Egreso</td></tr>
+        <tr><td><span class="badge badge-gray">Cierre</span></td><td>Registro del monto final contado</td><td>— (registro)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════════════════ SECCIÓN 7: POS ════════════════════════════ -->
+  <div class="section" id="pos">
+    <h2><span class="sec-num">7</span> Punto de Venta (POS)</h2>
+    <div class="roles">
+      <span class="badge badge-purple">Admin</span>
+      <span class="badge badge-blue">Supervisor</span>
+      <span class="badge badge-green">Cajero</span>
+    </div>
+    <br/>
+    <p>El Punto de Venta es el módulo principal de operación diaria. Permite procesar ventas de forma rápida con búsqueda de productos, escáner de código de barras y múltiples métodos de pago.</p>
+
+    <div class="breadcrumb">🏠 Menú lateral → <span>Punto de Venta</span></div>
+
+    <div class="danger"><strong>🚫 Requisito previo:</strong> Debe haber una sesión de caja abierta para poder realizar ventas. Si no hay caja abierta, el sistema mostrará un aviso y redirigirá a Gestión de Caja.</div>
+
+    <h3>Interfaz del POS</h3>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Pantalla Principal del POS</div>
+      <div class="sc-desc">Pantalla dividida en dos paneles: (1) IZQUIERDA — buscador de productos con campo de texto, botón de escáner de cámara, y lista de resultados de búsqueda con imagen, nombre, precio y stock. (2) DERECHA — carrito de compras con lista de ítems agregados, subtotales, campo de descuento, total a pagar y botones de método de pago (Efectivo / Tarjeta / Transferencia).</div>
+    </div>
+
+    <h3>Agregar productos a la venta</h3>
+
+    <h4>Opción A: Búsqueda por nombre o código</h4>
+    <ol class="steps">
+      <li>Escribí el nombre o código del producto en el buscador.</li>
+      <li>El sistema muestra los resultados en tiempo real.</li>
+      <li>Hacé clic en el producto para agregarlo al carrito.</li>
+    </ol>
+
+    <h4>Opción B: Escáner de código de barras</h4>
+    <ol class="steps">
+      <li>Hacé clic en el ícono de cámara 📷 junto al buscador.</li>
+      <li>Apuntá la cámara del dispositivo al código de barras del producto.</li>
+      <li>El sistema lo reconoce automáticamente y lo agrega al carrito.</li>
+    </ol>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Escáner de Código de Barras activo</div>
+      <div class="sc-desc">Ventana modal o panel con vista de cámara en tiempo real. Marco verde con línea de escaneo animada. Botón "Cancelar" en la esquina inferior.</div>
+    </div>
+
+    <h3>Gestionar ítems en el carrito</h3>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Carrito de Compras con ítems</div>
+      <div class="sc-desc">Lista de ítems con: imagen del producto, nombre, precio unitario, controles de cantidad (− / número / +), campo de descuento en %, subtotal del ítem, y botón de eliminar (×) en rojo. Al pie: subtotal, descuento total aplicado, y total final en negrita.</div>
+    </div>
+
+    <table>
+      <thead><tr><th>Acción</th><th>Cómo hacerlo</th></tr></thead>
+      <tbody>
+        <tr><td>Cambiar cantidad</td><td>Usá los botones <kbd>−</kbd> y <kbd>+</kbd> del ítem, o escribí directamente la cantidad.</td></tr>
+        <tr><td>Aplicar descuento</td><td>Escribí el porcentaje de descuento en el campo "%" de cada ítem.</td></tr>
+        <tr><td>Eliminar ítem</td><td>Hacé clic en el botón rojo <kbd>×</kbd> a la derecha del ítem.</td></tr>
+        <tr><td>Limpiar carrito</td><td>Hacé clic en <strong>"Limpiar"</strong> para vaciar el carrito completo.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Procesar el pago</h3>
+    <ol class="steps">
+      <li>Verificá que todos los productos y cantidades sean correctos.</li>
+      <li>Seleccioná el <strong>método de pago</strong>:<br>
+        &nbsp;&nbsp;• 💵 <strong>Efectivo</strong> — ingresá el monto recibido para calcular el vuelto.<br>
+        &nbsp;&nbsp;• 💳 <strong>Tarjeta</strong> — registra el pago sin cálculo de vuelto.<br>
+        &nbsp;&nbsp;• 🔄 <strong>Transferencia</strong> — registra el pago electrónico.
+      </li>
+      <li>Hacé clic en <strong>"Confirmar venta"</strong>.</li>
+      <li>El sistema: descuenta el stock, registra el movimiento de caja, genera número de factura y, si está configurado, solicita el CAE a AFIP.</li>
+      <li>Se muestra el <strong>ticket de venta</strong> para imprimir o guardar como PDF.</li>
+    </ol>
+
+    <div class="screenshot-row">
+      <div class="screenshot">
+        <div class="sc-icon">📸</div>
+        <div class="sc-title">Selección de método de pago — Efectivo</div>
+        <div class="sc-desc">Modal con "Pago en efectivo". Campo "Monto recibido". Indicador "Vuelto: $X.XX". Botón verde "Confirmar".</div>
+      </div>
+      <div class="screenshot">
+        <div class="sc-icon">📸</div>
+        <div class="sc-title">Ticket de venta generado</div>
+        <div class="sc-desc">Modal con ticket estilo factura: logo empresa, número FAC-000001, fecha, lista de ítems con cantidad y precio, subtotal, descuentos, total, método de pago y número de CAE (si aplica). Botón "Imprimir" y "Cerrar".</div>
+      </div>
+    </div>
+
+    <div class="tip"><strong>💡 Numeración de facturas:</strong> El sistema genera números automáticos en formato FAC-000001, FAC-000002, etc. Este número es único por empresa y correlativo.</div>
+
+    <h3>Condiciones para realizar una venta</h3>
+    <p>El sistema verifica automáticamente estas condiciones antes de confirmar una venta:</p>
+    <ul style="margin: .5rem 0 1rem 1.5rem; color: #475569;">
+      <li>✅ Sesión de caja abierta</li>
+      <li>✅ El usuario está asignado a la sucursal activa</li>
+      <li>✅ El carrito tiene al menos un producto</li>
+      <li>✅ El stock disponible es suficiente para todos los ítems</li>
+      <li>✅ Los productos están activos (no dados de baja)</li>
+    </ul>
+  </div>
+
+  <!-- ═══════════════════ SECCIÓN 8: DEVOLUCIONES ════════════════════ -->
+  <div class="section" id="devoluciones">
+    <h2><span class="sec-num">8</span> Devoluciones</h2>
+    <div class="roles">
+      <span class="badge badge-purple">Admin</span>
+      <span class="badge badge-blue">Supervisor</span>
+      <span class="badge badge-green">Cajero</span>
+    </div>
+    <br/>
+    <p>El módulo de devoluciones permite procesar la devolución parcial o total de una venta realizada. El stock y la caja se actualizan automáticamente.</p>
+
+    <div class="breadcrumb">🏠 Punto de Venta → Buscar venta → <span>Procesar devolución</span></div>
+
+    <h3>Cómo procesar una devolución</h3>
+    <ol class="steps">
+      <li>Desde el historial de ventas (en Reportes o desde el POS), buscá la venta original.</li>
+      <li>Hacé clic en el botón <strong>"Devolución"</strong> de esa venta.</li>
+      <li>Seleccioná los ítems a devolver y la cantidad de cada uno.</li>
+      <li>Confirmá la devolución.</li>
+    </ol>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Modal de Devolución</div>
+      <div class="sc-desc">Modal con título "Procesar devolución – FAC-000123". Lista de ítems de la venta con checkboxes y campo de cantidad a devolver. Total a reintegrar calculado automáticamente. Botón rojo "Confirmar devolución" y botón gris "Cancelar".</div>
+    </div>
+
+    <h3>Tipos de devolución</h3>
+    <table>
+      <thead><tr><th>Tipo</th><th>Descripción</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge badge-yellow">Devolución parcial</span></td><td>Se devuelven solo algunos ítems de la venta original. La venta queda con estado "devolución parcial".</td></tr>
+        <tr><td><span class="badge badge-red">Devolución total</span></td><td>Se devuelven todos los ítems. La venta queda con estado "cancelado".</td></tr>
+      </tbody>
+    </table>
+
+    <div class="tip"><strong>💡 Numeración:</strong> Cada devolución recibe un número correlativo en formato DEV-000001. El stock se repone automáticamente al confirmar.</div>
+  </div>
+
+  <!-- ═══════════════════ SECCIÓN 9: PRODUCTOS ═══════════════════════ -->
+  <div class="section" id="productos">
+    <h2><span class="sec-num">9</span> Productos e Inventario</h2>
+    <div class="roles"><span class="badge badge-purple">Admin</span></div>
+    <br/>
+    <p>El módulo de Productos permite gestionar el catálogo completo del negocio: crear, editar y administrar el inventario de cada sucursal.</p>
+
+    <div class="breadcrumb">🏠 Menú lateral → <span>Productos</span></div>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Listado de Productos</div>
+      <div class="sc-desc">Tabla con columnas: Imagen, Nombre, Código de barras, Categoría, Precio, Stock actual, Stock mínimo, Estado (activo/inactivo). Barra superior con buscador, filtros por categoría y estado, y botones "Nuevo producto", "Importar Excel", "Exportar Excel".</div>
+    </div>
+
+    <h3>Crear un nuevo producto</h3>
+    <ol class="steps">
+      <li>Hacé clic en <strong>"Nuevo producto"</strong>.</li>
+      <li>Completá los campos del formulario:</li>
+    </ol>
+
+    <table>
+      <thead><tr><th>Campo</th><th>Descripción</th><th>Obligatorio</th></tr></thead>
+      <tbody>
+        <tr><td>Nombre</td><td>Nombre del producto tal como aparecerá en el POS y tickets</td><td>✅ Sí</td></tr>
+        <tr><td>Código de barras</td><td>Código EAN-13 u otro formato. Podés escanearlo con la cámara</td><td>No</td></tr>
+        <tr><td>Categoría</td><td>Categoría del producto (debe existir previamente)</td><td>No</td></tr>
+        <tr><td>Precio de venta</td><td>Precio unitario al público</td><td>✅ Sí</td></tr>
+        <tr><td>Precio de costo</td><td>Precio de compra al proveedor (para cálculo de margen)</td><td>No</td></tr>
+        <tr><td>Stock inicial</td><td>Cantidad inicial en inventario</td><td>✅ Sí</td></tr>
+        <tr><td>Stock mínimo</td><td>Umbral para generar alerta de reposición</td><td>No</td></tr>
+        <tr><td>Estado</td><td>Activo o Inactivo. Solo los activos aparecen en el POS</td><td>✅ Sí</td></tr>
+      </tbody>
+    </table>
+
+    <ol class="steps" start="3">
+      <li>Hacé clic en <strong>"Guardar producto"</strong>.</li>
+    </ol>
+
+    <div class="screenshot-row">
+      <div class="screenshot">
+        <div class="sc-icon">📸</div>
+        <div class="sc-title">Formulario Nuevo Producto</div>
+        <div class="sc-desc">Modal o página con todos los campos del producto: nombre, código de barras (con botón de escáner), categoría (dropdown), precio venta, precio costo, stock, stock mínimo, estado. Botón verde "Guardar".</div>
+      </div>
+      <div class="screenshot">
+        <div class="sc-icon">📸</div>
+        <div class="sc-title">Producto con imagen asignada</div>
+        <div class="sc-desc">Mismo formulario con un área de carga de imagen arriba, mostrando una preview de la foto del producto.</div>
+      </div>
+    </div>
+
+    <h3>Editar stock</h3>
+    <p>Podés ajustar el stock de un producto directamente desde el listado haciendo clic en el ícono de edición de la columna stock. Esto es útil para correcciones manuales de inventario.</p>
+
+    <h3>Importación masiva desde Excel</h3>
+    <ol class="steps">
+      <li>Hacé clic en <strong>"Importar Excel"</strong>.</li>
+      <li>Descargá el <strong>template de importación</strong> haciendo clic en "Descargar plantilla".</li>
+      <li>Completá la plantilla con los datos de tus productos (una fila por producto).</li>
+      <li>Cargá el archivo completado.</li>
+      <li>El sistema procesa los datos y muestra un resumen de productos importados y errores.</li>
+    </ol>
+
+    <div class="tip"><strong>💡 Exportación:</strong> Podés exportar todo tu catálogo actual a Excel para revisarlo o hacer backups desde el botón "Exportar Excel".</div>
+
+    <h3>Combos de productos</h3>
+    <p>El sistema permite crear combos (packs) que agrupan varios productos. Al vender un combo, el stock de cada componente se descuenta automáticamente.</p>
+  </div>
+
+  <!-- ═══════════════════ SECCIÓN 10: CATEGORÍAS ═════════════════════ -->
+  <div class="section" id="categorias">
+    <h2><span class="sec-num">10</span> Categorías de Productos</h2>
+    <div class="roles"><span class="badge badge-purple">Admin</span></div>
+    <br/>
+    <p>Las categorías permiten organizar el catálogo de productos para facilitar la búsqueda en el POS y los reportes.</p>
+
+    <div class="breadcrumb">🏠 Productos → <span>Categorías</span></div>
+
+    <ol class="steps">
+      <li>Dentro del módulo de Productos, buscá la pestaña o sección <strong>"Categorías"</strong>.</li>
+      <li>Para crear una nueva categoría, hacé clic en <strong>"Nueva categoría"</strong>, ingresá el nombre y guardá.</li>
+      <li>Podés editar o eliminar categorías existentes. <strong>Solo se pueden eliminar categorías sin productos asociados.</strong></li>
+    </ol>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Gestión de Categorías</div>
+      <div class="sc-desc">Tabla con columnas: Nombre de categoría, Cantidad de productos, Acciones (editar/eliminar). Botón "Nueva categoría" en la parte superior. Modal para crear/editar con campo de texto para el nombre.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ SECCIÓN 11: SUCURSALES ═════════════════════ -->
+  <div class="section" id="sucursales">
+    <h2><span class="sec-num">11</span> Sucursales</h2>
+    <div class="roles"><span class="badge badge-purple">Admin</span></div>
+    <br/>
+    <p>El módulo de Sucursales permite gestionar múltiples locales del mismo negocio, cada uno con su propio inventario, precios y usuarios asignados.</p>
+
+    <div class="breadcrumb">🏠 Menú lateral → <span>Sucursales</span></div>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Listado de Sucursales</div>
+      <div class="sc-desc">Grilla de tarjetas, una por sucursal. Cada tarjeta muestra: nombre, dirección, teléfono, cantidad de usuarios asignados y estado (activa/inactiva). Botón "Nueva sucursal" en la parte superior.</div>
+    </div>
+
+    <h3>Crear una sucursal</h3>
+    <ol class="steps">
+      <li>Hacé clic en <strong>"Nueva sucursal"</strong>.</li>
+      <li>Completá: Nombre, Dirección, Teléfono y estado (activa/inactiva).</li>
+      <li>Guardá. La sucursal queda disponible para asignar usuarios y gestionar inventario independiente.</li>
+    </ol>
+
+    <h3>Inventario por sucursal</h3>
+    <p>Cada sucursal puede tener stock y precios diferentes para los mismos productos. Desde el detalle de una sucursal podés ver y ajustar el stock específico de ese local.</p>
+
+    <div class="tip"><strong>💡 Plan requerido:</strong> El módulo Multi-Sucursal requiere el plan <span class="badge badge-purple">Empresarial</span>. En planes inferiores solo está disponible una sucursal.</div>
+  </div>
+
+  <!-- ═══════════════════ SECCIÓN 12: COMPRAS ════════════════════════ -->
+  <div class="section" id="compras">
+    <h2><span class="sec-num">12</span> Compras y Proveedores</h2>
+    <div class="roles">
+      <span class="badge badge-purple">Admin</span>
+      <span class="badge badge-blue">Supervisor</span>
+    </div>
+    <br/>
+    <p>El módulo de Compras permite registrar las facturas de proveedores, actualizar el stock automáticamente y llevar un historial de todas las adquisiciones.</p>
+
+    <div class="breadcrumb">🏠 Menú lateral → <span>Compras</span></div>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Listado de Compras</div>
+      <div class="sc-desc">Tabla con columnas: Fecha, Proveedor, Nº Factura, Total, Estado (pendiente/completada). Filtros por fecha y proveedor. Botones "Nueva compra" y "Gestionar proveedores".</div>
+    </div>
+
+    <h3>Gestión de Proveedores</h3>
+    <ol class="steps">
+      <li>Hacé clic en <strong>"Proveedores"</strong> o el ícono de gestión de proveedores.</li>
+      <li>Para agregar un proveedor, hacé clic en <strong>"Nuevo proveedor"</strong> e ingresá: nombre, CUIT/DNI, dirección, teléfono, email.</li>
+      <li>Los proveedores activos estarán disponibles al registrar nuevas compras.</li>
+    </ol>
+
+    <h3>Registrar una compra</h3>
+    <ol class="steps">
+      <li>Hacé clic en <strong>"Nueva compra"</strong>.</li>
+      <li>Seleccioná el proveedor del listado desplegable.</li>
+      <li>Ingresá el número de factura del proveedor y la fecha.</li>
+      <li>Agregá los ítems comprados: para cada ítem indicá descripción, producto vinculado (opcional), cantidad, precio unitario e impuestos.</li>
+      <li>Verificá el total calculado.</li>
+      <li>Hacé clic en <strong>"Guardar compra"</strong>. El stock de los productos vinculados se actualiza automáticamente.</li>
+    </ol>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Formulario de Nueva Compra</div>
+      <div class="sc-desc">Página con sección superior (proveedor, Nº factura, fecha) y tabla de ítems inferior. Cada fila de ítem tiene: descripción, selector de producto existente, cantidad, precio unitario, % impuesto y subtotal calculado. Botón "Agregar ítem" y totales al pie. Botón "Guardar compra".</div>
+    </div>
+
+    <div class="tip"><strong>💡 Margen:</strong> Al vincular un ítem con un producto existente, el sistema muestra el precio de venta actual y calcula el margen de ganancia en tiempo real.</div>
+  </div>
+
+  <!-- ═══════════════════ SECCIÓN 13: USUARIOS ═══════════════════════ -->
+  <div class="section" id="usuarios">
+    <h2><span class="sec-num">13</span> Usuarios</h2>
+    <div class="roles"><span class="badge badge-purple">Admin</span></div>
+    <br/>
+    <p>El módulo de Usuarios permite crear y gestionar los accesos de todo el personal del negocio.</p>
+
+    <div class="breadcrumb">🏠 Menú lateral → <span>Usuarios</span></div>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Listado de Usuarios</div>
+      <div class="sc-desc">Tabla con columnas: Avatar/inicial, Nombre completo, Email, Rol (badge de color), Sucursal asignada, Estado (activo/inactivo), Acciones (editar/desactivar). Botón "Nuevo usuario".</div>
+    </div>
+
+    <h3>Crear un usuario</h3>
+    <ol class="steps">
+      <li>Hacé clic en <strong>"Nuevo usuario"</strong>.</li>
+      <li>Completá el formulario:</li>
+    </ol>
+
+    <table>
+      <thead><tr><th>Campo</th><th>Descripción</th></tr></thead>
+      <tbody>
+        <tr><td>Nombre y apellido</td><td>Nombre completo del empleado</td></tr>
+        <tr><td>Email</td><td>Correo electrónico (será el usuario de login)</td></tr>
+        <tr><td>Contraseña</td><td>Contraseña inicial (el usuario puede cambiarla)</td></tr>
+        <tr><td>Rol</td><td>Administrador, Supervisor o Cajero</td></tr>
+        <tr><td>Sucursal</td><td>Sucursal a la que está asignado (puede ser más de una)</td></tr>
+      </tbody>
+    </table>
+
+    <ol class="steps" start="3">
+      <li>Hacé clic en <strong>"Crear usuario"</strong>.</li>
+    </ol>
+
+    <h3>Activar / Desactivar usuarios</h3>
+    <p>Podés desactivar temporalmente un usuario sin eliminarlo (por ejemplo, en caso de licencia). Un usuario inactivo no puede ingresar al sistema. Para reactivarlo, editá el usuario y cambiá su estado a "Activo".</p>
+
+    <div class="note"><strong>⚠️ Límite por plan:</strong> Cada plan tiene un límite de usuarios activos. El plan <span class="badge badge-green">Emprendedor</span> permite hasta 2 usuarios, el <span class="badge badge-blue">Profesional</span> hasta 5, y el <span class="badge badge-purple">Empresarial</span> usuarios ilimitados.</div>
+  </div>
+
+  <!-- ═══════════════════ SECCIÓN 14: REPORTES ══════════════════════ -->
+  <div class="section" id="reportes">
+    <h2><span class="sec-num">14</span> Reportes de Ventas</h2>
+    <div class="roles">
+      <span class="badge badge-purple">Admin</span>
+      <span class="badge badge-blue">Supervisor</span>
+    </div>
+    <br/>
+    <p>El módulo de Reportes ofrece estadísticas detalladas de las ventas por período, método de pago, cajero y sucursal.</p>
+
+    <div class="breadcrumb">🏠 Menú lateral → <span>Reportes</span></div>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Pantalla de Reportes de Ventas</div>
+      <div class="sc-desc">Página con filtros en la parte superior (período: Hoy / Semana / Mes / Rango personalizado; Sucursal; Cajero). Debajo: tarjetas resumen (Total vendido, Cantidad de transacciones, Promedio por venta). Gráfico de barras de ventas por día. Tabla detallada de ventas con columnas: Nº, Fecha, Cajero, Ítems, Método de pago, Total, Acciones.</div>
+    </div>
+
+    <h3>Filtros disponibles</h3>
+    <table>
+      <thead><tr><th>Filtro</th><th>Opciones</th></tr></thead>
+      <tbody>
+        <tr><td>Período</td><td>Hoy, Esta semana, Este mes, Rango de fechas personalizado</td></tr>
+        <tr><td>Sucursal</td><td>Todas las sucursales o una específica (Admin solo)</td></tr>
+        <tr><td>Cajero</td><td>Todos o filtrar por usuario</td></tr>
+        <tr><td>Método de pago</td><td>Efectivo, Tarjeta, Transferencia o todos</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Exportar reportes</h3>
+    <p>Hacé clic en <strong>"Exportar Excel"</strong> o <strong>"Exportar CSV"</strong> para descargar el reporte con los filtros aplicados actualmente.</p>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Detalle de una venta dentro del reporte</div>
+      <div class="sc-desc">Modal o panel expandible con: Nº de factura, fecha y hora, cajero, sucursal, lista de ítems vendidos con cantidad y precio, subtotal, descuentos, total, método de pago, CAE AFIP (si aplica). Botón "Procesar devolución".</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ SECCIÓN 15: ALERTAS DE STOCK ══════════════ -->
+  <div class="section" id="stock-alerts">
+    <h2><span class="sec-num">15</span> Alertas de Stock</h2>
+    <div class="roles">
+      <span class="badge badge-purple">Admin</span>
+      <span class="badge badge-blue">Supervisor</span>
+      <span class="badge badge-green">Cajero</span>
+    </div>
+    <br/>
+    <p>El módulo de Alertas de Stock lista todos los productos cuyo stock actual está por debajo del mínimo configurado, para facilitar la reposición.</p>
+
+    <div class="breadcrumb">🏠 Menú lateral → <span>Alertas de Stock</span></div>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Listado de Alertas de Stock</div>
+      <div class="sc-desc">Tabla con productos en alerta. Columnas: Nombre del producto, Categoría, Stock actual (en rojo), Stock mínimo, Sucursal. Indicador de criticidad (bajo / crítico / sin stock). Botón "Exportar" para descargar la lista.</div>
+    </div>
+
+    <h3>Niveles de alerta</h3>
+    <table>
+      <thead><tr><th>Nivel</th><th>Condición</th><th>Color</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge badge-yellow">Bajo</span></td><td>Stock ≤ mínimo configurado</td><td>Amarillo</td></tr>
+        <tr><td><span class="badge badge-red">Crítico</span></td><td>Stock es 0 o negativo</td><td>Rojo</td></tr>
+      </tbody>
+    </table>
+
+    <div class="tip"><strong>💡 Configurar mínimos:</strong> El stock mínimo se configura al crear o editar cada producto en el módulo de Productos. Si no se configura, no se generarán alertas para ese ítem.</div>
+  </div>
+
+  <!-- ═══════════════════ SECCIÓN 16: NOTIFICACIONES ════════════════ -->
+  <div class="section" id="notificaciones">
+    <h2><span class="sec-num">16</span> Notificaciones</h2>
+    <div class="roles"><span class="badge badge-purple">Admin</span></div>
+    <br/>
+    <p>El sistema envía notificaciones automáticas sobre eventos importantes del negocio.</p>
+
+    <div class="breadcrumb">🏠 Menú lateral → <span>Notificaciones</span></div>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Panel de Notificaciones</div>
+      <div class="sc-desc">Lista de notificaciones ordenadas por fecha. Cada ítem tiene: ícono de tipo, título, descripción breve y hora. Las no leídas tienen fondo ligeramente destacado. Botón "Marcar todas como leídas". Contador de no leídas en el menú lateral.</div>
+    </div>
+
+    <h3>Tipos de notificaciones</h3>
+    <table>
+      <thead><tr><th>Tipo</th><th>Cuándo se genera</th></tr></thead>
+      <tbody>
+        <tr><td>📦 Stock bajo</td><td>Cuando un producto cae por debajo del stock mínimo</td></tr>
+        <tr><td>💼 Suscripción</td><td>Cuando quedan 7 días o menos para el vencimiento del plan</td></tr>
+        <tr><td>🛒 Ventas</td><td>Eventos importantes de ventas del día</td></tr>
+        <tr><td>⚙️ Sistema</td><td>Actualizaciones del sistema y mensajes de la plataforma</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════════════════ SECCIÓN 17: CONFIGURACIÓN ═════════════════ -->
+  <div class="section" id="configuracion">
+    <h2><span class="sec-num">17</span> Configuración</h2>
+    <div class="roles"><span class="badge badge-purple">Admin</span></div>
+    <br/>
+    <p>El módulo de Configuración permite personalizar el sistema según las necesidades de la empresa.</p>
+
+    <div class="breadcrumb">🏠 Menú lateral → <span>Configuración</span></div>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Pantalla de Configuración</div>
+      <div class="sc-desc">Página con pestañas o secciones: "General", "Apariencia", "AFIP", "Punto de venta". Cada sección con sus campos correspondientes.</div>
+    </div>
+
+    <h3>Apariencia (colores y logo)</h3>
+    <ol class="steps">
+      <li>Accedé a la pestaña <strong>"Apariencia"</strong>.</li>
+      <li>Subí el logo de tu empresa (formatos: PNG, JPG, SVG). El logo aparecerá en el menú lateral y en los tickets.</li>
+      <li>Personalizá el <strong>color principal</strong> del sistema. Este color se aplica a botones, barras y acentos de toda la interfaz.</li>
+      <li>Activá o desactivá el <strong>modo oscuro</strong> por defecto.</li>
+      <li>Guardá los cambios.</li>
+    </ol>
+
+    <div class="screenshot-row">
+      <div class="screenshot">
+        <div class="sc-icon">📸</div>
+        <div class="sc-title">Carga de logo de empresa</div>
+        <div class="sc-desc">Área de drag-and-drop para subir el logo. Preview circular del logo cargado. Botón "Eliminar logo".</div>
+      </div>
+      <div class="screenshot">
+        <div class="sc-icon">📸</div>
+        <div class="sc-title">Selector de color primario</div>
+        <div class="sc-desc">Paleta de colores predefinidos para elegir el color primario del sistema. Vista previa en tiempo real de cómo se verá el cambio.</div>
+      </div>
+    </div>
+
+    <h3>Configuración AFIP</h3>
+    <p>Para emitir facturas electrónicas con validez fiscal en Argentina, debés configurar la integración con AFIP/ARCA.</p>
+
+    <div class="note"><strong>⚠️ Requiere conocimiento técnico:</strong> La configuración AFIP requiere tener un certificado digital emitido por AFIP y un punto de venta habilitado. Si no sabés cómo obtenerlos, consultá con tu contador.</div>
+
+    <table>
+      <thead><tr><th>Parámetro</th><th>Descripción</th></tr></thead>
+      <tbody>
+        <tr><td>CUIT</td><td>CUIT de la empresa sin guiones</td></tr>
+        <tr><td>Punto de venta</td><td>Número de punto de venta habilitado en AFIP (4 dígitos)</td></tr>
+        <tr><td>Certificado</td><td>Archivo .crt emitido por AFIP</td></tr>
+        <tr><td>Clave privada</td><td>Archivo .key correspondiente al certificado</td></tr>
+        <tr><td>Entorno</td><td>Homologación (pruebas) o Producción</td></tr>
+      </tbody>
+    </table>
+
+    <div class="tip"><strong>💡 Modo contingencia:</strong> Si AFIP no responde al momento de la venta, el sistema opera en "modo contingencia" — la venta se procesa igualmente y el CAE se obtiene en diferido cuando el servicio se restablezca.</div>
+  </div>
+
+  <!-- ═══════════════════ SECCIÓN 18: CUENTA ════════════════════════ -->
+  <div class="section" id="cuenta">
+    <h2><span class="sec-num">18</span> Cuenta y Suscripción</h2>
+    <div class="roles"><span class="badge badge-purple">Admin</span></div>
+    <br/>
+    <p>Desde la sección Cuenta podés ver el estado de tu suscripción, renovarla y consultar el historial de pagos.</p>
+
+    <div class="breadcrumb">🏠 Menú lateral → <span>Cuenta</span></div>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Pantalla de Cuenta y Suscripción</div>
+      <div class="sc-desc">Página con sección superior mostrando: plan actual (ej. "Profesional"), estado (ej. "Activa" en verde), fecha de próximo vencimiento y días restantes. Sección central con los tres planes disponibles (Emprendedor / Profesional / Empresarial) con sus características y botones de suscripción/cambio de plan. Sección inferior con historial de pagos: tabla con fecha, monto, período, estado del pago.</div>
+    </div>
+
+    <h3>Ciclo de vida de la suscripción</h3>
+    <table>
+      <thead><tr><th>Estado</th><th>Descripción</th><th>Acceso al sistema</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge badge-blue">Trial</span></td><td>Período de prueba gratuito de 15 días</td><td>✅ Completo</td></tr>
+        <tr><td><span class="badge badge-green">Activa</span></td><td>Suscripción vigente y pagada</td><td>✅ Completo</td></tr>
+        <tr><td><span class="badge badge-yellow">Por vencer</span></td><td>Quedan ≤ 7 días para el vencimiento</td><td>✅ Con aviso</td></tr>
+        <tr><td><span class="badge badge-red">Vencida</span></td><td>Fecha de vencimiento superada</td><td>⚠️ Período de gracia (15 días)</td></tr>
+        <tr><td><span class="badge badge-gray">Suspendida</span></td><td>Período de gracia agotado sin renovación</td><td>❌ Bloqueado</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Renovar o cambiar de plan</h3>
+    <ol class="steps">
+      <li>En la sección Cuenta, elegí el plan deseado (mensual o anual).</li>
+      <li>Hacé clic en <strong>"Suscribirse"</strong> o <strong>"Cambiar a este plan"</strong>.</li>
+      <li>Serás redirigido a <strong>MercadoPago</strong> para completar el pago de forma segura.</li>
+      <li>Una vez confirmado el pago, la suscripción se activa automáticamente.</li>
+    </ol>
+
+    <div class="tip"><strong>💡 Plan anual:</strong> El plan anual equivale a 11 meses, recibís un mes de regalo frente al pago mensual acumulado.</div>
+  </div>
+
+  <!-- ═══════════════════ SECCIÓN 19: OWNER PANEL ════════════════════ -->
+  <div class="section" id="owner">
+    <h2><span class="sec-num">19</span> Panel de Administrador de Plataforma</h2>
+    <div class="roles"><span class="badge badge-gray">Sistema (Dueño de la plataforma)</span></div>
+    <br/>
+    <p>El Panel de Administrador es una sección exclusiva para el propietario de la plataforma PULS Market. No es accesible para los usuarios de las empresas clientes.</p>
+
+    <div class="breadcrumb">🏠 Menú lateral → <span>Panel de Dueño</span></div>
+
+    <div class="screenshot">
+      <div class="sc-icon">📸</div>
+      <div class="sc-title">Panel de Administrador de Plataforma</div>
+      <div class="sc-desc">Panel con fondo levemente diferenciado. Secciones: (1) Resumen: total de empresas activas, ingresos del mes, suscripciones por vencer. (2) Tabla de empresas: nombre, plan, fecha de vencimiento, estado, botones de acción. (3) Configuración global de precios de planes y días de trial.</div>
+    </div>
+
+    <h3>Funcionalidades del panel</h3>
+    <ul style="margin: .5rem 0 1rem 1.5rem; color: #475569;">
+      <li>Ver y gestionar todas las empresas registradas en la plataforma</li>
+      <li>Ver y modificar el estado de suscripciones</li>
+      <li>Reportes de ingresos de la plataforma</li>
+      <li>Configurar precios de los planes (Emprendedor, Profesional, Empresarial)</li>
+      <li>Ajustar los días del período de trial</li>
+      <li>Ajustar el período de gracia post-vencimiento</li>
+    </ul>
+  </div>
+
+  <hr/>
+
+  <!-- ═══════════════════ APÉNDICE A: ROLES ═════════════════════════ -->
+  <div class="section" id="roles">
+    <h2><span class="sec-num">A</span> Apéndice A — Roles y Permisos</h2>
+    <p>La siguiente tabla resume qué puede hacer cada rol en cada módulo del sistema:</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Módulo</th>
+          <th><span class="badge badge-purple">Admin</span></th>
+          <th><span class="badge badge-blue">Supervisor</span></th>
+          <th><span class="badge badge-green">Cajero</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Dashboard</td><td>✅ Completo</td><td>✅ Completo</td><td>✅ Limitado</td></tr>
+        <tr><td>Gestión de Caja</td><td>✅ Completo</td><td>✅ Completo</td><td>✅ Abrir/Cerrar propia</td></tr>
+        <tr><td>Punto de Venta</td><td>✅ Completo</td><td>✅ Completo</td><td>✅ Completo</td></tr>
+        <tr><td>Devoluciones</td><td>✅ Completo</td><td>✅ Completo</td><td>✅ Completo</td></tr>
+        <tr><td>Productos</td><td>✅ CRUD completo</td><td>❌ Sin acceso</td><td>❌ Sin acceso</td></tr>
+        <tr><td>Categorías</td><td>✅ CRUD completo</td><td>❌ Sin acceso</td><td>❌ Sin acceso</td></tr>
+        <tr><td>Sucursales</td><td>✅ CRUD completo</td><td>❌ Sin acceso</td><td>❌ Sin acceso</td></tr>
+        <tr><td>Compras</td><td>✅ Completo</td><td>✅ Completo</td><td>❌ Sin acceso</td></tr>
+        <tr><td>Usuarios</td><td>✅ CRUD completo</td><td>❌ Sin acceso</td><td>❌ Sin acceso</td></tr>
+        <tr><td>Reportes de Ventas</td><td>✅ Todas sucursales</td><td>✅ Su sucursal</td><td>❌ Sin acceso</td></tr>
+        <tr><td>Alertas de Stock</td><td>✅ Completo</td><td>✅ Completo</td><td>✅ Solo lectura</td></tr>
+        <tr><td>Notificaciones</td><td>✅ Completo</td><td>❌ Sin acceso</td><td>❌ Sin acceso</td></tr>
+        <tr><td>Configuración</td><td>✅ Completo</td><td>❌ Sin acceso</td><td>❌ Sin acceso</td></tr>
+        <tr><td>Cuenta / Suscripción</td><td>✅ Completo</td><td>❌ Sin acceso</td><td>❌ Sin acceso</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════════════════ APÉNDICE B: PLANES ════════════════════════ -->
+  <div class="section" id="planes">
+    <h2><span class="sec-num">B</span> Apéndice B — Planes de Suscripción</h2>
+    <p>PULS Market ofrece tres planes de suscripción para adaptarse a negocios de diferente tamaño:</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Característica</th>
+          <th><span class="badge badge-green">Emprendedor</span></th>
+          <th><span class="badge badge-blue">Profesional</span></th>
+          <th><span class="badge badge-purple">Empresarial</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Usuarios</td><td>2</td><td>5</td><td>Ilimitados</td></tr>
+        <tr><td>Sucursales</td><td>1</td><td>1</td><td>Ilimitadas</td></tr>
+        <tr><td>POS / Ventas</td><td>✅</td><td>✅</td><td>✅</td></tr>
+        <tr><td>Gestión de Caja</td><td>✅</td><td>✅</td><td>✅</td></tr>
+        <tr><td>Inventario</td><td>✅</td><td>✅</td><td>✅</td></tr>
+        <tr><td>Notificaciones</td><td>✅</td><td>✅</td><td>✅</td></tr>
+        <tr><td>Reportes de Ventas</td><td>❌</td><td>✅</td><td>✅</td></tr>
+        <tr><td>Compras y Proveedores</td><td>❌</td><td>✅</td><td>✅</td></tr>
+        <tr><td>Alertas de Stock</td><td>❌</td><td>✅</td><td>✅</td></tr>
+        <tr><td>Gestión de Usuarios</td><td>❌</td><td>✅</td><td>✅</td></tr>
+        <tr><td>Configuración avanzada</td><td>❌</td><td>✅</td><td>✅</td></tr>
+        <tr><td>Multi-Sucursal</td><td>❌</td><td>❌</td><td>✅</td></tr>
+        <tr><td>Facturación AFIP</td><td>❌</td><td>❌</td><td>✅</td></tr>
+      </tbody>
+    </table>
+
+    <div class="tip"><strong>💡 Período de prueba:</strong> Todos los planes incluyen un <strong>trial gratuito de 15 días</strong> con acceso completo al plan Empresarial, sin necesidad de ingresar datos de pago.</div>
+
+    <div class="note"><strong>📌 Nota:</strong> Los precios de cada plan se consultan directamente desde la sección Cuenta del sistema, ya que pueden actualizarse periódicamente.</div>
+  </div>
+
+  <hr/>
+
+  <!-- ── Pie de página ────────────────────────────────────────────── -->
+  <div style="text-align: center; padding: 2rem 0; color: #94a3b8; font-size: .8rem;">
+    <div style="font-weight: 700; font-size: 1rem; color: #10b981; margin-bottom: .3rem;">PULS Market</div>
+    Manual del Sistema · Versión 1.0 · Junio 2026<br/>
+    <span style="margin-top: .5rem; display: block;">Para soporte técnico o consultas, contactá al administrador de la plataforma.</span>
+  </div>
+
+</main>
+
+<!-- ── Smooth scroll activo nav ─────────────────────────────────── -->
+<script>
+  document.querySelectorAll('.sidebar a').forEach(a => {
+    a.addEventListener('click', function() {
+      document.querySelectorAll('.sidebar a').forEach(x => x.style.background = '');
+      this.style.background = 'var(--green-bg)';
+      this.style.color = 'var(--green-dark)';
+      this.style.borderLeftColor = 'var(--green)';
+    });
+  });
+</script>
+</body>
+</html>

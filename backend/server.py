@@ -2117,8 +2117,9 @@ async def update_configuration(config_data: ConfigurationUpdate, user: User = De
         current_config = Configuration(empresa_id=user.empresa_id).dict()
         await db.configuration.insert_one(current_config)
 
-    # Update fields
-    update_data = {k: v for k, v in config_data.dict().items() if v is not None}
+    # Update fields (allow company_logo to be explicitly set to null)
+    raw = config_data.dict(exclude_unset=True)
+    update_data = {k: v for k, v in raw.items() if v is not None or k == 'company_logo'}
     update_data['updated_at'] = datetime.now(timezone.utc)
 
     if update_data:
