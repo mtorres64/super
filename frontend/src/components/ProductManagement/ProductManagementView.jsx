@@ -154,7 +154,7 @@ const ProductManagementView = ({
   }
 
   return (
-    <div className="p-6" onClick={() => setShowExportMenu(false)}>
+    <div className="p-6 flex flex-col h-full" onClick={() => setShowExportMenu(false)}>
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
@@ -279,7 +279,8 @@ const ProductManagementView = ({
       )}
 
       {/* Products Table */}
-      <div className="table-container">
+      <div className="table-container flex-1 min-h-0 flex flex-col">
+        <div className="overflow-y-auto flex-1 min-h-0">
         <table className="table">
           <thead>
             <tr>
@@ -417,6 +418,7 @@ const ProductManagementView = ({
             <p>No se encontraron productos</p>
           </div>
         )}
+        </div>
 
         {/* Pagination */}
         <Pagination

@@ -3849,6 +3849,11 @@ class PagoManual(BaseModel):
     concepto: str
     plan_tipo: str = "mensual"  # "mensual" | "anual"
 
+class ClienteDatosUpdate(BaseModel):
+    empresa_nombre: Optional[str] = None
+    admin_nombre: Optional[str] = None
+    admin_email: Optional[str] = None
+
 owner_router = APIRouter(prefix="/owner")
 
 def create_owner_token():
@@ -4189,6 +4194,38 @@ async def owner_toggle_empresa(empresa_id: str, _=Depends(verify_owner_token)):
                 {"$set": {"status": nuevo_status}}
             )
     return {"activo": new_status, "message": f"Empresa {'activada' if new_status else 'suspendida'}"}
+
+@owner_router.put("/clientes/{empresa_id}/datos")
+async def owner_update_cliente_datos(empresa_id: str, data: ClienteDatosUpdate, _=Depends(verify_owner_token)):
+    emp = await db.empresas.find_one({"id": empresa_id})
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    if data.empresa_nombre is not None:
+        nombre = data.empresa_nombre.strip()
+        if not nombre:
+            raise HTTPException(status_code=400, detail="El nombre de la empresa no puede estar vacío")
+        await db.empresas.update_one({"id": empresa_id}, {"$set": {"nombre": nombre}})
+    if data.admin_nombre is not None or data.admin_email is not None:
+        admin = await db.users.find_one({"empresa_id": empresa_id, "rol": "admin"})
+        if not admin:
+            raise HTTPException(status_code=404, detail="Administrador no encontrado")
+        admin_update = {}
+        if data.admin_nombre is not None:
+            nombre_admin = data.admin_nombre.strip()
+            if not nombre_admin:
+                raise HTTPException(status_code=400, detail="El nombre del administrador no puede estar vacío")
+            admin_update["nombre"] = nombre_admin
+        if data.admin_email is not None:
+            email = data.admin_email.strip().lower()
+            if not email:
+                raise HTTPException(status_code=400, detail="El email no puede estar vacío")
+            existing = await db.users.find_one({"email": email, "id": {"$ne": admin["id"]}})
+            if existing:
+                raise HTTPException(status_code=400, detail="El email ya está en uso por otro usuario")
+            admin_update["email"] = email
+        if admin_update:
+            await db.users.update_one({"id": admin["id"]}, {"$set": admin_update})
+    return {"message": "Datos actualizados correctamente"}
 
 @owner_router.get("/clientes/{empresa_id}/config")
 async def owner_get_empresa_config(empresa_id: str, _=Depends(verify_owner_token)):

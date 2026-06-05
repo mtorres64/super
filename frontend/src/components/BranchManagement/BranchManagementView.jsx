@@ -141,7 +141,7 @@ const BranchManagementView = ({
   // Branch detail view
   if (selectedBranch) {
     return (
-      <div className="p-6" onClick={() => onSetShowExportMenu(false)}>
+      <div className="p-6 flex flex-col h-full" onClick={() => onSetShowExportMenu(false)}>
         <div className="flex items-center gap-4 mb-6">
           <button onClick={onGoBack} className="btn btn-secondary">
             <ArrowLeft className="w-4 h-4" />
@@ -288,13 +288,14 @@ const BranchManagementView = ({
           </div>
         )}
 
+        <div className="flex-1 min-h-0 flex flex-col">
         {loadingProducts && paginatedProducts.length === 0 ? (
           <div className="flex items-center justify-center h-48">
             <div className="spinner w-8 h-8"></div>
           </div>
         ) : (
-          <>
-          <div className="table-container">
+          <div className="table-container flex-1 min-h-0 flex flex-col">
+          <div className="overflow-y-auto flex-1 min-h-0">
             <table className="table">
               <thead>
                 <tr>
@@ -479,8 +480,9 @@ const BranchManagementView = ({
             onPageChange={onSetCurrentPage}
             itemName="productos"
           />
-          </>
+          </div>
         )}
+        </div>
 
         {/* Bulk Deactivate Confirmation Modal */}
         {showBulkDeleteModal && (

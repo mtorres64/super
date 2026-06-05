@@ -546,6 +546,10 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
   const [moduleMsg, setModuleMsg] = useState(null);
   const [updatingModulos, setUpdatingModulos] = useState(false);
   const [showImpersonateModal, setShowImpersonateModal] = useState(false);
+  const [editingDatos, setEditingDatos] = useState(false);
+  const [datosForm, setDatosForm] = useState({ empresa_nombre: '', admin_nombre: '', admin_email: '' });
+  const [datosLoading, setDatosLoading] = useState(false);
+  const [datosMsg, setDatosMsg] = useState(null);
 
   const authHeader = { headers: { Authorization: `Bearer ${token}` } };
 
@@ -571,6 +575,36 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
   useEffect(() => { loadCliente(); }, [loadCliente]);
 
   const handleImpersonate = () => setShowImpersonateModal(true);
+
+  const handleEditDatos = () => {
+    setDatosForm({
+      empresa_nombre: cliente.nombre || '',
+      admin_nombre: cliente.admin_nombre || '',
+      admin_email: cliente.admin_email || '',
+    });
+    setDatosMsg(null);
+    setEditingDatos(true);
+  };
+
+  const handleSaveDatos = async (e) => {
+    e.preventDefault();
+    setDatosLoading(true);
+    setDatosMsg(null);
+    try {
+      await ownerAxios.put(`/clientes/${clienteId}/datos`, {
+        empresa_nombre: datosForm.empresa_nombre,
+        admin_nombre: datosForm.admin_nombre,
+        admin_email: datosForm.admin_email,
+      }, authHeader);
+      setDatosMsg({ ok: true, text: 'Datos actualizados correctamente' });
+      setEditingDatos(false);
+      await loadCliente();
+    } catch (err) {
+      setDatosMsg({ ok: false, text: err.response?.data?.detail || 'Error al actualizar datos' });
+    } finally {
+      setDatosLoading(false);
+    }
+  };
 
   const confirmImpersonate = async () => {
     setShowImpersonateModal(false);
@@ -830,35 +864,102 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
         {/* Company */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">Datos del Cliente</h3>
-          <dl className="space-y-3">
-            <div className="flex justify-between">
-              <dt className="text-sm text-gray-500">Estado empresa</dt>
-              <dd className={`text-sm font-medium ${cliente.activo ? 'text-green-400' : 'text-red-400'}`}>
-                {cliente.activo ? 'Activa' : 'Suspendida'}
-              </dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-sm text-gray-500">Administrador</dt>
-              <dd className="text-sm text-gray-200">{cliente.admin_nombre || '—'}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-sm text-gray-500">Email</dt>
-              <dd className="text-sm text-gray-200">{cliente.admin_email || '—'}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-sm text-gray-500">Fecha de registro</dt>
-              <dd className="text-sm text-gray-200">{formatDate(cliente.created_at)}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-sm text-gray-500">Pagos aprobados</dt>
-              <dd className="text-sm text-gray-200">{pagosAprobados.length}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-sm text-gray-500">Total pagado</dt>
-              <dd className="text-sm text-emerald-400 font-semibold">{formatMoney(totalPagado)}</dd>
-            </div>
-          </dl>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Datos del Cliente</h3>
+            {!editingDatos && (
+              <button
+                onClick={handleEditDatos}
+                className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+              >
+                <Edit3 className="w-3 h-3" /> Editar
+              </button>
+            )}
+          </div>
+          {editingDatos ? (
+            <form onSubmit={handleSaveDatos} className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Nombre empresa</label>
+                <input
+                  type="text"
+                  value={datosForm.empresa_nombre}
+                  onChange={e => setDatosForm(f => ({ ...f, empresa_nombre: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-indigo-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Nombre administrador</label>
+                <input
+                  type="text"
+                  value={datosForm.admin_nombre}
+                  onChange={e => setDatosForm(f => ({ ...f, admin_nombre: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-indigo-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Email administrador</label>
+                <input
+                  type="email"
+                  value={datosForm.admin_email}
+                  onChange={e => setDatosForm(f => ({ ...f, admin_email: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-indigo-500"
+                  required
+                />
+              </div>
+              {datosMsg && (
+                <p className={`text-xs ${datosMsg.ok ? 'text-green-400' : 'text-red-400'}`}>{datosMsg.text}</p>
+              )}
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="submit"
+                  disabled={datosLoading}
+                  className="flex-1 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white text-sm py-1.5 rounded-lg transition-colors"
+                >
+                  {datosLoading ? 'Guardando...' : 'Guardar'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setEditingDatos(false); setDatosMsg(null); }}
+                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm py-1.5 rounded-lg transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          ) : (
+            <dl className="space-y-3">
+              <div className="flex justify-between">
+                <dt className="text-sm text-gray-500">Estado empresa</dt>
+                <dd className={`text-sm font-medium ${cliente.activo ? 'text-green-400' : 'text-red-400'}`}>
+                  {cliente.activo ? 'Activa' : 'Suspendida'}
+                </dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-sm text-gray-500">Administrador</dt>
+                <dd className="text-sm text-gray-200">{cliente.admin_nombre || '—'}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-sm text-gray-500">Email</dt>
+                <dd className="text-sm text-gray-200">{cliente.admin_email || '—'}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-sm text-gray-500">Fecha de registro</dt>
+                <dd className="text-sm text-gray-200">{formatDate(cliente.created_at)}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-sm text-gray-500">Pagos aprobados</dt>
+                <dd className="text-sm text-gray-200">{pagosAprobados.length}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-sm text-gray-500">Total pagado</dt>
+                <dd className="text-sm text-emerald-400 font-semibold">{formatMoney(totalPagado)}</dd>
+              </div>
+              {datosMsg && (
+                <p className={`text-xs ${datosMsg.ok ? 'text-green-400' : 'text-red-400'}`}>{datosMsg.text}</p>
+              )}
+            </dl>
+          )}
         </div>
 
         {/* Subscription */}
