@@ -379,6 +379,12 @@ const Compras = () => {
     setOpenAutocompleteIndex(idx);
   };
 
+  useEffect(() => {
+    if (autocompleteHighlight < 0) return;
+    const el = document.querySelector(`[data-autocomplete-item="${autocompleteHighlight}"]`);
+    if (el) el.scrollIntoView({ block: 'nearest' });
+  }, [autocompleteHighlight]);
+
   const handleDescriptionKeyDown = (idx, e) => {
     const options = getAutocompleteOptions(compraForm.items[idx]?.descripcion || '');
     if (!options.length || openAutocompleteIndex !== idx) return;

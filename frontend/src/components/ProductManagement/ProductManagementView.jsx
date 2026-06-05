@@ -190,13 +190,14 @@ const ProductManagementView = ({
               type="text"
               placeholder="Buscar productos..."
               className="form-input pl-10"
+              style={searchTerm ? { paddingRight: '2.25rem' } : {}}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               onKeyDown={handleSearchKeyDown}
             />
             {searchTerm && (
               loading
-                ? <div className="absolute right-3 top-1/2 -translate-y-1/2 spinner w-4 h-4" />
+                ? <div className="absolute right-3 top-1/2 -translate-y-1/2"><div className="spinner spinner-on-light w-4 h-4 text-gray-400" /></div>
                 : <button
                     type="button"
                     onClick={clearSearch}

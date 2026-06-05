@@ -618,6 +618,7 @@ const ComprasView = ({
               <button
                 key={prod.product_id}
                 type="button"
+                data-autocomplete-item={optIdx}
                 onMouseDown={() => handleSelectProduct(openAutocompleteIndex, prod)}
                 className={`w-full text-left px-3 py-2 border-b border-gray-100 last:border-0 ${optIdx === autocompleteHighlight ? 'bg-green-100' : 'hover:bg-green-50'}`}
               >
