@@ -4,7 +4,7 @@ import {
   AlertTriangle, Clock, Ban, ChevronRight, ChevronDown,
   ArrowLeft, Plus, Edit3, ToggleLeft, ToggleRight,
   DollarSign, Shield, Settings, Bell, TrendingUp,
-  CreditCard, Search, Zap, ZapOff, CheckCircle2,
+  CreditCard, Search, Zap, ZapOff, CheckCircle2, LogIn,
 } from 'lucide-react';
 import { ownerAxios, formatDate, formatMoney } from './index';
 import SortIcon from '../ui/SortIcon';
@@ -545,6 +545,7 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
   const [cancelandoPreapproval, setCancelandoPreapproval] = useState(false);
   const [moduleMsg, setModuleMsg] = useState(null);
   const [updatingModulos, setUpdatingModulos] = useState(false);
+  const [showImpersonateModal, setShowImpersonateModal] = useState(false);
 
   const authHeader = { headers: { Authorization: `Bearer ${token}` } };
 
@@ -568,6 +569,23 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
   }, [clienteId]); // eslint-disable-line
 
   useEffect(() => { loadCliente(); }, [loadCliente]);
+
+  const handleImpersonate = () => setShowImpersonateModal(true);
+
+  const confirmImpersonate = async () => {
+    setShowImpersonateModal(false);
+    setActionLoading(true);
+    try {
+      const res = await ownerAxios.post(`/impersonate/${clienteId}`, {}, authHeader);
+      localStorage.setItem('impersonation_active', 'true');
+      localStorage.setItem('impersonation_empresa_nombre', res.data.empresa_nombre);
+      localStorage.setItem('token', res.data.access_token);
+      window.location.href = '/dashboard';
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Error al ingresar como administrador');
+      setActionLoading(false);
+    }
+  };
 
   const toggleActivo = async () => {
     if (!window.confirm(`¿${cliente.activo ? 'Suspender' : 'Activar'} la empresa "${cliente.nombre}"?`)) return;
@@ -752,6 +770,14 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
           <p className="text-sm text-gray-500">{cliente.admin_email}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            onClick={handleImpersonate}
+            disabled={actionLoading}
+            className="flex items-center gap-1.5 bg-orange-700 hover:bg-orange-600 text-white text-sm px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
+            title="Ingresar al sistema como administrador de esta empresa"
+          >
+            <LogIn className="w-4 h-4" /> Entrar como Admin
+          </button>
           <button
             onClick={() => setShowPagoModal(true)}
             className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-600 text-white text-sm px-3 py-2 rounded-lg transition-colors"
@@ -971,6 +997,42 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
 
       {/* Configuración de cuenta */}
       <EmpresaConfigPanel empresaId={clienteId} token={token} />
+
+      {/* Modal: Confirmar impersonación */}
+      {showImpersonateModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-orange-900/50 border border-orange-700 flex items-center justify-center flex-shrink-0">
+                <LogIn className="w-5 h-5 text-orange-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Ingresar como Administrador</h3>
+                <p className="text-xs text-gray-500">Acceso a la cuenta del cliente</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-300 mb-6">
+              Vas a ingresar al sistema como el administrador de{' '}
+              <span className="font-semibold text-white">{cliente.nombre}</span>.
+              Un banner naranja indicará que estás en modo impersonación.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowImpersonateModal(false)}
+                className="flex-1 py-2.5 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800 transition-colors text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmImpersonate}
+                className="flex-1 py-2.5 rounded-lg bg-orange-700 hover:bg-orange-600 text-white font-medium transition-colors text-sm"
+              >
+                Ingresar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Registrar Pago */}
       {showPagoModal && (

@@ -3877,6 +3877,26 @@ async def owner_login(data: OwnerLoginData):
     token = create_owner_token()
     return {"access_token": token, "token_type": "bearer"}
 
+@owner_router.post("/impersonate/{empresa_id}")
+async def owner_impersonate(empresa_id: str, _=Depends(verify_owner_token)):
+    empresa = await db.empresas.find_one({"id": empresa_id})
+    if not empresa:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+
+    admin = await db.users.find_one({"empresa_id": empresa_id, "rol": "admin", "activo": True})
+    if not admin:
+        raise HTTPException(status_code=404, detail="No se encontró usuario admin activo para esta empresa")
+
+    access_token = create_access_token(
+        data={"sub": admin["id"], "empresa_id": admin["empresa_id"]},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "empresa_nombre": empresa["nombre"],
+    }
+
 @owner_router.get("/stats")
 async def owner_stats(_=Depends(verify_owner_token)):
     total = await db.empresas.count_documents({})
