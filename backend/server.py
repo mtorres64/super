@@ -574,6 +574,7 @@ class Configuration(BaseModel):
     tax_rate: float = 0.12  # 12% default
     currency_symbol: str = "$"
     currency_code: str = "USD"
+    redondeo_precio: int = 100  # 0 = sin redondeo
 
     # POS Settings
     sounds_enabled: bool = True
@@ -630,6 +631,7 @@ class ConfigurationUpdate(BaseModel):
     tax_rate: Optional[float] = None
     currency_symbol: Optional[str] = None
     currency_code: Optional[str] = None
+    redondeo_precio: Optional[int] = None
     sounds_enabled: Optional[bool] = None
     auto_focus_barcode: Optional[bool] = None
     barcode_scan_timeout: Optional[int] = None
@@ -1789,11 +1791,10 @@ async def get_import_template(user: User = Depends(require_role([UserRole.ADMIN]
     cols = [
         ("nombre",          28, "OBLIGATORIO. Nombre del producto."),
         ("tipo",            18, "OBLIGATORIO. Valores: codigo_barras  o  por_peso"),
-        ("precio",          14, "OBLIGATORIO. Precio de venta (solo numeros). Se redondea al multiplo de 50 mas cercano."),
+        ("precio",          14, "OBLIGATORIO. Precio de venta (solo numeros). Se redondea al multiplo de 100 mas cercano."),
         ("categoria",       18, "OBLIGATORIO. Seleccionar de la lista desplegable."),
         ("precio_costo",    16, "Opcional. Precio de compra. Calcula el margen automaticamente con el precio de venta."),
         ("codigo_barras",   20, "Opcional. Si ya existe ese codigo el producto se ACTUALIZA."),
-        ("precio_por_peso", 18, "Opcional. Solo para tipo=por_peso. Precio por kg."),
         ("stock",           12, "Opcional. Stock inicial. Por defecto: 0"),
         ("stock_minimo",    14, "Opcional. Alerta de stock bajo. Por defecto: 10"),
         ("clase",           14, "Opcional. Clase del producto: Normal o Combo. Por defecto: Normal"),
@@ -1823,11 +1824,11 @@ async def get_import_template(user: User = Depends(require_role([UserRole.ADMIN]
     ws.add_data_validation(dv_cat)
 
     dv_clase = DataValidation(type="list", formula1='"Normal,Combo"', allow_blank=True)
-    dv_clase.sqref = "J2:J1000"
+    dv_clase.sqref = "I2:I1000"
     ws.add_data_validation(dv_clase)
 
     for r in range(2, 202):
-        for c in range(1, 11):
+        for c in range(1, 10):
             cell = ws.cell(row=r, column=c)
             cell.fill   = REQ_FILL if c <= 4 else OPT_FILL
             cell.border = THIN
@@ -1892,9 +1893,14 @@ async def import_products(
     empresa_id = user.empresa_id
     total_rows = len(df)
 
-    def _redondear_50(valor: float) -> float:
+    cfg = await db.configuration.find_one({"empresa_id": empresa_id}) or {}
+    redondeo = cfg.get("redondeo_precio", 100)
+
+    def _redondear(valor: float) -> float:
         import math
-        return math.ceil(valor / 100) * 100
+        if not redondeo:
+            return round(valor, 2)
+        return math.ceil(valor / redondeo) * redondeo
 
     async def generate():
         created = 0
@@ -1928,9 +1934,6 @@ async def import_products(
                 if tipo not in ("codigo_barras", "por_peso"):
                     tipo = "codigo_barras"
 
-                raw_ppp = row.get("precio_por_peso")
-                precio_por_peso = float(raw_ppp) if pd.notna(raw_ppp) and str(raw_ppp).strip() not in ("", "nan") else None
-
                 raw_stock = row.get("stock")
                 stock = int(float(raw_stock)) if pd.notna(raw_stock) and str(raw_stock).strip() not in ("", "nan") else 0
 
@@ -1940,7 +1943,7 @@ async def import_products(
                 raw_clase = row.get("clase", "")
                 kind = "combo" if str(raw_clase).strip().lower() == "combo" else "normal"
 
-                precio_raw = _redondear_50(float(row["precio"]))
+                precio_raw = _redondear(float(row["precio"]))
 
                 raw_costo = row.get("precio_costo")
                 precio_costo = float(raw_costo) if pd.notna(raw_costo) and str(raw_costo).strip() not in ("", "nan") else None
@@ -1956,9 +1959,6 @@ async def import_products(
                     "stock": stock,
                     "stock_minimo": stock_minimo,
                 }
-                if precio_por_peso is not None:
-                    product_data["precio_por_peso"] = precio_por_peso
-
                 existing = None
                 if codigo_barras and not codigo_barras.startswith("INT-"):
                     existing = await db.products.find_one({"codigo_barras": codigo_barras, "empresa_id": empresa_id})
@@ -2879,6 +2879,15 @@ async def create_compra(
     compra_data: CompraCreate,
     user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR]))
 ):
+    cfg = await db.configuration.find_one({"empresa_id": user.empresa_id}) or {}
+    redondeo = cfg.get("redondeo_precio", 100)
+
+    def _redondear_precio(valor: float) -> float:
+        import math
+        if not redondeo:
+            return round(valor, 2)
+        return math.ceil(valor / redondeo) * redondeo
+
     proveedor_nombre = None
     if compra_data.proveedor_id:
         prov = await db.proveedores.find_one({"id": compra_data.proveedor_id, "empresa_id": user.empresa_id})
@@ -2903,7 +2912,7 @@ async def create_compra(
                         bp_update["precio"] = item.nuevo_precio
                     else:
                         margen = bp.get("margen") or 0
-                        bp_update["precio"] = round(item.precio_unitario * (1 + margen / 100), 2)
+                        bp_update["precio"] = _redondear_precio(item.precio_unitario * (1 + margen / 100))
                     if item.nuevo_margen is not None:
                         bp_update["margen"] = item.nuevo_margen
                 await db.branch_products.update_one(

@@ -251,6 +251,24 @@ const SettingsView = ({
                     <option value="ARS">ARS - Peso Argentino</option>
                   </select>
                 </div>
+                <div className="form-group">
+                  <label className="form-label">Redondeo de Precios</label>
+                  <select
+                    className="form-select"
+                    value={config?.redondeo_precio ?? 100}
+                    onChange={(e) => updateConfig('redondeo_precio', parseInt(e.target.value))}
+                  >
+                    <option value="0">Sin redondeo</option>
+                    <option value="10">$10</option>
+                    <option value="50">$50</option>
+                    <option value="100">$100</option>
+                    <option value="200">$200</option>
+                    <option value="500">$500</option>
+                  </select>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Aplica al importar productos y al actualizar precios desde compras
+                  </p>
+                </div>
               </div>
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">

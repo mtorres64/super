@@ -550,18 +550,6 @@ const ProductManagementView = ({
                       required
                     />
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">Precio por Kg</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="form-input"
-                      disabled={formData.tipo !== 'por_peso'}
-                      value={formData.tipo === 'por_peso' ? formData.precio_por_peso : ''}
-                      onChange={(e) => setFormData({...formData, precio_por_peso: e.target.value})}
-                      placeholder={formData.tipo !== 'por_peso' ? '—' : ''}
-                    />
-                  </div>
                 </div>
 
                 {/* Row 4: Control de stock + Stock actual + Stock mínimo */}
@@ -781,7 +769,7 @@ const ProductManagementView = ({
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1">
                         <p className="font-medium mb-1">Formato requerido (CSV o XLSX):</p>
-                        <p className="font-mono text-xs">nombre, tipo, precio, categoria, precio_costo, codigo_barras, precio_por_peso, stock, stock_minimo, clase</p>
+                        <p className="font-mono text-xs">nombre, tipo, precio, categoria, precio_costo, codigo_barras, stock, stock_minimo, clase</p>
                         <p className="mt-1 text-xs">• <strong>tipo</strong>: <code>codigo_barras</code> o <code>por_peso</code></p>
                         <p className="text-xs">• <strong>precio</strong>: se redondea al múltiplo de $50 más cercano</p>
                         <p className="text-xs">• <strong>precio_costo</strong>: opcional. Calcula el margen automáticamente</p>
