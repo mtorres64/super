@@ -1886,6 +1886,12 @@ html.dark .modal-sticky-bottom {
   flex-shrink: 0;
 }
 
+/* Spinner variant para fondos claros/blancos */
+.spinner-on-light {
+  border-color: rgba(0, 0, 0, 0.12);
+  border-top-color: currentColor;
+}
+
 @keyframes spin {
   to { transform: rotate(360deg); }
 }

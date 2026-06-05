@@ -1565,6 +1565,60 @@ async def update_branch_product(branch_product_id: str, product_data: BranchProd
     updated = await db.branch_products.find_one({"id": branch_product_id, "empresa_id": user.empresa_id})
     return BranchProduct(**updated)
 
+@api_router.post("/branch-products/bulk-deactivate")
+async def bulk_deactivate_branch_products(data: BranchProductBulkDeleteRequest, user: User = Depends(require_role([UserRole.ADMIN]))):
+    branch_id = data.branch_id
+    if not branch_id:
+        return {"updated": 0}
+
+    if data.delete_all:
+        query = {"empresa_id": user.empresa_id}
+        if data.search:
+            regex = {"$regex": re.escape(data.search), "$options": "i"}
+            matching = await db.products.find(
+                {"empresa_id": user.empresa_id, "$or": [{"nombre": regex}, {"codigo_barras": regex}]},
+                {"id": 1}
+            ).to_list(None)
+            product_ids = [p["id"] for p in matching]
+        else:
+            all_products = await db.products.find({"empresa_id": user.empresa_id}, {"id": 1}).to_list(None)
+            product_ids = [p["id"] for p in all_products]
+    else:
+        product_ids = data.ids or []
+
+    if not product_ids:
+        return {"updated": 0}
+
+    existing_bps = await db.branch_products.find(
+        {"product_id": {"$in": product_ids}, "branch_id": branch_id, "empresa_id": user.empresa_id}
+    ).to_list(None)
+    existing_map = {bp["product_id"]: bp for bp in existing_bps}
+
+    updated = 0
+    for pid in product_ids:
+        if pid in existing_map:
+            await db.branch_products.update_one(
+                {"id": existing_map[pid]["id"]},
+                {"$set": {"activo": False}}
+            )
+            updated += 1
+        else:
+            global_product = await db.products.find_one({"id": pid, "empresa_id": user.empresa_id})
+            if global_product:
+                bp = BranchProduct(
+                    product_id=pid,
+                    branch_id=branch_id,
+                    empresa_id=user.empresa_id,
+                    precio=global_product.get("precio", 0),
+                    stock=global_product.get("stock", 0),
+                    stock_minimo=global_product.get("stock_minimo", 10),
+                    activo=False
+                )
+                await db.branch_products.insert_one(bp.dict())
+                updated += 1
+
+    return {"updated": updated}
+
 @api_router.delete("/branch-products/bulk")
 async def bulk_delete_branch_products(data: BranchProductBulkDeleteRequest, user: User = Depends(require_role([UserRole.ADMIN]))):
     if data.delete_all and data.branch_id:

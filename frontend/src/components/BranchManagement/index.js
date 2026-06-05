@@ -427,29 +427,23 @@ const BranchManagement = () => {
     setBulkDeleting(true);
     try {
       if (selectAllGlobal) {
-        const res = await axios.delete(`${API}/branch-products/bulk`, {
-          data: { branch_id: selectedBranch.id, delete_all: true, search: debouncedSearch || null }
+        const res = await axios.post(`${API}/branch-products/bulk-deactivate`, {
+          branch_id: selectedBranch.id, delete_all: true, search: debouncedSearch || null
         });
-        toast.success(`${res.data.deleted} producto(s) eliminado(s) de la sucursal`);
+        toast.success(`${res.data.updated} producto(s) desactivado(s) en la sucursal`);
       } else {
-        const toDelete = [...selectedRows]
-          .map(productId => branchProductsCache[productId])
-          .filter(p => p?.branch_product_id);
-        const skipped = selectedRows.size - toDelete.length;
-        if (toDelete.length > 0) {
-          const res = await axios.delete(`${API}/branch-products/bulk`, {
-            data: { ids: toDelete.map(p => p.branch_product_id) }
-          });
-          if (res.data.deleted > 0) toast.success(`${res.data.deleted} producto(s) eliminado(s) de la sucursal`);
-        }
-        if (skipped > 0) toast.error(`${skipped} producto(s) sin guardar previo, no pudieron eliminarse`);
+        const productIds = [...selectedRows];
+        const res = await axios.post(`${API}/branch-products/bulk-deactivate`, {
+          ids: productIds, branch_id: selectedBranch.id
+        });
+        if (res.data.updated > 0) toast.success(`${res.data.updated} producto(s) desactivado(s) en la sucursal`);
       }
       closeBulkDeleteModalAnim();
       setSelectedRows(new Set());
       setSelectAllGlobal(false);
       await reloadBranchProducts();
     } catch {
-      toast.error('Error al eliminar productos');
+      toast.error('Error al desactivar productos');
     } finally {
       setBulkDeleting(false);
     }

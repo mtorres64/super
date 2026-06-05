@@ -15,7 +15,8 @@ import {
   ChevronDown,
   Percent,
   SlidersHorizontal,
-  Trash2
+  Trash2,
+  EyeOff
 } from 'lucide-react';
 import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
@@ -218,7 +219,7 @@ const BranchManagementView = ({
             />
             {searchTerm && (
               loadingProducts
-                ? <div className="absolute right-3 top-1/2 -translate-y-1/2 spinner w-4 h-4" />
+                ? <div className="absolute right-3 top-1/2 -translate-y-1/2"><div className="spinner spinner-on-light w-4 h-4 text-gray-400" /></div>
                 : <button
                     type="button"
                     onClick={onClearSearch}
@@ -260,10 +261,10 @@ const BranchManagementView = ({
               </button>
               <button
                 onClick={() => onSetShowBulkDeleteModal(true)}
-                className="btn btn-sm bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
+                className="btn btn-sm bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
               >
-                <Trash2 className="w-4 h-4" />
-                Eliminar seleccionados
+                <EyeOff className="w-4 h-4" />
+                Desactivar seleccionados
               </button>
               <button
                 onClick={onClearSelection}
@@ -481,23 +482,23 @@ const BranchManagementView = ({
           </>
         )}
 
-        {/* Bulk Delete Confirmation Modal */}
+        {/* Bulk Deactivate Confirmation Modal */}
         {showBulkDeleteModal && (
           <div className={`modal-overlay${bulkDeleteModalClosing ? ' closing' : ''}`}>
             <div className={`modal-content max-w-md${bulkDeleteModalClosing ? ' closing' : ''}`}>
               <div className="modal-header">
                 <h3 className="modal-title flex items-center gap-2">
-                  <Trash2 className="w-5 h-5 text-red-600" />
-                  Eliminar productos de la sucursal
+                  <EyeOff className="w-5 h-5 text-amber-600" />
+                  Desactivar productos en la sucursal
                 </h3>
                 <button onClick={onCloseBulkDeleteModalAnim} className="modal-close">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
-                Estás por eliminar <strong>{selectAllGlobal ? `${total} producto(s)` : `${selectedRows.size} producto(s)`}</strong> de la sucursal <strong>{selectedBranch.nombre}</strong>.
-                <br />Esta acción no se puede deshacer.
+              <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+                Estás por desactivar <strong>{selectAllGlobal ? `${total} producto(s)` : `${selectedRows.size} producto(s)`}</strong> en la sucursal <strong>{selectedBranch.nombre}</strong>.
+                <br />No aparecerán en el POS ni en ventas. Podés reactivarlos desde esta misma vista.
               </div>
 
               <div className="flex justify-end space-x-3 mt-6">
@@ -513,12 +514,12 @@ const BranchManagementView = ({
                   type="button"
                   onClick={onHandleBulkDelete}
                   disabled={bulkDeleting}
-                  className="btn bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                  className="btn bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
                 >
                   {bulkDeleting ? (
-                    <><div className="spinner w-4 h-4" /> Eliminando...</>
+                    <><div className="spinner w-4 h-4" /> Desactivando...</>
                   ) : (
-                    <><Trash2 className="w-4 h-4" /> Eliminar</>
+                    <><EyeOff className="w-4 h-4" /> Desactivar</>
                   )}
                 </button>
               </div>

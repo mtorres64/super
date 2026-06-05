@@ -270,7 +270,7 @@ const POSView = ({
                 />
                 {searchTerm && (
                   productsLoading
-                    ? <div className="absolute right-3 top-1/2 -translate-y-1/2 spinner w-4 h-4" />
+                    ? <div className="absolute right-3 top-1/2 -translate-y-1/2"><div className="spinner spinner-on-light w-4 h-4 text-gray-400" /></div>
                     : <button
                         type="button"
                         onClick={clearSearch}
@@ -329,7 +329,7 @@ const POSView = ({
           <div className="pos-products">
             {productsLoading && paginatedProducts.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full py-16 text-gray-500">
-                <div className="spinner w-10 h-10 mb-4"></div>
+                <div className="spinner spinner-on-light w-10 h-10 mb-4"></div>
                 <p className="text-sm">Cargando productos...</p>
               </div>
             ) : (

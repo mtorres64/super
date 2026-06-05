@@ -540,7 +540,7 @@ const ProductManagementView = ({
                     )}
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Precio Unitario *</label>
+                    <label className="form-label">{formData.tipo === 'por_peso' ? 'Precio Unitario/Kg *' : 'Precio Unitario *'}</label>
                     <input
                       type="number"
                       step="0.01"
