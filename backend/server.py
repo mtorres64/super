@@ -585,6 +585,7 @@ class Configuration(BaseModel):
     default_minimum_stock: int = 10
     low_stock_alert_enabled: bool = True
     auto_update_inventory: bool = True
+    auto_update_prices: bool = True
 
     # System Settings
     date_format: str = "DD/MM/YYYY"
@@ -636,6 +637,7 @@ class ConfigurationUpdate(BaseModel):
     default_minimum_stock: Optional[int] = None
     low_stock_alert_enabled: Optional[bool] = None
     auto_update_inventory: Optional[bool] = None
+    auto_update_prices: Optional[bool] = None
     date_format: Optional[str] = None
     time_format: Optional[str] = None
     language: Optional[str] = None
@@ -882,6 +884,7 @@ class CompraItem(BaseModel):
     actualizar_precio: bool = False
     nuevo_precio: Optional[float] = None
     nuevo_margen: Optional[float] = None
+    costo_anterior: Optional[float] = None
 
 class Compra(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -889,7 +892,7 @@ class Compra(BaseModel):
     sucursal_id: Optional[str] = None
     proveedor_id: Optional[str] = None
     proveedor_nombre: Optional[str] = None
-    numero_factura: str
+    numero_factura: Optional[str] = None
     fecha: datetime
     items: List[CompraItem] = []
     subtotal: float
@@ -902,7 +905,7 @@ class Compra(BaseModel):
 class CompraCreate(BaseModel):
     sucursal_id: Optional[str] = None
     proveedor_id: Optional[str] = None
-    numero_factura: str
+    numero_factura: Optional[str] = None
     fecha: datetime
     items: List[CompraItem] = []
     subtotal: float
@@ -1786,8 +1789,9 @@ async def get_import_template(user: User = Depends(require_role([UserRole.ADMIN]
     cols = [
         ("nombre",          28, "OBLIGATORIO. Nombre del producto."),
         ("tipo",            18, "OBLIGATORIO. Valores: codigo_barras  o  por_peso"),
-        ("precio",          14, "OBLIGATORIO. Precio de venta (solo numeros)."),
+        ("precio",          14, "OBLIGATORIO. Precio de venta (solo numeros). Se redondea al multiplo de 50 mas cercano."),
         ("categoria",       18, "OBLIGATORIO. Seleccionar de la lista desplegable."),
+        ("precio_costo",    16, "Opcional. Precio de compra. Calcula el margen automaticamente con el precio de venta."),
         ("codigo_barras",   20, "Opcional. Si ya existe ese codigo el producto se ACTUALIZA."),
         ("precio_por_peso", 18, "Opcional. Solo para tipo=por_peso. Precio por kg."),
         ("stock",           12, "Opcional. Stock inicial. Por defecto: 0"),
@@ -1819,11 +1823,11 @@ async def get_import_template(user: User = Depends(require_role([UserRole.ADMIN]
     ws.add_data_validation(dv_cat)
 
     dv_clase = DataValidation(type="list", formula1='"Normal,Combo"', allow_blank=True)
-    dv_clase.sqref = "I2:I1000"
+    dv_clase.sqref = "J2:J1000"
     ws.add_data_validation(dv_clase)
 
     for r in range(2, 202):
-        for c in range(1, 10):
+        for c in range(1, 11):
             cell = ws.cell(row=r, column=c)
             cell.fill   = REQ_FILL if c <= 4 else OPT_FILL
             cell.border = THIN
@@ -1888,6 +1892,10 @@ async def import_products(
     empresa_id = user.empresa_id
     total_rows = len(df)
 
+    def _redondear_50(valor: float) -> float:
+        import math
+        return math.ceil(valor / 100) * 100
+
     async def generate():
         created = 0
         updated = 0
@@ -1932,12 +1940,18 @@ async def import_products(
                 raw_clase = row.get("clase", "")
                 kind = "combo" if str(raw_clase).strip().lower() == "combo" else "normal"
 
+                precio_raw = _redondear_50(float(row["precio"]))
+
+                raw_costo = row.get("precio_costo")
+                precio_costo = float(raw_costo) if pd.notna(raw_costo) and str(raw_costo).strip() not in ("", "nan") else None
+                margen = round((precio_raw - precio_costo) / precio_costo * 100, 2) if precio_costo else None
+
                 product_data = {
                     "nombre": str(row["nombre"]).strip(),
                     "codigo_barras": codigo_barras,
                     "tipo": tipo,
                     "kind": kind,
-                    "precio": float(row["precio"]),
+                    "precio": precio_raw,
                     "categoria_id": categoria_id,
                     "stock": stock,
                     "stock_minimo": stock_minimo,
@@ -1954,6 +1968,15 @@ async def import_products(
                         {"id": existing["id"], "empresa_id": empresa_id},
                         {"$set": product_data}
                     )
+                    bp_update = {"precio": precio_raw}
+                    if precio_costo is not None:
+                        bp_update["costo"] = precio_costo
+                    if margen is not None:
+                        bp_update["margen"] = margen
+                    await db.branch_products.update_many(
+                        {"product_id": existing["id"], "empresa_id": empresa_id},
+                        {"$set": bp_update}
+                    )
                     updated += 1
                 else:
                     product_data['codigo_barras'] = codigo_barras
@@ -1967,7 +1990,7 @@ async def import_products(
                             "empresa_id": empresa_id
                         })
                         if not bp_exists:
-                            bp = BranchProduct(
+                            bp_data = dict(
                                 empresa_id=empresa_id,
                                 product_id=product.id,
                                 branch_id=branch["id"],
@@ -1976,6 +1999,11 @@ async def import_products(
                                 stock=product.stock,
                                 stock_minimo=product.stock_minimo,
                             )
+                            if precio_costo is not None:
+                                bp_data["costo"] = precio_costo
+                            if margen is not None:
+                                bp_data["margen"] = margen
+                            bp = BranchProduct(**bp_data)
                             await db.branch_products.insert_one(bp.dict())
                     created += 1
 
@@ -2856,57 +2884,60 @@ async def create_compra(
         prov = await db.proveedores.find_one({"id": compra_data.proveedor_id, "empresa_id": user.empresa_id})
         if prov:
             proveedor_nombre = prov["nombre"]
+
+    # Process items: capture costo_anterior and update branch products in one pass
+    enriched_items = []
+    for item in compra_data.items:
+        item_dict = item.dict()
+        if item.product_id and compra_data.sucursal_id:
+            bp = await db.branch_products.find_one({
+                "product_id": item.product_id,
+                "branch_id": compra_data.sucursal_id,
+                "empresa_id": user.empresa_id
+            })
+            if bp:
+                item_dict["costo_anterior"] = bp.get("costo")
+                bp_update: dict = {"costo": item.precio_unitario}
+                if item.actualizar_precio:
+                    if item.nuevo_precio is not None:
+                        bp_update["precio"] = item.nuevo_precio
+                    else:
+                        margen = bp.get("margen") or 0
+                        bp_update["precio"] = round(item.precio_unitario * (1 + margen / 100), 2)
+                    if item.nuevo_margen is not None:
+                        bp_update["margen"] = item.nuevo_margen
+                await db.branch_products.update_one(
+                    {"id": bp["id"]},
+                    {"$set": bp_update, "$inc": {"stock": int(item.cantidad)}}
+                )
+            else:
+                global_product = await db.products.find_one({"id": item.product_id, "empresa_id": user.empresa_id})
+                if global_product:
+                    new_bp = BranchProduct(
+                        empresa_id=user.empresa_id,
+                        product_id=item.product_id,
+                        branch_id=compra_data.sucursal_id,
+                        precio=global_product.get("precio", 0),
+                        stock=int(item.cantidad),
+                        stock_minimo=global_product.get("stock_minimo", 10),
+                        costo=item.precio_unitario,
+                    )
+                    await db.branch_products.insert_one(new_bp.dict())
+            await db.products.update_one(
+                {"id": item.product_id, "empresa_id": user.empresa_id},
+                {"$inc": {"stock": int(item.cantidad)}}
+            )
+        enriched_items.append(item_dict)
+
+    compra_dict = compra_data.dict()
+    compra_dict["items"] = enriched_items
     compra = Compra(
-        **compra_data.dict(),
+        **compra_dict,
         empresa_id=user.empresa_id,
         proveedor_nombre=proveedor_nombre,
         registrado_por=user.id
     )
     await db.compras.insert_one(compra.dict())
-
-    # Update product costs (and optionally sale prices) and stock for linked items
-    if compra_data.sucursal_id:
-        for item in compra_data.items:
-            if item.product_id:
-                bp = await db.branch_products.find_one({
-                    "product_id": item.product_id,
-                    "branch_id": compra_data.sucursal_id,
-                    "empresa_id": user.empresa_id
-                })
-                if bp:
-                    bp_update: dict = {"costo": item.precio_unitario}
-                    if item.actualizar_precio:
-                        if item.nuevo_precio is not None:
-                            bp_update["precio"] = item.nuevo_precio
-                        else:
-                            margen = bp.get("margen") or 0
-                            bp_update["precio"] = round(item.precio_unitario * (1 + margen / 100), 2)
-                        if item.nuevo_margen is not None:
-                            bp_update["margen"] = item.nuevo_margen
-                    await db.branch_products.update_one(
-                        {"id": bp["id"]},
-                        {"$set": bp_update, "$inc": {"stock": int(item.cantidad)}}
-                    )
-                else:
-                    # No branch_product exists yet — create one with purchase stock
-                    global_product = await db.products.find_one({"id": item.product_id, "empresa_id": user.empresa_id})
-                    if global_product:
-                        new_bp = BranchProduct(
-                            empresa_id=user.empresa_id,
-                            product_id=item.product_id,
-                            branch_id=compra_data.sucursal_id,
-                            precio=global_product.get("precio", 0),
-                            stock=int(item.cantidad),
-                            stock_minimo=global_product.get("stock_minimo", 10),
-                            costo=item.precio_unitario,
-                        )
-                        await db.branch_products.insert_one(new_bp.dict())
-                # Also increment global product stock
-                await db.products.update_one(
-                    {"id": item.product_id, "empresa_id": user.empresa_id},
-                    {"$inc": {"stock": int(item.cantidad)}}
-                )
-
     return compra
 
 @api_router.get("/compras", response_model=List[Compra])

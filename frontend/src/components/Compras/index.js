@@ -15,7 +15,8 @@ const emptyItem = {
   product_id: null,
   precio_actual: null,
   margen_actual: null,
-  costo_actual: null
+  costo_actual: null,
+  actualizar_precio: true,
 };
 
 const emptyCompraForm = {
@@ -53,14 +54,14 @@ const Compras = () => {
   const [branches, setBranches] = useState([]);
   const [branchProducts, setBranchProducts] = useState([]);
   const [openAutocompleteIndex, setOpenAutocompleteIndex] = useState(null);
+  const [autocompleteHighlight, setAutocompleteHighlight] = useState(-1);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 240 });
   const descInputRefs = useRef({});
+  const cantidadInputRefs = useRef({});
+  const costoInputRefs = useRef({});
 
-  // Price update modal
-  const [showPriceModal, setShowPriceModal] = useState(false);
-  const [pendingPayload, setPendingPayload] = useState(null);
-  const [priceUpdates, setPriceUpdates] = useState({});
-  const [priceModalMargins, setPriceModalMargins] = useState({});
+  // Config: precio
+  const [autoUpdatePrices, setAutoUpdatePrices] = useState(true);
 
   // Delete confirmation modal
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -78,6 +79,9 @@ const Compras = () => {
     fetchCompras();
     fetchProveedores();
     fetchBranches();
+    axios.get(`${API}/config`).then(res => {
+      setAutoUpdatePrices(res.data.auto_update_prices ?? true);
+    }).catch(() => {});
   }, []);
 
   // ── Branches ─────────────────────────────────────────────────────────────────
@@ -92,7 +96,7 @@ const Compras = () => {
   };
 
   const fetchBranchProducts = async (branchId) => {
-    if (!branchId) { setBranchProducts([]); return; }
+    if (!branchId) { setBranchProducts([]); return []; }
     try {
       const res = await axios.get(`${API}/branches/${branchId}/products`, { params: { all: true } });
       const items = Array.isArray(res.data) ? res.data : (res.data.items || []);
@@ -101,9 +105,11 @@ const Compras = () => {
       if (activos.length === 0) {
         toast.info('Esta sucursal no tiene productos activos cargados');
       }
+      return activos;
     } catch (err) {
       setBranchProducts([]);
       toast.error(err.response?.data?.detail || 'No se pudieron cargar los productos de la sucursal');
+      return [];
     }
   };
 
@@ -162,6 +168,7 @@ const Compras = () => {
     }
     // Clear product link if description is changed manually
     if (field === 'descripcion') {
+      setAutocompleteHighlight(-1);
       updatedItems[index].product_id = null;
       updatedItems[index].precio_actual = null;
       updatedItems[index].margen_actual = null;
@@ -180,7 +187,10 @@ const Compras = () => {
       product_id: product.product_id,
       precio_actual: precio,
       margen_actual: product.margen_sucursal ?? null,
-      costo_actual: product.costo_sucursal ?? null
+      costo_actual: product.costo_sucursal ?? (precio > 0 && product.margen_sucursal != null
+        ? parseFloat((precio / (1 + product.margen_sucursal / 100)).toFixed(2))
+        : null),
+      actualizar_precio: autoUpdatePrices,
     };
     const qty = parseFloat(updatedItems[index].cantidad) || 0;
     const price = parseFloat(updatedItems[index].precio_unitario) || 0;
@@ -188,6 +198,10 @@ const Compras = () => {
     const { subtotal, total } = recalcTotals(updatedItems, compraForm.impuestos);
     setCompraForm(prev => ({ ...prev, items: updatedItems, subtotal, total }));
     setOpenAutocompleteIndex(null);
+    setTimeout(() => {
+      const el = cantidadInputRefs.current[index];
+      if (el) { el.focus(); el.select(); }
+    }, 0);
   };
 
   const addItem = () => {
@@ -208,7 +222,7 @@ const Compras = () => {
     setCompraForm(prev => ({ ...prev, impuestos: value, subtotal, total }));
   };
 
-  const openCompraModal = (compra = null) => {
+  const openCompraModal = async (compra = null) => {
     if (compra) {
       setCompraForm({
         sucursal_id: compra.sucursal_id || '',
@@ -224,7 +238,31 @@ const Compras = () => {
         notas: compra.notas || ''
       });
       if (compra.sucursal_id) {
-        fetchBranchProducts(compra.sucursal_id);
+        const bps = await fetchBranchProducts(compra.sucursal_id);
+        if (bps.length > 0) {
+          setCompraForm(prev => ({
+            ...prev,
+            items: prev.items.map(it => {
+              if (!it.product_id) return it;
+              const bp = bps.find(p => p.product_id === it.product_id);
+              const precio = bp ? (bp.precio_sucursal ?? bp.precio_global ?? null) : null;
+              const margen = bp ? (bp.margen_sucursal ?? null) : null;
+              // Prefer costo_anterior stored at registration time; fallback to bp or derivation
+              const costo = it.costo_anterior
+                ?? bp?.costo_sucursal
+                ?? (precio != null && margen != null
+                  ? parseFloat((precio / (1 + margen / 100)).toFixed(2))
+                  : null);
+              return {
+                ...it,
+                precio_actual: precio,
+                margen_actual: margen,
+                costo_actual: costo,
+                actualizar_precio: autoUpdatePrices,
+              };
+            })
+          }));
+        }
       }
       setEditingCompra(compra);
     } else {
@@ -241,28 +279,20 @@ const Compras = () => {
     setCompraForm(emptyCompraForm);
     setBranchProducts([]);
     setOpenAutocompleteIndex(null);
-    setShowPriceModal(false);
-    setPendingPayload(null);
-    setPriceUpdates({});
-    setPriceModalMargins({});
   };
 
-  const buildPayload = (priceUpdatesMap = {}, marginsMap = {}) => {
+  const buildPayload = () => {
     const itemsValidos = compraForm.items.filter(it => it.descripcion.trim());
     return {
       sucursal_id: compraForm.sucursal_id || null,
       proveedor_id: compraForm.proveedor_id || null,
       numero_factura: compraForm.numero_factura.trim(),
       fecha: new Date(compraForm.fecha).toISOString(),
-      items: itemsValidos.map((it, origIndex) => {
-        const willUpdate = priceUpdatesMap[origIndex] ?? false;
+      items: itemsValidos.map(it => {
         const costoNuevo = parseFloat(it.precio_unitario) || 0;
-        const margenStr = marginsMap[origIndex];
-        const nuevoMargen = willUpdate && margenStr !== undefined && margenStr !== ''
-          ? parseFloat(margenStr)
-          : null;
-        const nuevoPrecio = willUpdate && nuevoMargen != null
-          ? parseFloat((costoNuevo * (1 + nuevoMargen / 100)).toFixed(2))
+        const willUpdate = (it.actualizar_precio ?? autoUpdatePrices) && !!it.product_id && costoNuevo > 0 && it.margen_actual != null;
+        const nuevoPrecio = willUpdate
+          ? Math.ceil(costoNuevo * (1 + it.margen_actual / 100) / 100) * 100
           : null;
         return {
           descripcion: it.descripcion,
@@ -272,7 +302,7 @@ const Compras = () => {
           product_id: it.product_id || null,
           actualizar_precio: willUpdate,
           nuevo_precio: nuevoPrecio,
-          nuevo_margen: nuevoMargen,
+          nuevo_margen: willUpdate ? it.margen_actual : null,
         };
       }),
       subtotal: compraForm.subtotal,
@@ -300,34 +330,7 @@ const Compras = () => {
 
   const handleCompraSubmit = async (e) => {
     e.preventDefault();
-    if (!compraForm.numero_factura.trim()) {
-      toast.error('El número de factura es obligatorio');
-      return;
-    }
-    const itemsValidos = compraForm.items.filter(it => it.descripcion.trim());
-    const itemsConProducto = itemsValidos
-      .map((it, i) => ({ ...it, origIndex: i }))
-      .filter(it => it.product_id && compraForm.sucursal_id);
-
-    if (itemsConProducto.length > 0) {
-      const initialUpdates = {};
-      const initialMargins = {};
-      itemsConProducto.forEach(it => {
-        initialUpdates[it.origIndex] = false;
-        initialMargins[it.origIndex] = it.margen_actual != null ? String(it.margen_actual) : '';
-      });
-      setPriceUpdates(initialUpdates);
-      setPriceModalMargins(initialMargins);
-      setPendingPayload(itemsConProducto);
-      setShowPriceModal(true);
-    } else {
-      await submitCompra(buildPayload());
-    }
-  };
-
-  const handleConfirmPriceModal = async (applyUpdates) => {
-    setShowPriceModal(false);
-    await submitCompra(buildPayload(applyUpdates ? priceUpdates : {}, applyUpdates ? priceModalMargins : {}));
+    await submitCompra(buildPayload());
   };
 
   const handleDeleteCompra = (compra) => {
@@ -372,7 +375,61 @@ const Compras = () => {
       left: rect.left + window.scrollX,
       width: Math.max(rect.width, 280)
     });
+    setAutocompleteHighlight(-1);
     setOpenAutocompleteIndex(idx);
+  };
+
+  const handleDescriptionKeyDown = (idx, e) => {
+    const options = getAutocompleteOptions(compraForm.items[idx]?.descripcion || '');
+    if (!options.length || openAutocompleteIndex !== idx) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setAutocompleteHighlight(h => Math.min(h + 1, options.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setAutocompleteHighlight(h => Math.max(h - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (autocompleteHighlight >= 0) {
+        handleSelectProduct(idx, options[autocompleteHighlight]);
+        setAutocompleteHighlight(-1);
+        setOpenAutocompleteIndex(null);
+      }
+    } else if (e.key === 'Escape') {
+      setOpenAutocompleteIndex(null);
+      setAutocompleteHighlight(-1);
+    }
+  };
+
+  const handleCantidadKeyDown = (idx, e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const el = costoInputRefs.current[idx];
+      if (el) { el.focus(); el.select(); }
+    }
+  };
+
+  const handleCostoKeyDown = (idx, e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const item = compraForm.items[idx];
+      const isComplete = item.descripcion?.trim() && parseFloat(item.cantidad) > 0 && parseFloat(item.precio_unitario) > 0;
+      if (isComplete) {
+        const newIdx = compraForm.items.length;
+        addItem();
+        setTimeout(() => {
+          const el = descInputRefs.current[newIdx];
+          if (el) el.focus();
+        }, 50);
+      }
+    }
+  };
+
+  const handleToggleAllPrices = (value) => {
+    setCompraForm(prev => ({
+      ...prev,
+      items: prev.items.map(it => ({ ...it, actualizar_precio: value }))
+    }));
   };
 
   // ── Proveedores helpers ───────────────────────────────────────────────────────
@@ -467,20 +524,6 @@ const Compras = () => {
     return Number(val).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
-  // ── Price modal computed data ─────────────────────────────────────────────────
-
-  const priceModalItemsList = (pendingPayload || []).map(it => {
-    const costoNuevo = parseFloat(it.precio_unitario) || 0;
-    const margenStr = priceModalMargins[it.origIndex];
-    const margen = margenStr !== undefined && margenStr !== ''
-      ? parseFloat(margenStr)
-      : it.margen_actual;
-    const precioSugerido = costoNuevo > 0 && margen != null && !isNaN(margen)
-      ? parseFloat((costoNuevo * (1 + margen / 100)).toFixed(2))
-      : null;
-    return { ...it, costoNuevo, precioSugerido, margenEditable: margenStr ?? (it.margen_actual != null ? String(it.margen_actual) : '') };
-  });
-
   return (
     <ComprasView
       activeTab={activeTab}
@@ -499,13 +542,9 @@ const Compras = () => {
       setOpenAutocompleteIndex={setOpenAutocompleteIndex}
       dropdownPos={dropdownPos}
       descInputRefs={descInputRefs}
-      showPriceModal={showPriceModal}
-      setShowPriceModal={setShowPriceModal}
-      priceUpdates={priceUpdates}
-      setPriceUpdates={setPriceUpdates}
-      priceModalMargins={priceModalMargins}
-      setPriceModalMargins={setPriceModalMargins}
-      priceModalItemsList={priceModalItemsList}
+      cantidadInputRefs={cantidadInputRefs}
+      costoInputRefs={costoInputRefs}
+      autoUpdatePrices={autoUpdatePrices}
       proveedores={proveedores}
       loadingProveedores={loadingProveedores}
       showProveedorModal={showProveedorModal}
@@ -527,7 +566,6 @@ const Compras = () => {
       openProveedorModal={openProveedorModal}
       closeProveedorModalAnim={closeProveedorModalAnim}
       handleCompraSubmit={handleCompraSubmit}
-      handleConfirmPriceModal={handleConfirmPriceModal}
       handleDeleteCompra={handleDeleteCompra}
       showDeleteModal={showDeleteModal}
       deleteTarget={deleteTarget}
@@ -535,11 +573,16 @@ const Compras = () => {
       closeDeleteModalAnim={closeDeleteModalAnim}
       confirmDeleteCompra={confirmDeleteCompra}
       handleItemChange={handleItemChange}
+      autocompleteHighlight={autocompleteHighlight}
       handleSelectProduct={handleSelectProduct}
       handleDescriptionFocus={handleDescriptionFocus}
+      handleDescriptionKeyDown={handleDescriptionKeyDown}
+      handleCantidadKeyDown={handleCantidadKeyDown}
+      handleCostoKeyDown={handleCostoKeyDown}
       handleImpuestosChange={handleImpuestosChange}
       handleProveedorSubmit={handleProveedorSubmit}
       handleToggleProveedor={handleToggleProveedor}
+      handleToggleAllPrices={handleToggleAllPrices}
       addItem={addItem}
       removeItem={removeItem}
       getAutocompleteOptions={getAutocompleteOptions}

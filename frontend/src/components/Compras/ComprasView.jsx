@@ -12,7 +12,10 @@ import {
   FileText,
   MapPin,
   TrendingUp,
-  Package
+  Package,
+  Truck,
+  Calendar,
+  Hash
 } from 'lucide-react';
 import SortIcon from '../ui/SortIcon';
 
@@ -33,13 +36,9 @@ const ComprasView = ({
   setOpenAutocompleteIndex,
   dropdownPos,
   descInputRefs,
-  showPriceModal,
-  setShowPriceModal,
-  priceUpdates,
-  setPriceUpdates,
-  priceModalMargins,
-  setPriceModalMargins,
-  priceModalItemsList,
+  cantidadInputRefs,
+  costoInputRefs,
+  autoUpdatePrices,
   proveedores,
   loadingProveedores,
   showProveedorModal,
@@ -61,19 +60,23 @@ const ComprasView = ({
   openProveedorModal,
   closeProveedorModalAnim,
   handleCompraSubmit,
-  handleConfirmPriceModal,
   handleDeleteCompra,
   showDeleteModal,
   deleteTarget,
   deleteModalClosing,
   closeDeleteModalAnim,
   confirmDeleteCompra,
+  autocompleteHighlight,
   handleItemChange,
   handleSelectProduct,
   handleDescriptionFocus,
+  handleDescriptionKeyDown,
+  handleCantidadKeyDown,
+  handleCostoKeyDown,
   handleImpuestosChange,
   handleProveedorSubmit,
   handleToggleProveedor,
+  handleToggleAllPrices,
   addItem,
   removeItem,
   getAutocompleteOptions,
@@ -82,38 +85,41 @@ const ComprasView = ({
   formatMoney,
 }) => {
   return (
-    <div className="p-6">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-1">Compras</h1>
-          <p className="text-gray-600">Gestión de facturas de compra y proveedores</p>
-        </div>
-      </div>
-
+    <div>
       {/* Tabs */}
-      <div className="bg-white border-b border-gray-200 px-0 mb-6 rounded-t-lg">
+      <div className="bg-white border-b border-gray-200 px-6">
         <div className="flex gap-0">
           <button
             onClick={() => setActiveTab('facturas')}
-            className="flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 transition-colors"
-            style={activeTab === 'facturas'
-              ? { borderColor: 'var(--primary)', color: 'var(--primary)' }
-              : { borderColor: 'transparent', color: '#6b7280' }}
+            className={`flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'facturas'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
           >
             <FileText className="w-4 h-4" />
             Facturas
           </button>
           <button
             onClick={() => setActiveTab('proveedores')}
-            className="flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 transition-colors"
-            style={activeTab === 'proveedores'
-              ? { borderColor: 'var(--primary)', color: 'var(--primary)' }
-              : { borderColor: 'transparent', color: '#6b7280' }}
+            className={`flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'proveedores'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
           >
             <Building2 className="w-4 h-4" />
             Proveedores
           </button>
+        </div>
+      </div>
+
+      <div className="p-6">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-1">Compras</h1>
+          <p className="text-gray-600">Gestión de facturas de compra y proveedores</p>
         </div>
       </div>
 
@@ -288,61 +294,39 @@ const ComprasView = ({
         </>
       )}
 
+      </div>{/* end p-6 */}
+
       {/* ── MODAL FACTURA (incluye confirmación de precios en el mismo overlay) ── */}
       {showCompraModal && (
         <div className={`modal-overlay${compraModalClosing ? ' closing' : ''}`}>
           <div
             className={`modal-content${compraModalClosing ? ' closing' : ''}`}
-            style={{ maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto' }}
+            style={{ maxWidth: '1400px', width: '98vw', height: '98vh', maxHeight: '98vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
             onClick={e => e.stopPropagation()}
           >
             <div className="modal-header">
               <h2 className="modal-title flex items-center gap-2">
-                {showPriceModal ? (
-                  <><TrendingUp className="w-5 h-5 text-green-600" /> Actualizar precios de venta</>
-                ) : (
-                  editingCompra ? 'Editar Factura' : 'Nueva Factura de Compra'
-                )}
+                {editingCompra ? 'Editar Factura' : 'Nueva Factura de Compra'}
               </h2>
               <button
-                onClick={showPriceModal ? () => setShowPriceModal(false) : closeCompraModalAnim}
+                onClick={closeCompraModalAnim}
                 className="modal-close"
-                title={showPriceModal ? 'Volver al formulario' : 'Cerrar'}
+                title="Cerrar"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCompraSubmit} className={`modal-body${showPriceModal ? ' hidden' : ''}`}>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="form-label">N° de Factura *</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={compraForm.numero_factura}
-                    onChange={e => setCompraForm(prev => ({ ...prev, numero_factura: e.target.value }))}
-                    placeholder="Ej: 0001-00001234"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="form-label">Fecha *</label>
-                  <input
-                    type="date"
-                    className="form-input"
-                    value={compraForm.fecha}
-                    onChange={e => setCompraForm(prev => ({ ...prev, fecha: e.target.value }))}
-                    required
-                  />
-                </div>
+            <form onSubmit={handleCompraSubmit} className="modal-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 0 }}>
+              <div style={{ padding: '1.25rem 1.5rem 0' }}>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4 items-start">
                 <div>
                   <label className="form-label">
                     <MapPin className="w-4 h-4 inline mr-1 text-gray-400" />
                     Sucursal
                   </label>
                   <select
-                    className="form-input"
+                    className="form-input h-10"
                     value={compraForm.sucursal_id}
                     onChange={e => handleSucursalChange(e.target.value)}
                   >
@@ -358,9 +342,9 @@ const ComprasView = ({
                   )}
                 </div>
                 <div>
-                  <label className="form-label">Proveedor</label>
+                  <label className="form-label"><Truck className="w-4 h-4 inline mr-1 text-gray-400" />Proveedor</label>
                   <select
-                    className="form-input"
+                    className="form-input h-10"
                     value={compraForm.proveedor_id}
                     onChange={e => setCompraForm(prev => ({ ...prev, proveedor_id: e.target.value }))}
                   >
@@ -370,24 +354,78 @@ const ComprasView = ({
                     ))}
                   </select>
                 </div>
+                <div>
+                  <label className="form-label"><Calendar className="w-4 h-4 inline mr-1 text-gray-400" />Fecha *</label>
+                  <input
+                    type="date"
+                    className="form-input h-10"
+                    value={compraForm.fecha}
+                    onChange={e => setCompraForm(prev => ({ ...prev, fecha: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="form-label"><Hash className="w-4 h-4 inline mr-1 text-gray-400" />N° de Factura</label>
+                  <input
+                    type="text"
+                    className="form-input h-10"
+                    value={compraForm.numero_factura}
+                    onChange={e => setCompraForm(prev => ({ ...prev, numero_factura: e.target.value }))}
+                    placeholder="Ej: 0001-00001234"
+                  />
+                </div>
               </div>
 
-              {/* Items table */}
+              </div>{/* end header fields */}
+
+              {/* Items table — scrollable */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '0 1.5rem' }}>
               <div className="mb-4">
-                <div className="flex justify-between items-center mb-2">
-                  <label className="form-label mb-0">Ítems</label>
-                  <button type="button" onClick={addItem} className="btn btn-secondary btn-sm">
-                    <Plus className="w-3 h-3" /> Agregar ítem
-                  </button>
-                </div>
+                {(() => {
+                  const itemsConSugerido = compraForm.items.filter(it => {
+                    const c = parseFloat(it.precio_unitario) || 0;
+                    return it.product_id && c > 0 && it.margen_actual != null;
+                  });
+                  const checkedCount = itemsConSugerido.filter(it => it.actualizar_precio ?? autoUpdatePrices).length;
+                  const allChecked = itemsConSugerido.length > 0 && checkedCount === itemsConSugerido.length;
+                  const someChecked = checkedCount > 0 && !allChecked;
+                  return (
+                    <div className="flex justify-between items-center mb-2">
+                      <label className="form-label mb-0">Ítems</label>
+                      <div className="flex items-center gap-3">
+                        {itemsConSugerido.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleAllPrices(!allChecked)}
+                            className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none"
+                          >
+                            Actualizar todos los precios
+                            <span
+                              className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none"
+                              style={{ background: allChecked ? '#22c55e' : someChecked ? '#86efac' : '#d1d5db' }}
+                            >
+                              <span
+                                className="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform"
+                                style={{ transform: allChecked ? 'translateX(1.1rem)' : someChecked ? 'translateX(0.65rem)' : 'translateX(0.2rem)' }}
+                              />
+                            </span>
+                          </button>
+                        )}
+                        <button type="button" onClick={addItem} className="btn btn-color-secondary btn-sm">
+                          <Plus className="w-3 h-3" /> Agregar ítem
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div className="border border-gray-200 rounded-lg overflow-hidden">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-3 py-2 text-left font-medium text-gray-600">Descripción</th>
-                        <th className="px-3 py-2 text-right font-medium text-gray-600 w-20">Cantidad</th>
-                        <th className="px-3 py-2 text-right font-medium text-gray-600 w-28">Costo Unit.</th>
-                        <th className="px-3 py-2 text-right font-medium text-gray-600 w-24">Subtotal</th>
+                        <th className="px-3 py-2 text-right font-medium text-gray-600 w-32">Cantidad</th>
+                        <th className="px-3 py-2 text-right font-medium text-gray-600 w-40">Costo Unit.</th>
+                        <th className="px-3 py-2 text-right font-medium text-gray-600 w-40">Subtotal</th>
                         <th className="px-2 py-2 w-8"></th>
                       </tr>
                     </thead>
@@ -395,12 +433,12 @@ const ComprasView = ({
                       {compraForm.items.map((item, idx) => {
                         const costoNuevo = parseFloat(item.precio_unitario) || 0;
                         const precioSugerido = item.product_id && costoNuevo > 0 && item.margen_actual != null
-                          ? parseFloat((costoNuevo * (1 + item.margen_actual / 100)).toFixed(2))
+                          ? Math.ceil(costoNuevo * (1 + item.margen_actual / 100) / 100) * 100
                           : null;
 
                         return (
                           <React.Fragment key={idx}>
-                            <tr className="border-t border-gray-100">
+                            <tr className="border-t border-gray-100 align-top">
                               {/* Description with autocomplete */}
                               <td className="px-2 py-1">
                                 <input
@@ -410,6 +448,7 @@ const ComprasView = ({
                                   value={item.descripcion}
                                   onChange={e => handleItemChange(idx, 'descripcion', e.target.value)}
                                   onFocus={e => handleDescriptionFocus(idx, e)}
+                                  onKeyDown={e => handleDescriptionKeyDown(idx, e)}
                                   onBlur={() => setTimeout(() => setOpenAutocompleteIndex(null), 180)}
                                   placeholder={compraForm.sucursal_id ? 'Buscar producto...' : 'Descripción del artículo'}
                                 />
@@ -424,38 +463,64 @@ const ComprasView = ({
                                       <span>Margen: {item.margen_actual}%</span>
                                     )}
                                     {precioSugerido != null && costoNuevo > 0 && (
-                                      <span className="flex items-center gap-1 font-semibold text-green-700">
-                                        <TrendingUp className="w-3 h-3" />
-                                        Precio sugerido: ${formatMoney(precioSugerido)}
-                                      </span>
+                                      <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                                        <input
+                                          type="checkbox"
+                                          checked={item.actualizar_precio ?? autoUpdatePrices}
+                                          onChange={e => handleItemChange(idx, 'actualizar_precio', e.target.checked)}
+                                          className="w-3.5 h-3.5 accent-green-600"
+                                        />
+                                        <span className={`flex items-center gap-1 font-semibold ${(item.actualizar_precio ?? autoUpdatePrices) ? 'text-green-700' : 'text-gray-400 line-through'}`}>
+                                          <TrendingUp className="w-3 h-3" />
+                                          Precio sugerido: ${formatMoney(precioSugerido)}
+                                        </span>
+                                      </label>
                                     )}
                                   </div>
                                 )}
                               </td>
                               <td className="px-2 py-1">
                                 <input
+                                  ref={el => { cantidadInputRefs.current[idx] = el; }}
                                   type="number"
                                   min="0"
                                   step="any"
                                   className="form-input py-1 text-sm text-right"
                                   value={item.cantidad}
                                   onChange={e => handleItemChange(idx, 'cantidad', e.target.value)}
+                                  onKeyDown={e => handleCantidadKeyDown(idx, e)}
+                                  onClick={e => e.target.select()}
                                   placeholder="0"
                                 />
                               </td>
                               <td className="px-2 py-1">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="any"
-                                  className="form-input py-1 text-sm text-right"
-                                  value={item.precio_unitario}
-                                  onChange={e => handleItemChange(idx, 'precio_unitario', e.target.value)}
-                                  placeholder="0.00"
-                                />
+                                <div className="relative">
+                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                                  <input
+                                    ref={el => { costoInputRefs.current[idx] = el; }}
+                                    type="text"
+                                    inputMode="decimal"
+                                    className="form-input py-1 text-sm text-right pl-5"
+                                    value={item.precio_unitario}
+                                    onChange={e => handleItemChange(idx, 'precio_unitario', e.target.value.replace(',', '.'))}
+                                    onKeyDown={e => handleCostoKeyDown(idx, e)}
+                                    onClick={e => e.target.select()}
+                                    onFocus={e => e.target.select()}
+                                    placeholder="0.00"
+                                  />
+                                </div>
                               </td>
-                              <td className="px-3 py-1 text-right text-gray-700">
-                                {formatMoney(item.subtotal)}
+                              <td className="px-2 py-1">
+                                <div className="relative">
+                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                                  <input
+                                    type="text"
+                                    readOnly
+                                    value={formatMoney(item.subtotal)}
+                                    className="form-input py-1 text-sm text-right pl-5 bg-transparent border-transparent shadow-none cursor-default select-none"
+                                    tabIndex={-1}
+                                  />
+                                </div>
                               </td>
                               <td className="px-2 py-1 text-center">
                                 {compraForm.items.length > 1 && (
@@ -477,49 +542,42 @@ const ComprasView = ({
                 </div>
               </div>
 
-              {/* Totals */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <div>
-                  <label className="form-label">Subtotal</label>
-                  <input
-                    type="text"
-                    className="form-input bg-gray-50"
-                    value={formatMoney(compraForm.subtotal)}
-                    readOnly
-                  />
-                </div>
-                <div>
-                  <label className="form-label">Impuestos / IVA</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    className="form-input"
-                    value={compraForm.impuestos}
-                    onChange={e => handleImpuestosChange(e.target.value)}
-                    placeholder="0.00"
-                  />
-                </div>
-                <div>
-                  <label className="form-label">Total</label>
-                  <input
-                    type="text"
-                    className="form-input bg-gray-50 font-semibold"
-                    value={formatMoney(compraForm.total)}
-                    readOnly
-                  />
-                </div>
-              </div>
+              </div>{/* end scrollable */}
 
-              <div className="mb-4">
-                <label className="form-label">Notas</label>
-                <textarea
-                  className="form-input"
-                  rows={2}
-                  value={compraForm.notas}
-                  onChange={e => setCompraForm(prev => ({ ...prev, notas: e.target.value }))}
-                  placeholder="Observaciones opcionales..."
-                />
+              {/* Bottom: totals + notas + footer — sticky */}
+              <div className="modal-sticky-bottom">
+              <div className="grid grid-cols-12 gap-3 mb-4 items-end">
+                <div className="col-span-2">
+                  <label className="form-label">Subtotal</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                    <input type="text" className="form-input bg-gray-50 pl-8" value={formatMoney(compraForm.subtotal)} readOnly />
+                  </div>
+                </div>
+                <div className="col-span-2">
+                  <label className="form-label">Impuestos / IVA</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                    <input type="number" min="0" step="any" className="form-input pl-8" value={compraForm.impuestos} onChange={e => handleImpuestosChange(e.target.value)} placeholder="0.00" />
+                  </div>
+                </div>
+                <div className="col-span-2">
+                  <label className="form-label">Total</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                    <input type="text" className="form-input bg-gray-50 font-semibold pl-8" value={formatMoney(compraForm.total)} readOnly />
+                  </div>
+                </div>
+                <div className="col-span-6">
+                  <label className="form-label">Notas</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={compraForm.notas}
+                    onChange={e => setCompraForm(prev => ({ ...prev, notas: e.target.value }))}
+                    placeholder="Observaciones opcionales..."
+                  />
+                </div>
               </div>
 
               <div className="modal-footer">
@@ -531,119 +589,9 @@ const ComprasView = ({
                   {editingCompra ? 'Guardar Cambios' : 'Registrar Factura'}
                 </button>
               </div>
+              </div>{/* end bottom sticky */}
             </form>
 
-            {/* ── CONFIRMACIÓN DE PRECIOS (dentro del mismo modal) ── */}
-            {showPriceModal && (
-              <div className="modal-body">
-                <p className="text-sm text-gray-600 mb-4">
-                  Se detectaron <strong>{priceModalItemsList.length}</strong> producto{priceModalItemsList.length !== 1 ? 's' : ''} vinculado{priceModalItemsList.length !== 1 ? 's' : ''} a esta factura.
-                  Seleccioná cuáles querés actualizar con el nuevo costo de compra.
-                </p>
-
-                <div className="border border-gray-200 rounded-lg overflow-hidden mb-4">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-3 py-2 text-left font-medium text-gray-600">Producto</th>
-                        <th className="px-3 py-2 text-right font-medium text-gray-600">Costo ant.</th>
-                        <th className="px-3 py-2 text-right font-medium text-gray-600">Nuevo costo</th>
-                        <th className="px-3 py-2 text-right font-medium text-gray-600">Precio actual</th>
-                        <th className="px-3 py-2 text-right font-medium text-gray-600">Margen %</th>
-                        <th className="px-3 py-2 text-right font-medium text-gray-600">P. sugerido</th>
-                        <th className="px-3 py-2 text-center font-medium text-gray-600">Actualizar</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {priceModalItemsList.map(item => (
-                        <tr key={item.origIndex} className="border-t border-gray-100">
-                          <td className="px-3 py-2 font-medium text-gray-800">{item.descripcion}</td>
-                          <td className="px-3 py-2 text-right text-gray-500">
-                            {item.costo_actual != null ? `$${formatMoney(item.costo_actual)}` : '—'}
-                          </td>
-                          <td className="px-3 py-2 text-right font-medium text-gray-800">
-                            ${formatMoney(item.costoNuevo)}
-                          </td>
-                          <td className="px-3 py-2 text-right text-gray-700">
-                            {item.precio_actual != null ? `$${formatMoney(item.precio_actual)}` : '—'}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <div className="flex items-center justify-end gap-0.5">
-                              <input
-                                type="number"
-                                value={item.margenEditable}
-                                onChange={e => setPriceModalMargins(prev => ({ ...prev, [item.origIndex]: e.target.value }))}
-                                className="w-16 text-right border border-gray-300 rounded px-1 py-0.5 text-sm focus:outline-none focus:border-green-500"
-                                placeholder="0"
-                                min="0"
-                                step="0.1"
-                              />
-                              <span className="text-gray-500 text-xs">%</span>
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            {item.precioSugerido != null ? (
-                              <span className={`font-medium ${
-                                item.precioSugerido > (item.precio_actual || 0)
-                                  ? 'text-green-600'
-                                  : item.precioSugerido < (item.precio_actual || 0)
-                                    ? 'text-red-600'
-                                    : 'text-gray-700'
-                              }`}>
-                                ${formatMoney(item.precioSugerido)}
-                              </span>
-                            ) : (
-                              <span className="text-gray-400 text-xs italic">sin margen</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <input
-                              type="checkbox"
-                              checked={priceUpdates[item.origIndex] ?? false}
-                              onChange={e => setPriceUpdates(prev => ({
-                                ...prev,
-                                [item.origIndex]: e.target.checked
-                              }))}
-                              disabled={item.precioSugerido == null}
-                              className="w-4 h-4 accent-green-600"
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <p className="text-xs text-gray-500 mb-4">
-                  El costo de compra se actualizará en todos los productos vinculados independientemente de esta selección.
-                </p>
-
-                <div className="modal-footer">
-                  <button
-                    type="button"
-                    onClick={() => setShowPriceModal(false)}
-                    className="btn btn-secondary"
-                  >
-                    Volver
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleConfirmPriceModal(false)}
-                    className="btn btn-secondary"
-                  >
-                    Solo registrar compra
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleConfirmPriceModal(true)}
-                    className="btn btn-primary"
-                  >
-                    <Save className="w-4 h-4" />
-                    Registrar y actualizar seleccionados
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -666,12 +614,12 @@ const ComprasView = ({
             className="bg-white border border-gray-200 rounded-lg shadow-xl max-h-56 overflow-y-auto"
             onMouseDown={e => e.preventDefault()}
           >
-            {options.map(prod => (
+            {options.map((prod, optIdx) => (
               <button
                 key={prod.product_id}
                 type="button"
                 onMouseDown={() => handleSelectProduct(openAutocompleteIndex, prod)}
-                className="w-full text-left px-3 py-2 hover:bg-green-50 border-b border-gray-100 last:border-0"
+                className={`w-full text-left px-3 py-2 border-b border-gray-100 last:border-0 ${optIdx === autocompleteHighlight ? 'bg-green-100' : 'hover:bg-green-50'}`}
               >
                 <div className="font-medium text-gray-800 text-sm">{prod.nombre}</div>
                 <div className="text-xs text-gray-500 flex gap-3 mt-0.5">

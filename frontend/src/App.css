@@ -1281,6 +1281,16 @@ body.no-animations .product-card:hover {
   animation: modal-slide-out 0.15s ease both;
 }
 
+.modal-sticky-bottom {
+  border-top: 1px solid #e5e7eb;
+  padding: 1rem 1.5rem 0;
+  background: white;
+}
+html.dark .modal-sticky-bottom {
+  background: #1e1e1e;
+  border-color: #2e2e2e;
+}
+
 .modal-header {
   display: flex;
   align-items: center;

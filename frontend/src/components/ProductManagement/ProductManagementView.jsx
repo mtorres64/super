@@ -410,6 +410,13 @@ const ProductManagementView = ({
           </tbody>
         </table>
 
+        {paginatedProducts.length === 0 && (
+          <div className="text-center py-12 text-gray-500">
+            <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+            <p>No se encontraron productos</p>
+          </div>
+        )}
+
         {/* Pagination */}
         <Pagination
           currentPage={currentPage}
@@ -774,8 +781,10 @@ const ProductManagementView = ({
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1">
                         <p className="font-medium mb-1">Formato requerido (CSV o XLSX):</p>
-                        <p className="font-mono text-xs">nombre, codigo_barras, tipo, clase, precio, precio_por_peso, categoria, stock, stock_minimo</p>
+                        <p className="font-mono text-xs">nombre, tipo, precio, categoria, precio_costo, codigo_barras, precio_por_peso, stock, stock_minimo, clase</p>
                         <p className="mt-1 text-xs">• <strong>tipo</strong>: <code>codigo_barras</code> o <code>por_peso</code></p>
+                        <p className="text-xs">• <strong>precio</strong>: se redondea al múltiplo de $50 más cercano</p>
+                        <p className="text-xs">• <strong>precio_costo</strong>: opcional. Calcula el margen automáticamente</p>
                         <p className="text-xs">• <strong>clase</strong>: <code>Normal</code> o <code>Combo</code> (por defecto: Normal)</p>
                         <p className="text-xs">• <strong>categoria</strong>: debe coincidir con una categoría existente</p>
                         <p className="text-xs">• Si el código de barras ya existe, el producto se actualizará</p>

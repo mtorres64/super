@@ -81,48 +81,48 @@ const SettingsView = ({
   }
 
   return (
-    <div className="p-4 sm:p-6">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
-            <SettingsIcon className="w-6 h-6 sm:w-8 sm:h-8 inline mr-3" />
-            Configuración del Sistema
-          </h1>
-          <p className="text-gray-600">
-            Personaliza la configuración de tu supermercado
-          </p>
-        </div>
-        {saving && (
-          <div className="flex items-center gap-2 text-sm text-gray-400">
-            <div className="spinner w-4 h-4" />
-            <span>Guardando...</span>
-          </div>
-        )}
+    <div>
+      {/* Tabs */}
+      <div className="bg-white border-b border-gray-200 overflow-x-auto px-6">
+        <nav className="flex min-w-max">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === tab.id
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <tab.icon className="w-4 h-4" />
+              {tab.label}
+            </button>
+          ))}
+        </nav>
       </div>
 
-      <div className="bg-white rounded-lg shadow">
-        {/* Tab Navigation */}
-        <div className="border-b border-gray-200 overflow-x-auto">
-          <nav className="flex min-w-max space-x-1 px-3 sm:space-x-6 sm:px-6">
-            {tabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`py-3 px-2 sm:py-4 sm:px-1 border-b-2 font-medium text-xs sm:text-sm transition-colors whitespace-nowrap ${
-                  activeTab === tab.id
-                    ? 'border-green-500 text-green-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <tab.icon className="w-4 h-4 inline mr-1 sm:mr-2" />
-                {tab.label}
-              </button>
-            ))}
-          </nav>
+      <div className="p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
+              <SettingsIcon className="w-6 h-6 sm:w-8 sm:h-8 inline mr-3" />
+              Configuración del Sistema
+            </h1>
+            <p className="text-gray-600">
+              Personaliza la configuración de tu supermercado
+            </p>
+          </div>
+          {saving && (
+            <div className="flex items-center gap-2 text-sm text-gray-400">
+              <div className="spinner w-4 h-4" />
+              <span>Guardando...</span>
+            </div>
+          )}
         </div>
 
         {/* Tab Content */}
-        <div className="p-4 sm:p-6">
+        <div className="bg-white rounded-lg shadow p-4 sm:p-6">
           {/* Company Information */}
           {activeTab === 'company' && (
             <div className="space-y-6">
@@ -445,6 +445,21 @@ const SettingsView = ({
                       type="checkbox"
                       checked={config?.auto_update_inventory || false}
                       onChange={(e) => updateConfig('auto_update_inventory', e.target.checked)}
+                    />
+                    <span className="slider"></span>
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <h4 className="font-medium text-gray-900">Actualizar precios al registrar compras</h4>
+                    <p className="text-sm text-gray-500">Pre-seleccionar la actualización de precio de venta en todas las líneas de una nueva compra</p>
+                  </div>
+                  <label className="switch">
+                    <input
+                      type="checkbox"
+                      checked={config?.auto_update_prices ?? true}
+                      onChange={(e) => updateConfig('auto_update_prices', e.target.checked)}
                     />
                     <span className="slider"></span>
                   </label>
