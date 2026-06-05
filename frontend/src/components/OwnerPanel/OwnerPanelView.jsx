@@ -4,7 +4,7 @@ import {
   AlertTriangle, Clock, Ban, ChevronRight, ChevronDown,
   ArrowLeft, Plus, Edit3, ToggleLeft, ToggleRight,
   DollarSign, Shield, Settings, Bell, TrendingUp,
-  CreditCard, Search, Zap, ZapOff, CheckCircle2, LogIn,
+  CreditCard, Search, Zap, ZapOff, CheckCircle2, LogIn, X, Eye, EyeOff, Trash2,
 } from 'lucide-react';
 import { ownerAxios, formatDate, formatMoney } from './index';
 import SortIcon from '../ui/SortIcon';
@@ -269,10 +269,40 @@ const DashboardView = ({ stats, clientes, onRefresh, onSelectCliente }) => {
 
 // ─── ClientesListView ─────────────────────────────────────────────────────────
 
-const ClientesListView = ({ clientes, onSelect, onRefresh }) => {
+const ClientesListView = ({ clientes, onSelect, onRefresh, onCreateCliente }) => {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [sortBy, setSortBy] = useState('created_desc');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({ empresa_nombre: '', admin_nombre: '', admin_email: '', admin_password: '' });
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    setCreateError('');
+    setCreateLoading(true);
+    try {
+      await onCreateCliente(createForm);
+      setShowCreateModal(false);
+      setCreateForm({ empresa_nombre: '', admin_nombre: '', admin_email: '', admin_password: '' });
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      const status = err.response?.status;
+      if (Array.isArray(detail)) {
+        setCreateError(detail.map(d => d.msg).join(', '));
+      } else if (typeof detail === 'string') {
+        setCreateError(detail);
+      } else if (err.message) {
+        setCreateError(`Error ${status ? `(${status})` : ''}: ${err.message}`);
+      } else {
+        setCreateError('Error desconocido al crear la cuenta');
+      }
+    } finally {
+      setCreateLoading(false);
+    }
+  };
 
   const statusCounts = {
     all: clientes.length,
@@ -316,10 +346,93 @@ const ClientesListView = ({ clientes, onSelect, onRefresh }) => {
         <h2 className="text-lg font-bold text-white">
           Clientes <span className="text-gray-500 font-normal">({clientes.length})</span>
         </h2>
-        <button onClick={onRefresh} className="flex items-center gap-2 text-gray-500 hover:text-gray-300 text-sm transition-colors">
-          <RefreshCw className="w-4 h-4" /> Actualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={onRefresh} className="flex items-center gap-2 text-gray-500 hover:text-gray-300 text-sm transition-colors">
+            <RefreshCw className="w-4 h-4" /> Actualizar
+          </button>
+          <button
+            onClick={() => { setCreateError(''); setShowCreateModal(true); }}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Nueva cuenta
+          </button>
+        </div>
       </div>
+
+      {/* Create Account Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-md shadow-2xl">
+            <div className="flex items-center justify-between p-5 border-b border-gray-800">
+              <h3 className="text-base font-semibold text-white">Nueva cuenta</h3>
+              <button onClick={() => setShowCreateModal(false)} className="text-gray-500 hover:text-gray-300">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleCreate} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Nombre de la empresa</label>
+                <input
+                  type="text"
+                  required
+                  value={createForm.empresa_nombre}
+                  onChange={e => setCreateForm(f => ({ ...f, empresa_nombre: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Ej: Almacén Don Pedro"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Nombre del administrador</label>
+                <input
+                  type="text"
+                  required
+                  value={createForm.admin_nombre}
+                  onChange={e => setCreateForm(f => ({ ...f, admin_nombre: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Ej: Pedro García"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Email</label>
+                <input
+                  type="email"
+                  required
+                  value={createForm.admin_email}
+                  onChange={e => setCreateForm(f => ({ ...f, admin_email: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="admin@empresa.com"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Contraseña</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    value={createForm.admin_password}
+                    onChange={e => setCreateForm(f => ({ ...f, admin_password: e.target.value }))}
+                    className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Mínimo 6 caracteres"
+                  />
+                  <button type="button" onClick={() => setShowPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              {createError && <p className="text-red-400 text-sm">{createError}</p>}
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => setShowCreateModal(false)} className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm py-2 rounded-lg transition-colors">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={createLoading} className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm py-2 rounded-lg transition-colors">
+                  {createLoading ? 'Creando...' : 'Crear cuenta'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Search & Sort */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
@@ -533,10 +646,14 @@ const ModulosPanel = ({ cliente, updatingModulos, moduleMsg, onToggleModulo, onC
 
 // ─── ClienteDetalleView ───────────────────────────────────────────────────────
 
-const ClienteDetalleView = ({ clienteId, token, onBack }) => {
+const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
   const [cliente, setCliente] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [showPagoModal, setShowPagoModal] = useState(false);
   const [showSuscModal, setShowSuscModal] = useState(false);
   const [pagoForm, setPagoForm] = useState({ monto: '', concepto: '', plan_tipo: 'mensual' });
@@ -836,8 +953,70 @@ const ClienteDetalleView = ({ clienteId, token, onBack }) => {
             {cliente.activo ? <ToggleLeft className="w-4 h-4" /> : <ToggleRight className="w-4 h-4" />}
             {cliente.activo ? 'Suspender' : 'Reactivar'}
           </button>
+          <button
+            onClick={() => { setDeleteConfirmText(''); setDeleteError(''); setShowDeleteModal(true); }}
+            className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg transition-colors border bg-red-950/60 hover:bg-red-950/90 text-red-400 border-red-800"
+          >
+            <Trash2 className="w-4 h-4" />
+            Eliminar cuenta
+          </button>
         </div>
       </div>
+
+      {/* Delete confirmation modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="bg-gray-900 border border-red-800 rounded-xl w-full max-w-md shadow-2xl">
+            <div className="flex items-center justify-between p-5 border-b border-gray-800">
+              <h3 className="text-base font-semibold text-red-400">Eliminar cuenta definitivamente</h3>
+              <button onClick={() => setShowDeleteModal(false)} className="text-gray-500 hover:text-gray-300">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="bg-red-950/40 border border-red-800 rounded-lg p-3 text-sm text-red-300 space-y-1">
+                <p className="font-semibold">⚠ Esta acción no tiene vuelta atrás.</p>
+                <p>Se eliminarán permanentemente todos los datos de <span className="font-semibold text-white">{cliente.nombre}</span>: productos, ventas, compras, usuarios, sucursales, configuración y suscripción.</p>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">
+                  Para confirmar, escribí el nombre de la empresa: <span className="text-white font-medium">{cliente.nombre}</span>
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={e => setDeleteConfirmText(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-600"
+                  placeholder={cliente.nombre}
+                />
+              </div>
+              {deleteError && <p className="text-red-400 text-sm">{deleteError}</p>}
+              <div className="flex gap-3">
+                <button onClick={() => setShowDeleteModal(false)} className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm py-2 rounded-lg transition-colors">
+                  Cancelar
+                </button>
+                <button
+                  disabled={deleteConfirmText !== cliente.nombre || deleteLoading}
+                  onClick={async () => {
+                    setDeleteLoading(true);
+                    setDeleteError('');
+                    try {
+                      await onDelete(clienteId);
+                    } catch (err) {
+                      const detail = err.response?.data?.detail;
+                      setDeleteError(typeof detail === 'string' ? detail : 'Error al eliminar la cuenta');
+                      setDeleteLoading(false);
+                    }
+                  }}
+                  className="flex-1 bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm py-2 rounded-lg transition-colors"
+                >
+                  {deleteLoading ? 'Eliminando...' : 'Eliminar definitivamente'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Quick extend */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-5">
@@ -2079,6 +2258,8 @@ const OwnerPanelView = ({
   loadStats,
   loadClientes,
   selectCliente,
+  createCliente,
+  deleteCliente,
 }) => {
   if (!token) return <LoginView onLogin={handleLogin} />;
 
@@ -2185,12 +2366,14 @@ const OwnerPanelView = ({
             clientes={clientes}
             onSelect={selectCliente}
             onRefresh={loadClientes}
+            onCreateCliente={createCliente}
           />
         ) : view === 'cliente_detalle' && selectedClienteId ? (
           <ClienteDetalleView
             clienteId={selectedClienteId}
             token={token}
             onBack={() => { setView('clientes'); setSelectedClienteId(null); }}
+            onDelete={deleteCliente}
           />
         ) : view === 'cobros' ? (
           <CobrosView token={token} />

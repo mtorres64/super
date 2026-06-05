@@ -419,6 +419,12 @@ class EmpresaRegister(BaseModel):
     admin_password: str
     otp_token: str
 
+class OwnerCreateCliente(BaseModel):
+    empresa_nombre: str
+    admin_nombre: str
+    admin_email: str
+    admin_password: str
+
 # --- Subscription models ---
 class Suscripcion(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -3962,6 +3968,47 @@ def _calc_dias_restantes(suscripcion: dict) -> int:
         return 0
     return max(0, (vencimiento - datetime.now(timezone.utc)).days)
 
+@owner_router.post("/clientes")
+async def owner_create_cliente(data: OwnerCreateCliente, _=Depends(verify_owner_token)):
+    existing = await db.users.find_one({"email": data.admin_email.strip().lower()})
+    if existing:
+        raise HTTPException(status_code=400, detail="El email ya está registrado")
+
+    empresa = Empresa(nombre=data.empresa_nombre, email_verificado=True)
+    await db.empresas.insert_one(empresa.dict())
+
+    hashed_password = bcrypt.hash(data.admin_password)
+    user = User(empresa_id=empresa.id, nombre=data.admin_nombre, email=data.admin_email.strip().lower(), rol=UserRole.ADMIN)
+    user_doc = user.dict()
+    user_doc['password'] = hashed_password
+    await db.users.insert_one(user_doc)
+
+    config = Configuration(empresa_id=empresa.id, company_name=data.empresa_nombre)
+    await db.configuration.insert_one(config.dict())
+
+    trial_inicio = datetime.now(timezone.utc)
+    trial_fin = trial_inicio + timedelta(days=await get_trial_dias())
+    suscripcion = Suscripcion(
+        empresa_id=empresa.id,
+        plan_nombre=await get_plan_nombre_suscripcion(),
+        precio=await get_precio_suscripcion(),
+        status=SuscripcionStatus.TRIAL,
+        fecha_inicio=trial_inicio,
+        fecha_vencimiento=trial_fin,
+        dia_facturacion=min(trial_fin.day, 28),
+        plan_tipo="mensual",
+        plan_tier="empresarial",
+    )
+    await db.suscripciones.insert_one(suscripcion.dict())
+
+    default_branch = Branch(empresa_id=empresa.id, nombre="Sucursal Principal", direccion="")
+    await db.branches.insert_one(default_branch.dict())
+
+    for cat_nombre in ["General", "Alimentos", "Bebidas", "Limpieza"]:
+        await db.categories.insert_one(Category(empresa_id=empresa.id, nombre=cat_nombre).dict())
+
+    return {"id": empresa.id, "nombre": empresa.nombre, "email": data.admin_email}
+
 @owner_router.get("/clientes")
 async def owner_get_clientes(_=Depends(verify_owner_token)):
     empresas = await db.empresas.find({}).sort("created_at", -1).to_list(1000)
@@ -4186,6 +4233,22 @@ async def owner_get_modulos_catalogo(_=Depends(verify_owner_token)):
         "plan_modules": PLAN_MODULES,
     }
 
+
+@owner_router.delete("/clientes/{empresa_id}")
+async def owner_delete_cliente(empresa_id: str, _=Depends(verify_owner_token)):
+    empresa = await db.empresas.find_one({"id": empresa_id})
+    if not empresa:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    collections = [
+        db.products, db.branch_products, db.categories, db.branches,
+        db.users, db.configuration, db.suscripciones, db.pagos_suscripcion,
+        db.notificaciones, db.sales, db.sale_returns, db.cash_sessions,
+        db.cash_movements, db.compras, db.proveedores, db.afip_config,
+    ]
+    for col in collections:
+        await col.delete_many({"empresa_id": empresa_id})
+    await db.empresas.delete_one({"id": empresa_id})
+    return {"ok": True}
 
 @owner_router.put("/clientes/{empresa_id}/activo")
 async def owner_toggle_empresa(empresa_id: str, _=Depends(verify_owner_token)):

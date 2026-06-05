@@ -71,6 +71,21 @@ const OwnerPanel = () => {
     setView('cliente_detalle');
   };
 
+  const deleteCliente = useCallback(async (empresaId) => {
+    await ownerAxios.delete(`/clientes/${empresaId}`, authHeader);
+    await loadClientes();
+    await loadStats();
+    setSelectedClienteId(null);
+    setView('clientes');
+  }, [token]); // eslint-disable-line
+
+  const createCliente = useCallback(async (formData) => {
+    const res = await ownerAxios.post('/clientes', formData, authHeader);
+    await loadClientes();
+    await loadStats();
+    return res.data;
+  }, [token]); // eslint-disable-line
+
   useEffect(() => {
     if (!token) return;
     loadStats();
@@ -101,6 +116,8 @@ const OwnerPanel = () => {
       loadStats={loadStats}
       loadClientes={loadClientes}
       selectCliente={selectCliente}
+      createCliente={createCliente}
+      deleteCliente={deleteCliente}
     />
   );
 };
