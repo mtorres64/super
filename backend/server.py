@@ -1056,6 +1056,9 @@ async def get_branch_products_admin(
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=10000),
     search: Optional[str] = Query(None),
+    category_id: Optional[str] = Query(None),
+    kind: Optional[str] = Query(None),
+    activo_sucursal: Optional[bool] = Query(None),
     all: bool = Query(False),
     user: User = Depends(get_current_user)
 ):
@@ -1068,6 +1071,23 @@ async def get_branch_products_admin(
     if search:
         regex = {"$regex": re.escape(search), "$options": "i"}
         query["$or"] = [{"nombre": regex}, {"codigo_barras": regex}]
+    if category_id:
+        query["categoria_id"] = category_id
+    if kind:
+        query["kind"] = kind
+    if activo_sucursal is not None:
+        bp_query = {"branch_id": branch_id, "empresa_id": user.empresa_id, "activo": activo_sucursal}
+        filtered_bps = await db.branch_products.find(bp_query, {"product_id": 1}).to_list(None)
+        filtered_ids = [bp["product_id"] for bp in filtered_bps]
+        if activo_sucursal:
+            # activo=True: products with explicit activo=True entry (exclude those with activo=False)
+            inactive_bps = await db.branch_products.find(
+                {"branch_id": branch_id, "empresa_id": user.empresa_id, "activo": False}, {"product_id": 1}
+            ).to_list(None)
+            inactive_ids = {bp["product_id"] for bp in inactive_bps}
+            query["id"] = {"$nin": list(inactive_ids)}
+        else:
+            query["id"] = {"$in": filtered_ids}
     total = await db.products.count_documents(query)
     if all:
         products = await db.products.find(query).to_list(None)
@@ -1737,12 +1757,20 @@ async def get_products(
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=10000),
     search: Optional[str] = Query(None),
+    category_id: Optional[str] = Query(None),
+    kind: Optional[str] = Query(None),
+    activo: Optional[bool] = Query(None),
     user: User = Depends(get_current_user)
 ):
-    query = {"empresa_id": user.empresa_id, "activo": True}
+    query = {"empresa_id": user.empresa_id}
+    query["activo"] = True if activo is None else activo
     if search:
         regex = {"$regex": re.escape(search), "$options": "i"}
         query["$or"] = [{"nombre": regex}, {"codigo_barras": regex}]
+    if category_id:
+        query["categoria_id"] = category_id
+    if kind:
+        query["kind"] = kind
     total = await db.products.count_documents(query)
     skip = (page - 1) * per_page
     raw = await db.products.find(query).skip(skip).limit(per_page).to_list(per_page)

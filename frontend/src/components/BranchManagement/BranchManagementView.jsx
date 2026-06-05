@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   Building2,
   Plus,
@@ -16,7 +16,10 @@ import {
   Percent,
   SlidersHorizontal,
   Trash2,
-  EyeOff
+  EyeOff,
+  Tag,
+  Layers,
+  CircleDot,
 } from 'lucide-react';
 import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
@@ -108,8 +111,26 @@ const BranchManagementView = ({
   getProductCurrentMargen,
   sortConfig,
   requestSort,
+  selectedCategory,
+  setSelectedCategory,
+  selectedKind,
+  setSelectedKind,
+  selectedActivo,
+  setSelectedActivo,
 }) => {
   const [focusedIdx, setFocusedIdx] = React.useState(-1);
+  const [showCategoryFilter, setShowCategoryFilter] = React.useState(false);
+  const categoryFilterRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (categoryFilterRef.current && !categoryFilterRef.current.contains(e.target)) {
+        setShowCategoryFilter(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   React.useEffect(() => { setFocusedIdx(-1); }, [paginatedProducts]);
   React.useEffect(() => {
@@ -206,28 +227,106 @@ const BranchManagementView = ({
         </div>
 
         <div className="bg-white rounded-lg shadow p-4 mb-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar productos..."
-              className="form-input pl-10"
-              style={searchTerm ? { paddingRight: '2.25rem' } : {}}
-              value={searchTerm}
-              onChange={(e) => onSearch(e.target.value)}
-              onKeyDown={handleSearchKeyDown}
-            />
-            {searchTerm && (
-              loadingProducts
-                ? <div className="absolute right-3 top-1/2 -translate-y-1/2"><div className="spinner spinner-on-light w-4 h-4 text-gray-400" /></div>
-                : <button
+          <div className="flex gap-3 items-center">
+            <div className="relative" style={{ flex: 6 }}>
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar productos..."
+                className="form-input pl-10"
+                style={searchTerm ? { paddingRight: '2.25rem' } : {}}
+                value={searchTerm}
+                onChange={(e) => onSearch(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
+              />
+              {searchTerm && (
+                loadingProducts
+                  ? <div className="absolute right-3 top-1/2 -translate-y-1/2"><div className="spinner spinner-on-light w-4 h-4 text-gray-400" /></div>
+                  : <button
+                      type="button"
+                      onClick={onClearSearch}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+              )}
+            </div>
+
+            <div className="relative" style={{ flex: 2 }} ref={categoryFilterRef}>
+              {(() => {
+                const selCat = categories.find(c => c.id === selectedCategory);
+                const SelIcon = selCat ? getCategoryIcon(selCat.nombre, selCat.icono) : Tag;
+                return (
+                  <button
                     type="button"
-                    onClick={onClearSearch}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    onClick={() => setShowCategoryFilter(v => !v)}
+                    className="form-input pl-9 text-left flex items-center w-full"
+                    style={{ color: selCat ? 'inherit' : '#9ca3af' }}
                   >
-                    <X className="h-4 w-4" />
+                    <SelIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                    <span className="truncate">{selCat ? selCat.nombre : 'Categoría'}</span>
+                    {selCat && (
+                      <X
+                        className="ml-auto h-3.5 w-3.5 text-gray-400 hover:text-gray-600 flex-shrink-0"
+                        onClick={(e) => { e.stopPropagation(); setSelectedCategory(''); setShowCategoryFilter(false); }}
+                      />
+                    )}
                   </button>
-            )}
+                );
+              })()}
+              {showCategoryFilter && (
+                <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedCategory(''); setShowCategoryFilter(false); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-500 hover:bg-gray-50"
+                  >
+                    <Tag className="h-4 w-4" />
+                    Todas las categorías
+                  </button>
+                  {categories.map(cat => {
+                    const CatIcon = getCategoryIcon(cat.nombre, cat.icono);
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => { setSelectedCategory(cat.id); setShowCategoryFilter(false); }}
+                        className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 ${selectedCategory === cat.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}`}
+                      >
+                        <CatIcon className="h-4 w-4 flex-shrink-0" />
+                        {cat.nombre}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="relative" style={{ flex: 2 }}>
+              <Layers className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+              <select
+                value={selectedKind}
+                onChange={(e) => setSelectedKind(e.target.value)}
+                className="form-input pl-9"
+              >
+                <option value="">Clase</option>
+                <option value="normal">Normal</option>
+                <option value="combo">Combo</option>
+              </select>
+            </div>
+
+            <div className="relative" style={{ flex: 2 }}>
+              <CircleDot className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+              <select
+                value={selectedActivo}
+                onChange={(e) => setSelectedActivo(e.target.value)}
+                className="form-input pl-9"
+              >
+                <option value="">Estado</option>
+                <option value="true">Activos</option>
+                <option value="false">Inactivos</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -268,10 +367,10 @@ const BranchManagementView = ({
               </button>
               <button
                 onClick={onClearSelection}
-                className="text-gray-400 hover:text-gray-600 ml-auto"
-                title="Deseleccionar todo"
+                className="btn btn-sm ml-auto text-gray-500 border border-gray-300 hover:bg-gray-100"
               >
                 <X className="w-4 h-4" />
+                Limpiar selección
               </button>
             </div>
             {!selectAllGlobal && paginatedProducts.length > 0 && paginatedProducts.every(p => selectedRows.has(p.product_id)) && total > paginatedProducts.length && (

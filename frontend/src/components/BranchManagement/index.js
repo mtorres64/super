@@ -43,6 +43,9 @@ const BranchManagement = () => {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const searchTimerRef = useRef(null);
   const prevBranchRef = useRef(null);
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedKind, setSelectedKind] = useState('');
+  const [selectedActivo, setSelectedActivo] = useState('');
   const [branchProductsCache, setBranchProductsCache] = useState({});
 
   const [formData, setFormData] = useState({
@@ -90,6 +93,14 @@ const BranchManagement = () => {
     setCurrentPage(1);
   };
 
+  // Reset to page 1 when filters change
+  useEffect(() => { setCurrentPage(1); }, [selectedCategory, selectedKind, selectedActivo]);
+
+  // Clear selectAllGlobal when filters change (it's tied to a specific filter state)
+  useEffect(() => {
+    setSelectAllGlobal(false);
+  }, [debouncedSearch, selectedCategory, selectedKind, selectedActivo]);
+
   // Re-fetch when branch, page or search changes
   useEffect(() => {
     if (!selectedBranch || !configLoaded) return;
@@ -103,13 +114,18 @@ const BranchManagement = () => {
       setSelectAllGlobal(false);
     } else {
       setSelectAllGlobal(false);
-      setSelectedRows(new Set());
     }
     const doFetch = async () => {
       setLoadingProducts(true);
       try {
         const response = await axios.get(`${API}/branches/${selectedBranch.id}/products`, {
-          params: { page: currentPage, per_page: perPage, ...(debouncedSearch && { search: debouncedSearch }) }
+          params: {
+            page: currentPage, per_page: perPage,
+            ...(debouncedSearch && { search: debouncedSearch }),
+            ...(selectedCategory && { category_id: selectedCategory }),
+            ...(selectedKind && { kind: selectedKind }),
+            ...(selectedActivo !== '' && { activo_sucursal: selectedActivo === 'true' }),
+          }
         });
         const { items, total: t, total_pages } = response.data;
         setBranchProducts(items);
@@ -128,7 +144,7 @@ const BranchManagement = () => {
       }
     };
     doFetch();
-  }, [selectedBranch, currentPage, debouncedSearch, configLoaded]);
+  }, [selectedBranch, currentPage, debouncedSearch, selectedCategory, selectedKind, selectedActivo, configLoaded]);
 
   const fetchBranches = async () => {
     try {
@@ -170,7 +186,13 @@ const BranchManagement = () => {
     setLoadingProducts(true);
     try {
       const response = await axios.get(`${API}/branches/${selectedBranch.id}/products`, {
-        params: { page: currentPage, per_page: perPage, ...(debouncedSearch && { search: debouncedSearch }) }
+        params: {
+          page: currentPage, per_page: perPage,
+          ...(debouncedSearch && { search: debouncedSearch }),
+          ...(selectedCategory && { category_id: selectedCategory }),
+          ...(selectedKind && { kind: selectedKind }),
+          ...(selectedActivo !== '' && { activo_sucursal: selectedActivo === 'true' }),
+        }
       });
       const { items, total: t, total_pages } = response.data;
       setBranchProducts(items);
@@ -647,6 +669,12 @@ const BranchManagement = () => {
       categories={categories}
       getUsersInBranch={getUsersInBranch}
       getProductCurrentMargen={getProductCurrentMargen}
+      selectedCategory={selectedCategory}
+      setSelectedCategory={setSelectedCategory}
+      selectedKind={selectedKind}
+      setSelectedKind={setSelectedKind}
+      selectedActivo={selectedActivo}
+      setSelectedActivo={setSelectedActivo}
     />
   );
 };

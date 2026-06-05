@@ -44,6 +44,9 @@ const ProductManagement = () => {
   const [selectAllGlobal, setSelectAllGlobal] = useState(false);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedKind, setSelectedKind] = useState('');
+  const [selectedActivo, setSelectedActivo] = useState('');
 
   const [formData, setFormData] = useState({
     nombre: '',
@@ -73,11 +76,17 @@ const ProductManagement = () => {
     }
   };
 
-  const loadProducts = useCallback(async (page, search, perPage) => {
+  const loadProducts = useCallback(async (page, search, perPage, categoryId, kind, activo) => {
     setLoading(true);
     try {
       const response = await axios.get(`${API}/products`, {
-        params: { page, per_page: perPage, ...(search && { search }) }
+        params: {
+          page, per_page: perPage,
+          ...(search && { search }),
+          ...(categoryId && { category_id: categoryId }),
+          ...(kind && { kind }),
+          ...(activo !== '' && activo !== undefined && { activo: activo === 'true' }),
+        }
       });
       setProducts(response.data.items);
       setTotal(response.data.total);
@@ -139,18 +148,22 @@ const ProductManagement = () => {
     setCurrentPage(1);
   };
 
-  // Fetch products from server when page, search or config changes
+  // Reset to page 1 when any filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedCategory, selectedKind, selectedActivo]);
+
+  // Fetch products from server when page, search, filters or config changes
   useEffect(() => {
     if (!configLoaded) return;
     const perPage = config?.items_per_page || 50;
-    loadProducts(currentPage, debouncedSearch, perPage);
-  }, [configLoaded, currentPage, debouncedSearch, loadProducts]);
+    loadProducts(currentPage, debouncedSearch, perPage, selectedCategory, selectedKind, selectedActivo);
+  }, [configLoaded, currentPage, debouncedSearch, selectedCategory, selectedKind, selectedActivo, loadProducts]);
 
-  // Reset global selection when page or search changes
+  // Clear selectAllGlobal when filters change (it's tied to a specific filter state)
   useEffect(() => {
     setSelectAllGlobal(false);
-    setSelectedRows(new Set());
-  }, [currentPage, debouncedSearch]);
+  }, [debouncedSearch, selectedCategory, selectedKind, selectedActivo]);
 
   // Load all products for combo dropdown when modal is a combo type
   useEffect(() => {
@@ -559,6 +572,12 @@ const ProductManagement = () => {
       setSearchTerm={setSearchTerm}
       commitSearch={commitSearch}
       clearSearch={clearSearch}
+      selectedCategory={selectedCategory}
+      setSelectedCategory={setSelectedCategory}
+      selectedKind={selectedKind}
+      setSelectedKind={setSelectedKind}
+      selectedActivo={selectedActivo}
+      setSelectedActivo={setSelectedActivo}
       newCategory={newCategory}
       setNewCategory={setNewCategory}
       showCategoryModal={showCategoryModal}
