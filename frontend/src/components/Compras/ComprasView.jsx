@@ -68,6 +68,8 @@ const ComprasView = ({
   confirmDeleteCompra,
   autocompleteHighlight,
   handleItemChange,
+  handleItemMargenChange,
+  handleItemPrecioVentaChange,
   handleSelectProduct,
   handleDescriptionFocus,
   handleDescriptionKeyDown,
@@ -432,9 +434,6 @@ const ComprasView = ({
                     <tbody>
                       {compraForm.items.map((item, idx) => {
                         const costoNuevo = parseFloat(item.precio_unitario) || 0;
-                        const precioSugerido = item.product_id && costoNuevo > 0 && item.margen_actual != null
-                          ? Math.ceil(costoNuevo * (1 + item.margen_actual / 100) / 100) * 100
-                          : null;
 
                         return (
                           <React.Fragment key={idx}>
@@ -453,16 +452,50 @@ const ComprasView = ({
                                   placeholder={compraForm.sucursal_id ? 'Buscar producto...' : 'Descripción del artículo'}
                                 />
                                 {item.product_id && (
-                                  <div className="flex flex-wrap gap-3 mt-1 text-xs text-blue-700 items-center">
-                                    <span className="flex items-center gap-1">
+                                  <div className="flex gap-2 mt-1.5 text-xs items-center">
+                                    <span className="flex items-center gap-1 text-blue-700">
                                       <Package className="w-3 h-3" />
-                                      Costo anterior: {item.costo_actual != null ? `$${formatMoney(item.costo_actual)}` : 'sin datos'}
+                                      Costo ant: {item.costo_actual != null ? `$${formatMoney(item.costo_actual)}` : 'sin datos'}
                                     </span>
-                                    <span>Precio venta: ${formatMoney(item.precio_actual)}</span>
-                                    {item.margen_actual != null && (
-                                      <span>Margen: {item.margen_actual}%</span>
+                                    {item.precio_actual != null && (
+                                      <span className="text-gray-500">
+                                        Precio actual: <span className="font-medium">${formatMoney(item.precio_actual)}</span>
+                                      </span>
                                     )}
-                                    {precioSugerido != null && costoNuevo > 0 && (
+                                    <label className="flex items-center gap-1 text-blue-700">
+                                      <TrendingUp className="w-3 h-3" />
+                                      P. venta:
+                                      <div className="relative">
+                                        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">$</span>
+                                        <input
+                                          type="text"
+                                          inputMode="decimal"
+                                          className="form-input py-0.5 text-xs text-right pl-4 w-24"
+                                          value={item.precio_venta_nuevo ?? ''}
+                                          onChange={e => handleItemPrecioVentaChange(idx, e.target.value.replace(',', '.'))}
+                                          onClick={e => e.target.select()}
+                                          onFocus={e => e.target.select()}
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                    </label>
+                                    <label className="flex items-center gap-1 text-blue-700">
+                                      Margen:
+                                      <div className="flex items-center gap-0.5">
+                                        <input
+                                          type="text"
+                                          inputMode="decimal"
+                                          className="form-input py-0.5 text-xs text-right w-14"
+                                          value={item.margen_actual ?? ''}
+                                          onChange={e => handleItemMargenChange(idx, e.target.value.replace(',', '.'))}
+                                          onClick={e => e.target.select()}
+                                          onFocus={e => e.target.select()}
+                                          placeholder="0"
+                                        />
+                                        <span className="text-gray-400">%</span>
+                                      </div>
+                                    </label>
+                                    {costoNuevo > 0 && item.margen_actual != null && (
                                       <label className="flex items-center gap-1.5 cursor-pointer select-none">
                                         <input
                                           type="checkbox"
@@ -470,9 +503,8 @@ const ComprasView = ({
                                           onChange={e => handleItemChange(idx, 'actualizar_precio', e.target.checked)}
                                           className="w-3.5 h-3.5 accent-green-600"
                                         />
-                                        <span className={`flex items-center gap-1 font-semibold ${(item.actualizar_precio ?? autoUpdatePrices) ? 'text-green-700' : 'text-gray-400 line-through'}`}>
-                                          <TrendingUp className="w-3 h-3" />
-                                          Precio sugerido: ${formatMoney(precioSugerido)}
+                                        <span className={`font-semibold ${(item.actualizar_precio ?? autoUpdatePrices) ? 'text-green-700' : 'text-gray-400'}`}>
+                                          Actualizar precio al producto
                                         </span>
                                       </label>
                                     )}

@@ -16,6 +16,7 @@ const emptyItem = {
   precio_actual: null,
   margen_actual: null,
   costo_actual: null,
+  precio_venta_nuevo: null,
   actualizar_precio: true,
 };
 
@@ -122,7 +123,8 @@ const Compras = () => {
         product_id: null,
         precio_actual: null,
         margen_actual: null,
-        costo_actual: null
+        costo_actual: null,
+        precio_venta_nuevo: null,
       }))
     }));
     fetchBranchProducts(branchId);
@@ -166,13 +168,45 @@ const Compras = () => {
       const price = parseFloat(field === 'precio_unitario' ? value : updatedItems[index].precio_unitario) || 0;
       updatedItems[index].subtotal = parseFloat((qty * price).toFixed(2));
     }
-    // Clear product link if description is changed manually
+    if (field === 'precio_unitario') {
+      const newCosto = parseFloat(value) || 0;
+      const margen = updatedItems[index].margen_actual;
+      if (newCosto > 0 && margen != null) {
+        updatedItems[index].precio_venta_nuevo = Math.ceil(newCosto * (1 + margen / 100) / 100) * 100;
+      }
+    }
     if (field === 'descripcion') {
       setAutocompleteHighlight(-1);
       updatedItems[index].product_id = null;
       updatedItems[index].precio_actual = null;
       updatedItems[index].margen_actual = null;
       updatedItems[index].costo_actual = null;
+      updatedItems[index].precio_venta_nuevo = null;
+    }
+    const { subtotal, total } = recalcTotals(updatedItems, compraForm.impuestos);
+    setCompraForm(prev => ({ ...prev, items: updatedItems, subtotal, total }));
+  };
+
+  const handleItemMargenChange = (index, value) => {
+    const updatedItems = [...compraForm.items];
+    const newMargen = value === '' ? null : parseFloat(value);
+    updatedItems[index] = { ...updatedItems[index], margen_actual: isNaN(newMargen) ? null : newMargen };
+    const costo = parseFloat(updatedItems[index].precio_unitario) || 0;
+    if (costo > 0 && newMargen != null && !isNaN(newMargen)) {
+      updatedItems[index].precio_venta_nuevo = Math.ceil(costo * (1 + newMargen / 100) / 100) * 100;
+    }
+    const { subtotal, total } = recalcTotals(updatedItems, compraForm.impuestos);
+    setCompraForm(prev => ({ ...prev, items: updatedItems, subtotal, total }));
+  };
+
+  const handleItemPrecioVentaChange = (index, value) => {
+    const updatedItems = [...compraForm.items];
+    updatedItems[index] = { ...updatedItems[index], precio_venta_nuevo: value };
+    const newPrecio = parseFloat(value) || 0;
+    const costo = parseFloat(updatedItems[index].precio_unitario) || 0;
+    if (costo > 0 && newPrecio > 0) {
+      const nuevoMargen = parseFloat(((newPrecio / costo - 1) * 100).toFixed(2));
+      updatedItems[index].margen_actual = nuevoMargen;
     }
     const { subtotal, total } = recalcTotals(updatedItems, compraForm.impuestos);
     setCompraForm(prev => ({ ...prev, items: updatedItems, subtotal, total }));
@@ -181,15 +215,21 @@ const Compras = () => {
   const handleSelectProduct = (index, product) => {
     const updatedItems = [...compraForm.items];
     const precio = product.precio_sucursal ?? product.precio_global ?? 0;
+    const margen = product.margen_sucursal ?? null;
+    const costoExistente = parseFloat(updatedItems[index].precio_unitario) || 0;
+    const precioVentaNuevo = costoExistente > 0 && margen != null
+      ? Math.ceil(costoExistente * (1 + margen / 100) / 100) * 100
+      : precio;
     updatedItems[index] = {
       ...updatedItems[index],
       descripcion: product.nombre,
       product_id: product.product_id,
       precio_actual: precio,
-      margen_actual: product.margen_sucursal ?? null,
-      costo_actual: product.costo_sucursal ?? (precio > 0 && product.margen_sucursal != null
-        ? parseFloat((precio / (1 + product.margen_sucursal / 100)).toFixed(2))
+      margen_actual: margen,
+      costo_actual: product.costo_sucursal ?? (precio > 0 && margen != null
+        ? parseFloat((precio / (1 + margen / 100)).toFixed(2))
         : null),
+      precio_venta_nuevo: precioVentaNuevo,
       actualizar_precio: autoUpdatePrices,
     };
     const qty = parseFloat(updatedItems[index].cantidad) || 0;
@@ -253,11 +293,16 @@ const Compras = () => {
                 ?? (precio != null && margen != null
                   ? parseFloat((precio / (1 + margen / 100)).toFixed(2))
                   : null);
+              const costoItem = parseFloat(it.precio_unitario) || 0;
+              const precioVentaNuevo = costoItem > 0 && margen != null
+                ? Math.ceil(costoItem * (1 + margen / 100) / 100) * 100
+                : precio;
               return {
                 ...it,
                 precio_actual: precio,
                 margen_actual: margen,
                 costo_actual: costo,
+                precio_venta_nuevo: precioVentaNuevo,
                 actualizar_precio: autoUpdatePrices,
               };
             })
@@ -292,7 +337,7 @@ const Compras = () => {
         const costoNuevo = parseFloat(it.precio_unitario) || 0;
         const willUpdate = (it.actualizar_precio ?? autoUpdatePrices) && !!it.product_id && costoNuevo > 0 && it.margen_actual != null;
         const nuevoPrecio = willUpdate
-          ? Math.ceil(costoNuevo * (1 + it.margen_actual / 100) / 100) * 100
+          ? (it.precio_venta_nuevo != null ? parseFloat(it.precio_venta_nuevo) : Math.ceil(costoNuevo * (1 + it.margen_actual / 100) / 100) * 100)
           : null;
         return {
           descripcion: it.descripcion,
@@ -579,6 +624,8 @@ const Compras = () => {
       closeDeleteModalAnim={closeDeleteModalAnim}
       confirmDeleteCompra={confirmDeleteCompra}
       handleItemChange={handleItemChange}
+      handleItemMargenChange={handleItemMargenChange}
+      handleItemPrecioVentaChange={handleItemPrecioVentaChange}
       autocompleteHighlight={autocompleteHighlight}
       handleSelectProduct={handleSelectProduct}
       handleDescriptionFocus={handleDescriptionFocus}
