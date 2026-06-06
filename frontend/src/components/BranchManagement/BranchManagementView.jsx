@@ -117,6 +117,14 @@ const BranchManagementView = ({
   setSelectedKind,
   selectedActivo,
   setSelectedActivo,
+  savingBranch,
+  showDeleteBranchModal,
+  deleteBranchModalClosing,
+  branchToDelete,
+  deletingBranch,
+  onOpenDeleteBranchModal,
+  onDeleteBranch,
+  onCloseDeleteBranchModal,
 }) => {
   const [focusedIdx, setFocusedIdx] = React.useState(-1);
   const [showCategoryFilter, setShowCategoryFilter] = React.useState(false);
@@ -953,6 +961,13 @@ const BranchManagementView = ({
                   <Edit className="w-4 h-4" />
                 </button>
                 <button
+                  onClick={() => onOpenDeleteBranchModal(branch)}
+                  className="btn-icon text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg p-1.5 transition-colors"
+                  title="Eliminar sucursal"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+                <button
                   type="button"
                   onClick={() => onToggleBranchActive(branch)}
                   title={branch.activo ? 'Activo — clic para desactivar' : 'Inactivo — clic para activar'}
@@ -1022,15 +1037,73 @@ const BranchManagementView = ({
                 </div>
               </div>
               <div className="flex justify-end space-x-3 mt-6">
-                <button type="button" onClick={onCloseBranchModal} className="btn btn-secondary">
+                <button type="button" onClick={onCloseBranchModal} disabled={savingBranch} className="btn btn-secondary">
                   Cancelar
                 </button>
-                <button type="submit" className="btn btn-primary">
-                  <Save className="w-4 h-4" />
-                  {editingBranch ? 'Actualizar' : 'Crear'} Sucursal
+                <button type="submit" disabled={savingBranch} className="btn btn-primary">
+                  {savingBranch ? (
+                    <><div className="spinner w-4 h-4" />{editingBranch ? 'Actualizando...' : 'Creando...'}</>
+                  ) : (
+                    <><Save className="w-4 h-4" />{editingBranch ? 'Actualizar' : 'Crear'} Sucursal</>
+                  )}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Branch Modal */}
+      {showDeleteBranchModal && (
+        <div className={`modal-overlay${deleteBranchModalClosing ? ' closing' : ''}`}>
+          <div className={`modal-content max-w-md${deleteBranchModalClosing ? ' closing' : ''}`}>
+            <div className="modal-header">
+              <h3 className="modal-title flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-red-500" />
+                Eliminar Sucursal
+              </h3>
+              <button onClick={onCloseDeleteBranchModal} className="modal-close" disabled={deletingBranch}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
+              <p className="font-semibold mb-1">Esta acción es irreversible.</p>
+              <p>
+                Se eliminarán permanentemente <strong>todos los datos</strong> asociados a{' '}
+                <strong>"{branchToDelete?.nombre}"</strong>:
+              </p>
+              <ul className="mt-2 space-y-0.5 list-disc list-inside text-red-700">
+                <li>Configuración de productos (precios y stock de la sucursal)</li>
+                <li>Sesiones de caja y movimientos</li>
+                <li>Los usuarios asignados quedarán sin sucursal</li>
+              </ul>
+            </div>
+
+            <div className="mb-4 text-sm text-gray-600">
+              Las ventas históricas se conservan para auditoría.
+            </div>
+
+            <div className="flex justify-end space-x-3 mt-6">
+              <button
+                onClick={onCloseDeleteBranchModal}
+                disabled={deletingBranch}
+                className="btn btn-secondary"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={onDeleteBranch}
+                disabled={deletingBranch}
+                className="btn bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deletingBranch ? (
+                  <><div className="spinner w-4 h-4" /> Eliminando...</>
+                ) : (
+                  <><Trash2 className="w-4 h-4" /> Eliminar Sucursal</>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

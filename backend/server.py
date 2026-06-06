@@ -971,6 +971,19 @@ def require_role(required_roles: List[UserRole]):
 async def create_branch(branch_data: BranchCreate, user: User = Depends(require_role([UserRole.ADMIN]))):
     branch = Branch(**branch_data.dict(), empresa_id=user.empresa_id)
     await db.branches.insert_one(branch.dict())
+
+    # Build a price/margin reference map from the first existing branch (if any)
+    first_branch = await db.branches.find_one(
+        {"empresa_id": user.empresa_id, "id": {"$ne": branch.id}},
+        sort=[("created_at", 1)]
+    )
+    ref_map: dict = {}
+    if first_branch:
+        ref_bps = await db.branch_products.find(
+            {"branch_id": first_branch["id"], "empresa_id": user.empresa_id}
+        ).to_list(10000)
+        ref_map = {bp["product_id"]: bp for bp in ref_bps}
+
     # Auto-sync: create branch_products for all existing active products of this empresa
     products = await db.products.find({"empresa_id": user.empresa_id, "activo": True}).to_list(10000)
     for product in products:
@@ -980,14 +993,17 @@ async def create_branch(branch_data: BranchCreate, user: User = Depends(require_
             "empresa_id": user.empresa_id
         })
         if not existing:
+            ref = ref_map.get(product["id"])
             bp = BranchProduct(
                 empresa_id=user.empresa_id,
                 product_id=product["id"],
                 branch_id=branch.id,
-                precio=product["precio"],
-                precio_por_peso=product.get("precio_por_peso"),
+                precio=ref["precio"] if ref else product["precio"],
+                precio_por_peso=ref.get("precio_por_peso") if ref else product.get("precio_por_peso"),
                 stock=product.get("stock", 0),
-                stock_minimo=product.get("stock_minimo", 10)
+                stock_minimo=product.get("stock_minimo", 10),
+                margen=ref.get("margen") if ref else None,
+                costo=ref.get("costo") if ref else None,
             )
             await db.branch_products.insert_one(bp.dict())
     return branch
@@ -1152,6 +1168,27 @@ async def update_branch(branch_id: str, branch_data: BranchUpdate, user: User = 
         await db.branches.update_one({"id": branch_id, "empresa_id": user.empresa_id}, {"$set": update_data})
     updated = await db.branches.find_one({"id": branch_id, "empresa_id": user.empresa_id})
     return Branch(**updated)
+
+@api_router.delete("/branches/{branch_id}", status_code=204)
+async def delete_branch(branch_id: str, user: User = Depends(require_role([UserRole.ADMIN]))):
+    branch = await db.branches.find_one({"id": branch_id, "empresa_id": user.empresa_id})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Sucursal no encontrada")
+
+    # Collect session ids to cascade-delete movements
+    session_ids = [s["id"] async for s in db.cash_sessions.find(
+        {"branch_id": branch_id, "empresa_id": user.empresa_id}, {"id": 1}
+    )]
+
+    if session_ids:
+        await db.cash_movements.delete_many({"session_id": {"$in": session_ids}})
+    await db.cash_sessions.delete_many({"branch_id": branch_id, "empresa_id": user.empresa_id})
+    await db.branch_products.delete_many({"branch_id": branch_id, "empresa_id": user.empresa_id})
+    await db.users.update_many(
+        {"branch_id": branch_id, "empresa_id": user.empresa_id},
+        {"$unset": {"branch_id": ""}}
+    )
+    await db.branches.delete_one({"id": branch_id, "empresa_id": user.empresa_id})
 
 # Cash Session routes
 @api_router.post("/cash-sessions", response_model=CashSession)
@@ -1691,7 +1728,8 @@ async def get_branch_products(
             "_id": 0, "id": 1, "product_id": 1, "branch_id": 1, "empresa_id": 1,
             "precio": 1, "precio_por_peso": 1, "stock": 1, "stock_minimo": 1, "activo": 1,
             "nombre": "$product.nombre", "codigo_barras": "$product.codigo_barras",
-            "tipo": "$product.tipo", "categoria_id": "$product.categoria_id"
+            "tipo": "$product.tipo", "categoria_id": "$product.categoria_id",
+            "control_stock": "$product.control_stock"
         }}
     ]
 

@@ -232,14 +232,25 @@ const BranchManagement = () => {
     setFormData({ nombre: '', direccion: '', telefono: '' });
   };
 
+  const [showDeleteBranchModal, setShowDeleteBranchModal] = useState(false);
+  const [branchToDelete, setBranchToDelete] = useState(null);
+  const [deletingBranch, setDeletingBranch] = useState(false);
+
   const [branchModalClosing, closeBranchModal] = useModalClose(closeModal);
+  const [deleteBranchModalClosing, closeDeleteBranchModal] = useModalClose(() => {
+    setShowDeleteBranchModal(false);
+    setBranchToDelete(null);
+  });
   const [bulkDeleteModalClosing, closeBulkDeleteModalAnim] = useModalClose(() => setShowBulkDeleteModal(false));
   const [bulkMargenModalClosing, closeBulkMargenModal] = useModalClose(() => setShowBulkMargenModal(false));
   const [bulkStockMinModalClosing, closeBulkStockMinModal] = useModalClose(() => setShowBulkStockMinModal(false));
   const [bulkStockModalClosing, closeBulkStockModal] = useModalClose(() => setShowBulkStockModal(false));
 
+  const [savingBranch, setSavingBranch] = useState(false);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSavingBranch(true);
     try {
       if (editingBranch) {
         await axios.put(`${API}/branches/${editingBranch.id}`, formData);
@@ -252,6 +263,8 @@ const BranchManagement = () => {
       closeBranchModal();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error al guardar la sucursal');
+    } finally {
+      setSavingBranch(false);
     }
   };
 
@@ -262,6 +275,26 @@ const BranchManagement = () => {
       fetchBranches();
     } catch (error) {
       toast.error('Error al cambiar estado de la sucursal');
+    }
+  };
+
+  const openDeleteBranchModal = (branch) => {
+    setBranchToDelete(branch);
+    setShowDeleteBranchModal(true);
+  };
+
+  const deleteBranch = async () => {
+    if (!branchToDelete) return;
+    setDeletingBranch(true);
+    try {
+      await axios.delete(`${API}/branches/${branchToDelete.id}`);
+      toast.success(`Sucursal "${branchToDelete.nombre}" eliminada`);
+      closeDeleteBranchModal();
+      fetchBranches();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error al eliminar la sucursal');
+    } finally {
+      setDeletingBranch(false);
     }
   };
 
@@ -624,6 +657,7 @@ const BranchManagement = () => {
       hasPendingChanges={hasPendingChanges}
       allFilteredSelected={allFilteredSelected}
       someFilteredSelected={someFilteredSelected}
+      savingBranch={savingBranch}
       onOpenModal={openModal}
       onCloseBranchModal={closeBranchModal}
       onSubmit={handleSubmit}
@@ -675,6 +709,13 @@ const BranchManagement = () => {
       setSelectedKind={setSelectedKind}
       selectedActivo={selectedActivo}
       setSelectedActivo={setSelectedActivo}
+      showDeleteBranchModal={showDeleteBranchModal}
+      deleteBranchModalClosing={deleteBranchModalClosing}
+      branchToDelete={branchToDelete}
+      deletingBranch={deletingBranch}
+      onOpenDeleteBranchModal={openDeleteBranchModal}
+      onDeleteBranch={deleteBranch}
+      onCloseDeleteBranchModal={closeDeleteBranchModal}
     />
   );
 };

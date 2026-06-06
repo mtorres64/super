@@ -340,12 +340,13 @@ const POSView = ({
                     {paginatedProducts.map((product, idx) => {
                       const cat = categories?.find(c => c.id === product.categoria_id);
                       const CatIcon = getCategoryIcon(cat?.nombre, cat?.icono);
+                      const isBlocked = config?.auto_update_inventory !== false && product.control_stock !== false && (product.stock ?? 0) <= 0;
                       return (
                         <div
                           key={product.id}
-                          className={`product-row${focusedIdx === idx ? ' focused' : ''}`}
+                          className={`product-row${focusedIdx === idx ? ' focused' : ''}${isBlocked ? ' product-row--no-stock' : ''}`}
                           data-pos-focused={focusedIdx === idx ? 'true' : undefined}
-                          onClick={() => { addToCart(product); if (isMobile()) playSuccessSound(); }}
+                          onClick={() => { if (isBlocked) return; addToCart(product); if (isMobile()) playSuccessSound(); }}
                         >
                           <div>
                             <div className="product-row-name">{product.nombre}</div>
@@ -361,27 +362,31 @@ const POSView = ({
                             {config?.currency_symbol || '$'}{formatAmount(product.tipo === 'por_peso' && product.precio_por_peso ? product.precio_por_peso : product.precio)}
                             {product.tipo === 'por_peso' && '/kg'}
                           </div>
-                          <div className="product-row-stock">Stock: {product.stock}</div>
+                          <div className={`product-row-stock${isBlocked ? ' product-row-stock--blocked' : ''}`}>
+                            {isBlocked ? 'Sin stock' : `Stock: ${product.stock}`}
+                          </div>
                         </div>
                       );
                     })}
                   </div>
                 ) : (
                   <div className="products-grid">
-                    {paginatedProducts.map((product, idx) => (
+                    {paginatedProducts.map((product, idx) => {
+                      const isBlocked = config?.auto_update_inventory !== false && product.control_stock !== false && (product.stock ?? 0) <= 0;
+                      return (
                       <div
                         key={product.id}
-                        className={`product-card${focusedIdx === idx ? ' focused' : ''}`}
+                        className={`product-card${focusedIdx === idx ? ' focused' : ''}${isBlocked ? ' product-card--no-stock' : ''}`}
                         data-pos-focused={focusedIdx === idx ? 'true' : undefined}
-                        onClick={() => { addToCart(product); if (isMobile()) playSuccessSound(); }}
+                        onClick={() => { if (isBlocked) return; addToCart(product); if (isMobile()) playSuccessSound(); }}
                       >
                         <div className="product-name">{product.nombre}</div>
                         <div className="product-price">
                           {config?.currency_symbol || '$'}{formatAmount(product.tipo === 'por_peso' && product.precio_por_peso ? product.precio_por_peso : product.precio)}
                           {product.tipo === 'por_peso' && '/kg'}
                         </div>
-                        <div className="product-stock">
-                          Stock: {product.stock}
+                        <div className={`product-stock${isBlocked ? ' product-stock--blocked' : ''}`}>
+                          {isBlocked ? 'Sin stock' : `Stock: ${product.stock}`}
                         </div>
                         <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
                           {(() => {
@@ -397,7 +402,8 @@ const POSView = ({
                           </div>
                         )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
                 </div>

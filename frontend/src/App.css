@@ -667,6 +667,23 @@ body.no-animations .product-card:hover {
   transform: none;
 }
 
+.product-card--no-stock {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.product-card--no-stock:hover,
+.product-card--no-stock.focused {
+  border-color: var(--gray-200);
+  box-shadow: none;
+  transform: none;
+}
+
+.product-stock--blocked {
+  color: var(--danger, #ef4444);
+  font-weight: 600;
+}
+
 .product-name {
   font-size: 0.875rem;
   font-weight: 600;
@@ -716,6 +733,22 @@ body.no-animations .product-card:hover {
 .product-row:hover,
 .product-row.focused {
   background: var(--primary-bg);
+}
+
+.product-row--no-stock {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.product-row--no-stock:hover,
+.product-row--no-stock.focused {
+  background: var(--bg-primary);
+  outline: none;
+}
+
+.product-row-stock--blocked {
+  color: var(--danger, #ef4444);
+  font-weight: 600;
 }
 
 .product-row.focused {
