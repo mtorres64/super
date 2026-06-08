@@ -137,7 +137,15 @@ const BranchManagementView = ({
 }) => {
   const [focusedIdx, setFocusedIdx] = React.useState(-1);
   const [showCategoryFilter, setShowCategoryFilter] = React.useState(false);
+  const [showMobileFilters, setShowMobileFilters] = React.useState(false);
+  const [expandedRows, setExpandedRows] = React.useState(new Set());
   const categoryFilterRef = useRef(null);
+
+  const toggleRowExpanded = (id) => setExpandedRows(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -180,39 +188,26 @@ const BranchManagementView = ({
   if (selectedBranch) {
     return (
       <div className="p-6 flex flex-col h-full" onClick={() => onSetShowExportMenu(false)}>
-        <div className="flex flex-col md:flex-row md:items-center gap-3 mb-6">
-          <button onClick={onGoBack} className="btn btn-secondary">
-            <ArrowLeft className="w-4 h-4" />
-            Volver
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <Building2 className="w-6 h-6 text-green-600" />
-              {selectedBranch.nombre}
-            </h1>
-            <p className="text-gray-500 text-sm">{selectedBranch.direccion}</p>
-          </div>
-          <div className="md:ml-auto flex flex-wrap items-center gap-3">
-            {hasPendingChanges && (
-              <>
-                <span className="text-sm text-amber-600 font-medium">
-                  {Object.keys(pendingChanges).length} cambio(s) sin guardar
-                </span>
-                <button
-                  onClick={onSaveProductChanges}
-                  disabled={savingChanges}
-                  className="btn btn-primary"
-                >
-                  {savingChanges ? (
-                    <><div className="spinner w-4 h-4" /> Guardando...</>
-                  ) : (
-                    <><Save className="w-4 h-4" /> Guardar Cambios</>
-                  )}
+        <div className="mb-6">
+          {/* Fila título */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="hidden md:block">
+                <button onClick={onGoBack} className="btn btn-secondary">
+                  <ArrowLeft className="w-4 h-4" />
+                  Volver
                 </button>
-              </>
-            )}
-            {/* Export branch products */}
-            <div className="relative" onClick={(e) => e.stopPropagation()}>
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2 min-w-0">
+                  <Building2 className="w-6 h-6 text-green-600 flex-shrink-0" />
+                  <span className="truncate">{selectedBranch.nombre}</span>
+                </h1>
+                <p className="text-gray-500 text-sm truncate">{selectedBranch.direccion}</p>
+              </div>
+            </div>
+            {/* Exportar — siempre visible, derecha */}
+            <div className="relative flex-shrink-0" onClick={(e) => e.stopPropagation()}>
               <button
                 onClick={() => onSetShowExportMenu(prev => !prev)}
                 className="btn btn-secondary"
@@ -241,11 +236,30 @@ const BranchManagementView = ({
               )}
             </div>
           </div>
+          {/* Cambios pendientes */}
+          {hasPendingChanges && (
+            <div className="flex flex-wrap items-center gap-2 mt-3">
+              <span className="text-sm text-amber-600 font-medium">
+                {Object.keys(pendingChanges).length} cambio(s) sin guardar
+              </span>
+              <button
+                onClick={onSaveProductChanges}
+                disabled={savingChanges}
+                className="btn btn-primary"
+              >
+                {savingChanges ? (
+                  <><div className="spinner w-4 h-4" /> Guardando...</>
+                ) : (
+                  <><Save className="w-4 h-4" /> Guardar Cambios</>
+                )}
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="bg-white rounded-lg shadow p-4 mb-4">
           <div className="flex gap-3 items-center">
-            <div className="relative" style={{ flex: 6 }}>
+            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
                 type="text"
@@ -259,92 +273,133 @@ const BranchManagementView = ({
               {searchTerm && (
                 loadingProducts
                   ? <div className="absolute right-3 top-1/2 -translate-y-1/2"><div className="spinner spinner-on-light w-4 h-4 text-gray-400" /></div>
-                  : <button
-                      type="button"
-                      onClick={onClearSearch}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
+                  : <button type="button" onClick={onClearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                       <X className="h-4 w-4" />
                     </button>
               )}
             </div>
 
-            <div className="relative" style={{ flex: 2 }} ref={categoryFilterRef}>
-              {(() => {
-                const selCat = categories.find(c => c.id === selectedCategory);
-                const SelIcon = selCat ? getCategoryIcon(selCat.nombre, selCat.icono) : Tag;
-                return (
-                  <button
-                    type="button"
-                    onClick={() => setShowCategoryFilter(v => !v)}
-                    className="form-input pl-9 text-left flex items-center w-full"
-                    style={{ color: selCat ? 'inherit' : '#9ca3af' }}
-                  >
-                    <SelIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                    <span className="truncate">{selCat ? selCat.nombre : 'Categoría'}</span>
-                    {selCat && (
-                      <X
-                        className="ml-auto h-3.5 w-3.5 text-gray-400 hover:text-gray-600 flex-shrink-0"
-                        onClick={(e) => { e.stopPropagation(); setSelectedCategory(''); setShowCategoryFilter(false); }}
-                      />
-                    )}
-                  </button>
-                );
-              })()}
-              {showCategoryFilter && (
-                <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
-                  <button
-                    type="button"
-                    onClick={() => { setSelectedCategory(''); setShowCategoryFilter(false); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-500 hover:bg-gray-50"
-                  >
-                    <Tag className="h-4 w-4" />
-                    Todas las categorías
-                  </button>
-                  {categories.map(cat => {
-                    const CatIcon = getCategoryIcon(cat.nombre, cat.icono);
-                    return (
-                      <button
-                        key={cat.id}
-                        type="button"
-                        onClick={() => { setSelectedCategory(cat.id); setShowCategoryFilter(false); }}
-                        className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 ${selectedCategory === cat.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}`}
-                      >
-                        <CatIcon className="h-4 w-4 flex-shrink-0" />
-                        {cat.nombre}
-                      </button>
-                    );
-                  })}
-                </div>
+            {/* Botón filtros — solo mobile */}
+            <button
+              type="button"
+              onClick={() => setShowMobileFilters(v => !v)}
+              className="md:hidden btn btn-secondary relative flex-shrink-0"
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+              {(selectedCategory || selectedKind || selectedActivo) && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-white" />
               )}
-            </div>
+            </button>
 
-            <div className="relative" style={{ flex: 2 }}>
-              <Layers className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-              <select
-                value={selectedKind}
-                onChange={(e) => setSelectedKind(e.target.value)}
-                className="form-input pl-9"
-              >
-                <option value="">Clase</option>
-                <option value="normal">Normal</option>
-                <option value="combo">Combo</option>
-              </select>
-            </div>
-
-            <div className="relative" style={{ flex: 2 }}>
-              <CircleDot className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-              <select
-                value={selectedActivo}
-                onChange={(e) => setSelectedActivo(e.target.value)}
-                className="form-input pl-9"
-              >
-                <option value="">Estado</option>
-                <option value="true">Activos</option>
-                <option value="false">Inactivos</option>
-              </select>
+            {/* Filtros inline — solo desktop */}
+            <div className="hidden md:flex gap-3 items-center">
+              <div className="relative" style={{ minWidth: '10rem' }} ref={categoryFilterRef}>
+                {(() => {
+                  const selCat = categories.find(c => c.id === selectedCategory);
+                  const SelIcon = selCat ? getCategoryIcon(selCat.nombre, selCat.icono) : Tag;
+                  return (
+                    <button type="button" onClick={() => setShowCategoryFilter(v => !v)}
+                      className="form-input pl-9 text-left flex items-center w-full"
+                      style={{ color: selCat ? 'inherit' : '#9ca3af' }}>
+                      <SelIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                      <span className="truncate">{selCat ? selCat.nombre : 'Categoría'}</span>
+                      {selCat && <X className="ml-auto h-3.5 w-3.5 text-gray-400 hover:text-gray-600 flex-shrink-0"
+                        onClick={(e) => { e.stopPropagation(); setSelectedCategory(''); setShowCategoryFilter(false); }} />}
+                    </button>
+                  );
+                })()}
+                {showCategoryFilter && (
+                  <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                    <button type="button" onClick={() => { setSelectedCategory(''); setShowCategoryFilter(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-500 hover:bg-gray-50">
+                      <Tag className="h-4 w-4" />Todas las categorías
+                    </button>
+                    {categories.map(cat => {
+                      const CatIcon = getCategoryIcon(cat.nombre, cat.icono);
+                      return (
+                        <button key={cat.id} type="button" onClick={() => { setSelectedCategory(cat.id); setShowCategoryFilter(false); }}
+                          className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 ${selectedCategory === cat.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}`}>
+                          <CatIcon className="h-4 w-4 flex-shrink-0" />{cat.nombre}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="relative" style={{ minWidth: '8rem' }}>
+                <Layers className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                <select value={selectedKind} onChange={(e) => setSelectedKind(e.target.value)} className="form-input pl-9">
+                  <option value="">Clase</option>
+                  <option value="normal">Normal</option>
+                  <option value="combo">Combo</option>
+                </select>
+              </div>
+              <div className="relative" style={{ minWidth: '8rem' }}>
+                <CircleDot className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                <select value={selectedActivo} onChange={(e) => setSelectedActivo(e.target.value)} className="form-input pl-9">
+                  <option value="">Estado</option>
+                  <option value="true">Activos</option>
+                  <option value="false">Inactivos</option>
+                </select>
+              </div>
             </div>
           </div>
+
+          {/* Panel filtros móvil */}
+          {showMobileFilters && (
+            <div className="md:hidden mt-3 pt-3 border-t border-gray-100 flex flex-col gap-2">
+              <div className="relative" ref={categoryFilterRef}>
+                {(() => {
+                  const selCat = categories.find(c => c.id === selectedCategory);
+                  const SelIcon = selCat ? getCategoryIcon(selCat.nombre, selCat.icono) : Tag;
+                  return (
+                    <button type="button" onClick={() => setShowCategoryFilter(v => !v)}
+                      className="form-input pl-9 text-left flex items-center w-full"
+                      style={{ color: selCat ? 'inherit' : '#9ca3af' }}>
+                      <SelIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                      <span className="truncate">{selCat ? selCat.nombre : 'Categoría'}</span>
+                      {selCat && <X className="ml-auto h-3.5 w-3.5 text-gray-400 hover:text-gray-600 flex-shrink-0"
+                        onClick={(e) => { e.stopPropagation(); setSelectedCategory(''); setShowCategoryFilter(false); }} />}
+                    </button>
+                  );
+                })()}
+                {showCategoryFilter && (
+                  <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                    <button type="button" onClick={() => { setSelectedCategory(''); setShowCategoryFilter(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-500 hover:bg-gray-50">
+                      <Tag className="h-4 w-4" />Todas las categorías
+                    </button>
+                    {categories.map(cat => {
+                      const CatIcon = getCategoryIcon(cat.nombre, cat.icono);
+                      return (
+                        <button key={cat.id} type="button"
+                          onClick={() => { setSelectedCategory(cat.id); setShowCategoryFilter(false); setShowMobileFilters(false); }}
+                          className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 ${selectedCategory === cat.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}`}>
+                          <CatIcon className="h-4 w-4 flex-shrink-0" />{cat.nombre}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="relative">
+                <Layers className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                <select value={selectedKind} onChange={(e) => { setSelectedKind(e.target.value); setShowMobileFilters(false); }} className="form-input pl-9 w-full">
+                  <option value="">Clase</option>
+                  <option value="normal">Normal</option>
+                  <option value="combo">Combo</option>
+                </select>
+              </div>
+              <div className="relative">
+                <CircleDot className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                <select value={selectedActivo} onChange={(e) => { setSelectedActivo(e.target.value); setShowMobileFilters(false); }} className="form-input pl-9 w-full">
+                  <option value="">Estado</option>
+                  <option value="true">Activos</option>
+                  <option value="false">Inactivos</option>
+                </select>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Bulk Actions Bar */}
@@ -431,7 +486,7 @@ const BranchManagementView = ({
               />
               <span className="text-sm text-gray-500">Seleccionar todos</span>
             </label>
-            <table className="table">
+            <table className="table table-collapsible">
               <thead>
                 <tr>
                   <th className="w-10">
@@ -473,6 +528,7 @@ const BranchManagementView = ({
                     <tr
                       key={product.product_id}
                       data-bm-focused={focusedIdx === idx ? 'true' : undefined}
+                      data-expanded={expandedRows.has(product.product_id) ? 'true' : undefined}
                       className={focusedIdx === idx ? 'bg-green-50 outline outline-2 outline-green-400' : hasChange ? 'bg-amber-50' : isSelected ? 'bg-blue-50' : ''}
                     >
                       <td data-mobile="hide">
@@ -483,8 +539,8 @@ const BranchManagementView = ({
                           onChange={() => onToggleSelectRow(product.product_id)}
                         />
                       </td>
-                      <td data-mobile="title">
-                        <div className="flex items-center gap-3">
+                      <td data-mobile="title" onClick={() => toggleRowExpanded(product.product_id)} className="md:cursor-default cursor-pointer">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
                           {(() => {
                             const cat = categories.find(c => c.id === product.categoria_id);
                             const CatIcon = getCategoryIcon(cat?.nombre, cat?.icono);
@@ -494,8 +550,8 @@ const BranchManagementView = ({
                               </div>
                             );
                           })()}
-                          <div>
-                            <div className="font-medium text-gray-900">{product.nombre}</div>
+                          <div className="min-w-0">
+                            <div className="font-medium text-gray-900 truncate">{product.nombre}</div>
                             {product.codigo_barras && (
                               <div className="text-xs text-blue-600">{product.codigo_barras}</div>
                             )}
@@ -504,6 +560,7 @@ const BranchManagementView = ({
                             </div>
                           </div>
                         </div>
+                        <ChevronDown className={`md:hidden w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200 ${expandedRows.has(product.product_id) ? 'rotate-180' : ''}`} />
                       </td>
                       <td data-label="Categoría">
                         {(() => {

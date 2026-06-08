@@ -15,7 +15,8 @@ import {
   Truck,
   Calendar,
   Hash,
-  GitBranch
+  GitBranch,
+  ChevronDown
 } from 'lucide-react';
 import SortIcon from '../ui/SortIcon';
 import DistribuirModal from './DistribuirModal';
@@ -95,6 +96,13 @@ const ComprasView = ({
   handleDistribuirItemChange,
   handleDistribuirSubmit,
 }) => {
+  const [expandedRows, setExpandedRows] = React.useState(new Set());
+  const toggleRowExpanded = (id) => setExpandedRows(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
   return (
     <div>
       {/* Tabs */}
@@ -167,7 +175,7 @@ const ComprasView = ({
             </div>
           ) : (
             <div className="table-container">
-              <table className="table">
+              <table className="table table-collapsible">
                 <thead>
                   <tr>
                     <th onClick={() => comprasRequestSort('fecha')} className="cursor-pointer select-none hover:bg-gray-50">Fecha <SortIcon columnKey="fecha" sortConfig={comprasSortConfig} /></th>
@@ -182,9 +190,20 @@ const ComprasView = ({
                 </thead>
                 <tbody>
                   {filteredCompras.map(compra => (
-                    <tr key={compra.id}>
+                    <tr key={compra.id} data-expanded={expandedRows.has(compra.id) ? 'true' : undefined}>
                       <td data-label="Fecha" className="text-sm text-gray-600">{formatDate(compra.fecha)}</td>
-                      <td data-mobile="title" className="font-medium">{compra.numero_factura}</td>
+                      <td data-mobile="title" className="font-medium md:cursor-default cursor-pointer" onClick={() => toggleRowExpanded(compra.id)}>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-bold text-gray-700 md:hidden">{formatDate(compra.fecha)}</div>
+                          <span className="truncate">{compra.numero_factura}</span>
+                          {!expandedRows.has(compra.id) && compra.items && compra.items.length > 0 && (
+                            <div className="text-xs text-gray-400 truncate md:hidden mt-0.5">
+                              {compra.items.map(i => i.descripcion).filter(Boolean).join(', ')}
+                            </div>
+                          )}
+                        </div>
+                        <ChevronDown className={`md:hidden w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200 ${expandedRows.has(compra.id) ? 'rotate-180' : ''}`} />
+                      </td>
                       <td data-label="Proveedor" className="text-gray-700">{compra.proveedor_nombre || '—'}</td>
                       <td data-label="Sucursal" className="text-gray-700 text-sm">
                         {compra.sucursal_id
@@ -263,7 +282,7 @@ const ComprasView = ({
             </div>
           ) : (
             <div className="table-container">
-              <table className="table">
+              <table className="table table-collapsible">
                 <thead>
                   <tr>
                     <th onClick={() => proveedoresRequestSort('nombre')} className="cursor-pointer select-none hover:bg-gray-50">Nombre <SortIcon columnKey="nombre" sortConfig={proveedoresSortConfig} /></th>
@@ -276,8 +295,13 @@ const ComprasView = ({
                 </thead>
                 <tbody>
                   {filteredProveedores.map(prov => (
-                    <tr key={prov.id}>
-                      <td data-mobile="title" className="font-medium text-gray-900">{prov.nombre}</td>
+                    <tr key={prov.id} data-expanded={expandedRows.has(prov.id) ? 'true' : undefined}>
+                      <td data-mobile="title" className="font-medium text-gray-900 md:cursor-default cursor-pointer" onClick={() => toggleRowExpanded(prov.id)}>
+                        <div className="flex-1 min-w-0">
+                          <span className="truncate">{prov.nombre}</span>
+                        </div>
+                        <ChevronDown className={`md:hidden w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200 ${expandedRows.has(prov.id) ? 'rotate-180' : ''}`} />
+                      </td>
                       <td data-label="RUC / CUIT" className="text-gray-600">{prov.ruc_cuit || '—'}</td>
                       <td data-label="Email" className="text-gray-600">{prov.email || '—'}</td>
                       <td data-label="Teléfono" className="text-gray-600">{prov.telefono || '—'}</td>

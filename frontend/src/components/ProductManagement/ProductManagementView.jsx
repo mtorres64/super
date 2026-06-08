@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Plus, Edit, Trash2, Package, Search, Save, X,
-  Download, Upload, FileText, Tag, Layers, Minus, CircleDot,
+  Download, Upload, FileText, Tag, Layers, Minus, CircleDot, SlidersHorizontal, ChevronDown, MoreVertical,
 } from 'lucide-react';
 import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
@@ -117,7 +117,16 @@ const ProductManagementView = ({
   const [showCategoryAc, setShowCategoryAc] = useState(false);
   const [focusedIdx, setFocusedIdx] = useState(-1);
   const [showCategoryFilter, setShowCategoryFilter] = useState(false);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [expandedRows, setExpandedRows] = useState(new Set());
   const categoryFilterRef = useRef(null);
+
+  const toggleRowExpanded = (id) => setExpandedRows(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -182,54 +191,82 @@ const ProductManagementView = ({
   }
 
   return (
-    <div className="p-6 flex flex-col h-full" onClick={() => setShowExportMenu(false)}>
-      <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 gap-3">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Gestión de Productos
-          </h1>
-          <p className="text-gray-600">
-            {total} productos registrados
-          </p>
-          <button
-            onClick={() => navigate('/branches', { state: { branchId: activeBranch?.id || user?.branch_id } })}
-            className="mt-1 text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
-          >
-            <Tag className="w-3 h-3" />
-            Lista de precios de sucursal
-          </button>
+    <div className="p-6 flex flex-col h-full" onClick={() => { setShowExportMenu(false); setShowMobileMenu(false); }}>
+      <div className="mb-6">
+        {/* Mobile: título + menú desplegable */}
+        <div className="flex items-center justify-between md:hidden">
+          <h1 className="text-3xl font-bold text-gray-900">Gestión de Productos</h1>
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setShowMobileMenu(v => !v)}
+              className="btn btn-secondary p-2"
+            >
+              <MoreVertical className="w-5 h-5" />
+            </button>
+            {showMobileMenu && (
+              <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1">
+                <button
+                  onClick={() => { setShowImportModal(true); setShowMobileMenu(false); }}
+                  className="flex items-center gap-2 w-full px-4 py-2.5 text-sm hover:bg-gray-50"
+                  style={{ color: 'var(--secondary-text)' }}
+                >
+                  <Upload className="w-4 h-4" />Importar
+                </button>
+                <button
+                  onClick={() => { setShowCategoryModal(true); setShowMobileMenu(false); }}
+                  className="flex items-center gap-2 w-full px-4 py-2.5 text-sm hover:bg-gray-50"
+                  style={{ color: 'var(--tertiary-text)' }}
+                >
+                  <Tag className="w-4 h-4" />Categorías
+                </button>
+                <div className="border-t border-gray-100 my-1" />
+                <button
+                  onClick={() => { openModal(); setShowMobileMenu(false); }}
+                  className="flex items-center gap-2 w-full px-4 py-2.5 text-sm font-medium hover:bg-gray-50 text-green-700"
+                >
+                  <Plus className="w-4 h-4" />Nuevo Producto
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2 items-center">
-          <button
-            onClick={() => setShowImportModal(true)}
-            className="btn"
-            style={{ background: 'var(--secondary)', color: 'var(--secondary-text)' }}
-          >
-            <Upload className="w-4 h-4" />
-            Importar
-          </button>
-          <button
-            onClick={() => setShowCategoryModal(true)}
-            className="btn"
-            style={{ background: 'var(--tertiary)', color: 'var(--tertiary-text)' }}
-          >
-            <Tag className="w-4 h-4" />
-            Categorías
-          </button>
-          <button
-            onClick={() => openModal()}
-            className="btn btn-primary"
-          >
-            <Plus className="w-4 h-4" />
-            Nuevo Producto
-          </button>
+        <button
+          onClick={() => navigate('/branches', { state: { branchId: activeBranch?.id || user?.branch_id } })}
+          className="md:hidden mt-1 text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+        >
+          <Tag className="w-3 h-3" />Lista de precios de sucursal
+        </button>
+
+        {/* Desktop: layout original */}
+        <div className="hidden md:flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Gestión de Productos</h1>
+            <p className="text-gray-600">{total} productos registrados</p>
+            <button
+              onClick={() => navigate('/branches', { state: { branchId: activeBranch?.id || user?.branch_id } })}
+              className="mt-1 text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+            >
+              <Tag className="w-3 h-3" />Lista de precios de sucursal
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2 items-center">
+            <button onClick={() => setShowImportModal(true)} className="btn" style={{ background: 'var(--secondary)', color: 'var(--secondary-text)' }}>
+              <Upload className="w-4 h-4" />Importar
+            </button>
+            <button onClick={() => setShowCategoryModal(true)} className="btn" style={{ background: 'var(--tertiary)', color: 'var(--tertiary-text)' }}>
+              <Tag className="w-4 h-4" />Categorías
+            </button>
+            <button onClick={() => openModal()} className="btn btn-primary">
+              <Plus className="w-4 h-4" />Nuevo Producto
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Search Bar + Filters */}
       <div className="bg-white rounded-lg shadow p-4 mb-6">
         <div className="flex gap-3 items-center">
-          <div className="relative" style={{ flex: 6 }}>
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               type="text"
@@ -253,82 +290,136 @@ const ProductManagementView = ({
             )}
           </div>
 
-          <div className="relative" style={{ flex: 2 }} ref={categoryFilterRef}>
-            {(() => {
-              const selCat = categories.find(c => c.id === selectedCategory);
-              const SelIcon = selCat ? getCategoryIcon(selCat.nombre, selCat.icono) : Tag;
-              return (
-                <button
-                  type="button"
-                  onClick={() => setShowCategoryFilter(v => !v)}
-                  className="form-input pl-9 text-left flex items-center w-full"
-                  style={{ color: selCat ? 'inherit' : '#9ca3af' }}
-                >
-                  <SelIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                  <span className="truncate">{selCat ? selCat.nombre : 'Categoría'}</span>
-                  {selCat && (
-                    <X
-                      className="ml-auto h-3.5 w-3.5 text-gray-400 hover:text-gray-600 flex-shrink-0"
-                      onClick={(e) => { e.stopPropagation(); setSelectedCategory(''); setShowCategoryFilter(false); }}
-                    />
-                  )}
-                </button>
-              );
-            })()}
-            {showCategoryFilter && (
-              <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
-                <button
-                  type="button"
-                  onClick={() => { setSelectedCategory(''); setShowCategoryFilter(false); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-500 hover:bg-gray-50"
-                >
-                  <Tag className="h-4 w-4" />
-                  Todas las categorías
-                </button>
-                {categories.map(cat => {
-                  const CatIcon = getCategoryIcon(cat.nombre, cat.icono);
-                  return (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => { setSelectedCategory(cat.id); setShowCategoryFilter(false); }}
-                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 ${selectedCategory === cat.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}`}
-                    >
-                      <CatIcon className="h-4 w-4 flex-shrink-0" />
-                      {cat.nombre}
-                    </button>
-                  );
-                })}
-              </div>
+          {/* Botón filtros — solo mobile */}
+          <button
+            type="button"
+            onClick={() => setShowMobileFilters(v => !v)}
+            className="md:hidden btn btn-secondary relative flex-shrink-0"
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            {(selectedCategory || selectedKind || selectedActivo) && (
+              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-white" />
             )}
-          </div>
+          </button>
 
-          <div className="relative" style={{ flex: 2 }}>
-            <Layers className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-            <select
-              value={selectedKind}
-              onChange={(e) => setSelectedKind(e.target.value)}
-              className="form-input pl-9"
-            >
-              <option value="">Clase</option>
-              <option value="normal">Normal</option>
-              <option value="combo">Combo</option>
-            </select>
-          </div>
-
-          <div className="relative" style={{ flex: 2 }}>
-            <CircleDot className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-            <select
-              value={selectedActivo}
-              onChange={(e) => setSelectedActivo(e.target.value)}
-              className="form-input pl-9"
-            >
-              <option value="">Estado</option>
-              <option value="true">Activos</option>
-              <option value="false">Inactivos</option>
-            </select>
+          {/* Filtros inline — solo desktop */}
+          <div className="hidden md:flex gap-3 items-center">
+            <div className="relative" style={{ minWidth: '10rem' }} ref={categoryFilterRef}>
+              {(() => {
+                const selCat = categories.find(c => c.id === selectedCategory);
+                const SelIcon = selCat ? getCategoryIcon(selCat.nombre, selCat.icono) : Tag;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setShowCategoryFilter(v => !v)}
+                    className="form-input pl-9 text-left flex items-center w-full"
+                    style={{ color: selCat ? 'inherit' : '#9ca3af' }}
+                  >
+                    <SelIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                    <span className="truncate">{selCat ? selCat.nombre : 'Categoría'}</span>
+                    {selCat && (
+                      <X
+                        className="ml-auto h-3.5 w-3.5 text-gray-400 hover:text-gray-600 flex-shrink-0"
+                        onClick={(e) => { e.stopPropagation(); setSelectedCategory(''); setShowCategoryFilter(false); }}
+                      />
+                    )}
+                  </button>
+                );
+              })()}
+              {showCategoryFilter && (
+                <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                  <button type="button" onClick={() => { setSelectedCategory(''); setShowCategoryFilter(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-500 hover:bg-gray-50">
+                    <Tag className="h-4 w-4" />Todas las categorías
+                  </button>
+                  {categories.map(cat => {
+                    const CatIcon = getCategoryIcon(cat.nombre, cat.icono);
+                    return (
+                      <button key={cat.id} type="button" onClick={() => { setSelectedCategory(cat.id); setShowCategoryFilter(false); }}
+                        className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 ${selectedCategory === cat.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}`}>
+                        <CatIcon className="h-4 w-4 flex-shrink-0" />{cat.nombre}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="relative" style={{ minWidth: '8rem' }}>
+              <Layers className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+              <select value={selectedKind} onChange={(e) => setSelectedKind(e.target.value)} className="form-input pl-9">
+                <option value="">Clase</option>
+                <option value="normal">Normal</option>
+                <option value="combo">Combo</option>
+              </select>
+            </div>
+            <div className="relative" style={{ minWidth: '8rem' }}>
+              <CircleDot className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+              <select value={selectedActivo} onChange={(e) => setSelectedActivo(e.target.value)} className="form-input pl-9">
+                <option value="">Estado</option>
+                <option value="true">Activos</option>
+                <option value="false">Inactivos</option>
+              </select>
+            </div>
           </div>
         </div>
+
+        {/* Panel filtros móvil */}
+        {showMobileFilters && (
+          <div className="md:hidden mt-3 pt-3 border-t border-gray-100 flex flex-col gap-2">
+            <div className="relative" ref={categoryFilterRef}>
+              {(() => {
+                const selCat = categories.find(c => c.id === selectedCategory);
+                const SelIcon = selCat ? getCategoryIcon(selCat.nombre, selCat.icono) : Tag;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setShowCategoryFilter(v => !v)}
+                    className="form-input pl-9 text-left flex items-center w-full"
+                    style={{ color: selCat ? 'inherit' : '#9ca3af' }}
+                  >
+                    <SelIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                    <span className="truncate">{selCat ? selCat.nombre : 'Categoría'}</span>
+                    {selCat && (
+                      <X className="ml-auto h-3.5 w-3.5 text-gray-400 hover:text-gray-600 flex-shrink-0"
+                        onClick={(e) => { e.stopPropagation(); setSelectedCategory(''); setShowCategoryFilter(false); }} />
+                    )}
+                  </button>
+                );
+              })()}
+              {showCategoryFilter && (
+                <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                  <button type="button" onClick={() => { setSelectedCategory(''); setShowCategoryFilter(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-500 hover:bg-gray-50">
+                    <Tag className="h-4 w-4" />Todas las categorías
+                  </button>
+                  {categories.map(cat => {
+                    const CatIcon = getCategoryIcon(cat.nombre, cat.icono);
+                    return (
+                      <button key={cat.id} type="button" onClick={() => { setSelectedCategory(cat.id); setShowCategoryFilter(false); setShowMobileFilters(false); }}
+                        className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 ${selectedCategory === cat.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}`}>
+                        <CatIcon className="h-4 w-4 flex-shrink-0" />{cat.nombre}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="relative">
+              <Layers className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+              <select value={selectedKind} onChange={(e) => { setSelectedKind(e.target.value); setShowMobileFilters(false); }} className="form-input pl-9 w-full">
+                <option value="">Clase</option>
+                <option value="normal">Normal</option>
+                <option value="combo">Combo</option>
+              </select>
+            </div>
+            <div className="relative">
+              <CircleDot className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+              <select value={selectedActivo} onChange={(e) => { setSelectedActivo(e.target.value); setShowMobileFilters(false); }} className="form-input pl-9 w-full">
+                <option value="">Estado</option>
+                <option value="true">Activos</option>
+                <option value="false">Inactivos</option>
+              </select>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Bulk Actions Bar */}
@@ -401,7 +492,7 @@ const ProductManagementView = ({
           />
           <span className="text-sm text-gray-500">Seleccionar todos</span>
         </label>
-        <table className="table">
+        <table className="table table-collapsible">
           <thead>
             <tr>
               <th className="w-10">
@@ -430,6 +521,7 @@ const ProductManagementView = ({
               <tr
                 key={product.id}
                 data-pm-focused={focusedIdx === idx ? 'true' : undefined}
+                data-expanded={expandedRows.has(product.id) ? 'true' : undefined}
                 className={focusedIdx === idx ? 'bg-green-50 outline outline-2 outline-green-400' : selectedRows.has(product.id) ? 'bg-blue-50' : ''}
               >
                 <td data-mobile="hide">
@@ -440,8 +532,8 @@ const ProductManagementView = ({
                     onChange={() => toggleSelectRow(product.id)}
                   />
                 </td>
-                <td data-mobile="title">
-                  <div className="flex items-center gap-3">
+                <td data-mobile="title" onClick={() => toggleRowExpanded(product.id)} className="md:cursor-default cursor-pointer">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
                     {(() => {
                       const cat = categories.find(c => c.id === product.categoria_id);
                       const CatIcon = getCategoryIcon(cat?.nombre, cat?.icono);
@@ -451,8 +543,8 @@ const ProductManagementView = ({
                         </div>
                       );
                     })()}
-                    <div>
-                      <div className="font-medium text-gray-900">
+                    <div className="min-w-0">
+                      <div className="font-medium text-gray-900 truncate">
                         {product.nombre}
                       </div>
                       <div className="text-sm text-gray-500 capitalize">
@@ -460,6 +552,7 @@ const ProductManagementView = ({
                       </div>
                     </div>
                   </div>
+                  <ChevronDown className={`md:hidden w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200 ${expandedRows.has(product.id) ? 'rotate-180' : ''}`} />
                 </td>
                 <td className="text-center" data-label="Código">
                   <span className="text-sm text-blue-600">

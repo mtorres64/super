@@ -1729,6 +1729,27 @@ html.dark .modal-sticky-bottom {
     background: inherit;
   }
 
+  /* Cards desplegables: ocultar todos los td excepto título y checkbox */
+  .table-collapsible td:not([data-mobile="title"]):not([data-mobile="hide"]) {
+    display: none !important;
+  }
+
+  /* Ocultar la línea del título cuando está colapsado */
+  .table-collapsible tr:not([data-expanded="true"]) td[data-mobile="title"] {
+    border-bottom: none !important;
+    padding-bottom: 0;
+    margin-bottom: 0;
+  }
+
+  /* Cuando está expandido: mostrar todos */
+  .table-collapsible tr[data-expanded="true"] td:not([data-mobile="hide"]) {
+    display: flex !important;
+  }
+
+  /* Estado seleccionado/pendiente visible en mobile */
+  .table tbody tr.bg-amber-50 { background-color: #fffbeb !important; }
+  .table tbody tr.bg-blue-50  { background-color: #eff6ff !important; }
+
   /* Modals: full-width */
   .modal-content {
     width: 95%;
