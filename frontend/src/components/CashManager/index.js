@@ -15,7 +15,7 @@ const CashManager = () => {
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [openModalClosing, closeOpenModal] = useModalClose(() => setShowOpenModal(false));
   const [closeModalClosing, closeCloseModal] = useModalClose(() => setShowCloseModal(false));
-  const { user } = useContext(AuthContext);
+  const { user, activeBranch } = useContext(AuthContext);
 
   const [openForm, setOpenForm] = useState({
     monto_inicial: '',
@@ -49,7 +49,8 @@ const CashManager = () => {
     try {
       const response = await axios.post(`${API}/cash-sessions`, {
         monto_inicial: parseFloat(openForm.monto_inicial),
-        observaciones: openForm.observaciones
+        observaciones: openForm.observaciones,
+        branch_id: activeBranch?.id
       });
       setCurrentSession(response.data);
       closeOpenModal();
