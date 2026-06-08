@@ -520,6 +520,23 @@ class CashSessionClose(BaseModel):
     monto_final: float
     observaciones: Optional[str] = None
 
+class CashSessionHistory(BaseModel):
+    id: str
+    empresa_id: str
+    branch_id: str
+    branch_nombre: str
+    user_id: str
+    user_nombre: str
+    monto_inicial: float
+    monto_ventas: float = 0
+    monto_retiros: float = 0
+    monto_final: Optional[float] = None
+    diferencia: Optional[float] = None
+    status: CashSessionStatus
+    fecha_apertura: datetime
+    fecha_cierre: Optional[datetime] = None
+    observaciones: Optional[str] = None
+
 class CashMovement(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     empresa_id: str
@@ -1302,7 +1319,10 @@ async def open_cash_session(session_data: CashSessionCreate, user: User = Depend
 
 @api_router.put("/cash-sessions/{session_id}/close", response_model=CashSession)
 async def close_cash_session(session_id: str, close_data: CashSessionClose, user: User = Depends(get_current_user)):
-    session = await db.cash_sessions.find_one({"id": session_id, "user_id": user.id, "empresa_id": user.empresa_id})
+    query = {"id": session_id, "empresa_id": user.empresa_id}
+    if user.rol != UserRole.ADMIN:
+        query["user_id"] = user.id
+    session = await db.cash_sessions.find_one(query)
     if not session:
         raise HTTPException(status_code=404, detail="Sesión de caja no encontrada")
 
@@ -1358,6 +1378,65 @@ async def get_cash_sessions(user: User = Depends(get_current_user)):
         sessions = await db.cash_sessions.find(query).sort("fecha_apertura", -1).to_list(1000)
 
     return [CashSession(**session) for session in sessions]
+
+@api_router.get("/cash-sessions/history")
+async def get_cash_sessions_history(
+    user: User = Depends(get_current_user),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+):
+    if user.rol == UserRole.CAJERO:
+        raise HTTPException(status_code=403, detail="No tiene permisos para ver el historial")
+
+    query = {"empresa_id": user.empresa_id}
+    if user.rol != UserRole.ADMIN and user.branch_ids:
+        query["branch_id"] = {"$in": user.branch_ids}
+
+    total = await db.cash_sessions.count_documents(query)
+    skip = (page - 1) * per_page
+    sessions = await db.cash_sessions.find(query).sort("fecha_apertura", -1).skip(skip).limit(per_page).to_list(per_page)
+
+    user_cache: dict = {}
+    branch_cache: dict = {}
+    items = []
+
+    for s in sessions:
+        uid = s.get("user_id", "")
+        bid = s.get("branch_id", "")
+
+        if uid not in user_cache:
+            u = await db.users.find_one({"id": uid})
+            user_cache[uid] = u["nombre"] if u else "Usuario desconocido"
+
+        if bid not in branch_cache:
+            b = await db.branches.find_one({"id": bid})
+            branch_cache[bid] = b["nombre"] if b else "Sucursal desconocida"
+
+        items.append(CashSessionHistory(
+            id=s["id"],
+            empresa_id=s["empresa_id"],
+            branch_id=bid,
+            branch_nombre=branch_cache[bid],
+            user_id=uid,
+            user_nombre=user_cache[uid],
+            monto_inicial=s.get("monto_inicial", 0),
+            monto_ventas=s.get("monto_ventas", 0),
+            monto_retiros=s.get("monto_retiros", 0),
+            monto_final=s.get("monto_final"),
+            diferencia=s.get("diferencia"),
+            status=s["status"],
+            fecha_apertura=s["fecha_apertura"],
+            fecha_cierre=s.get("fecha_cierre"),
+            observaciones=s.get("observaciones"),
+        ))
+
+    return {
+        "items": [i.dict() for i in items],
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, -(-total // per_page)),
+    }
 
 # Auth routes
 @api_router.post("/auth/otp/enviar")

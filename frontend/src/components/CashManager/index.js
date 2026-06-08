@@ -15,6 +15,17 @@ const CashManager = () => {
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [openModalClosing, closeOpenModal] = useModalClose(() => setShowOpenModal(false));
   const [closeModalClosing, closeCloseModal] = useModalClose(() => setShowCloseModal(false));
+  const [sessionHistory, setSessionHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyTotalPages, setHistoryTotalPages] = useState(1);
+  const [historyPerPage, setHistoryPerPage] = useState(10);
+  const [showAdminCloseModal, setShowAdminCloseModal] = useState(false);
+  const [adminCloseTarget, setAdminCloseTarget] = useState(null);
+  const [adminCloseForm, setAdminCloseForm] = useState({ monto_final: '', observaciones: '' });
+  const [adminClosing, setAdminClosing] = useState(false);
+  const [adminCloseModalClosing, closeAdminCloseModal] = useModalClose(() => setShowAdminCloseModal(false));
   const { user, activeBranch } = useContext(AuthContext);
 
   const [openForm, setOpenForm] = useState({
@@ -30,6 +41,69 @@ const CashManager = () => {
   useEffect(() => {
     fetchCurrentSession();
   }, []);
+
+  useEffect(() => {
+    if (user?.rol === 'admin') {
+      fetchConfig();
+    }
+  }, [user]);
+
+  const fetchConfig = async () => {
+    try {
+      const response = await axios.get(`${API}/config`);
+      const perPage = response.data?.items_per_page || 10;
+      setHistoryPerPage(perPage);
+      fetchHistory(1, perPage);
+    } catch {
+      fetchHistory(1, historyPerPage);
+    }
+  };
+
+  const fetchHistory = async (page = 1, perPage) => {
+    setHistoryLoading(true);
+    try {
+      const response = await axios.get(`${API}/cash-sessions/history`, {
+        params: { page, per_page: perPage ?? historyPerPage },
+      });
+      setSessionHistory(response.data.items);
+      setHistoryTotal(response.data.total);
+      setHistoryTotalPages(response.data.total_pages);
+      setHistoryPage(page);
+    } catch (error) {
+      // silencioso
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const handleHistoryPageChange = (page) => {
+    fetchHistory(page);
+  };
+
+  const openAdminCloseModal = (session) => {
+    setAdminCloseTarget(session);
+    setAdminCloseForm({ monto_final: '', observaciones: '' });
+    setShowAdminCloseModal(true);
+  };
+
+  const adminCloseSession = async () => {
+    setAdminClosing(true);
+    try {
+      await axios.put(`${API}/cash-sessions/${adminCloseTarget.id}/close`, {
+        monto_final: parseFloat(adminCloseForm.monto_final),
+        observaciones: adminCloseForm.observaciones,
+      });
+      closeAdminCloseModal();
+      toast.success(`Caja de ${adminCloseTarget.user_nombre} cerrada`);
+      fetchHistory(historyPage);
+      // Si el admin también tiene esa caja abierta, refrescar estado propio
+      fetchCurrentSession();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error al cerrar la caja');
+    } finally {
+      setAdminClosing(false);
+    }
+  };
 
   const fetchCurrentSession = async () => {
     try {
@@ -56,6 +130,7 @@ const CashManager = () => {
       closeOpenModal();
       setOpenForm({ monto_inicial: '', observaciones: '' });
       toast.success('Caja abierta exitosamente');
+      if (user?.rol === 'admin') fetchHistory(historyPage);
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error al abrir caja');
     } finally {
@@ -74,6 +149,7 @@ const CashManager = () => {
       closeCloseModal();
       setCloseForm({ monto_final: '', observaciones: '' });
       toast.success('Caja cerrada exitosamente');
+      if (user?.rol === 'admin') fetchHistory(1);  // volver a pág 1 al cerrar
 
       // Show closing summary
       const diferencia = response.data.diferencia;
@@ -125,6 +201,22 @@ const CashManager = () => {
       formatDate={formatDate}
       formatAmount={formatAmount}
       parseApiDate={parseApiDate}
+      sessionHistory={sessionHistory}
+      historyLoading={historyLoading}
+      historyPage={historyPage}
+      historyTotal={historyTotal}
+      historyTotalPages={historyTotalPages}
+      historyPerPage={historyPerPage}
+      onHistoryPageChange={handleHistoryPageChange}
+      showAdminCloseModal={showAdminCloseModal}
+      adminCloseTarget={adminCloseTarget}
+      adminCloseForm={adminCloseForm}
+      setAdminCloseForm={setAdminCloseForm}
+      adminCloseModalClosing={adminCloseModalClosing}
+      adminClosing={adminClosing}
+      openAdminCloseModal={openAdminCloseModal}
+      closeAdminCloseModal={closeAdminCloseModal}
+      adminCloseSession={adminCloseSession}
     />
   );
 };
