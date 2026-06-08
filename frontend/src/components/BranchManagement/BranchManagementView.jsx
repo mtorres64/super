@@ -417,7 +417,7 @@ const BranchManagementView = ({
                   </th>
                   <th onClick={() => requestSort('nombre')} className="cursor-pointer select-none hover:bg-gray-50">Producto <SortIcon columnKey="nombre" sortConfig={sortConfig} /></th>
                   <th>Categoría</th>
-                  <th className="text-center cursor-pointer select-none hover:bg-gray-50" onClick={() => requestSort('precio_global')}>Precio Global <SortIcon columnKey="precio_global" sortConfig={sortConfig} /></th>
+                  <th className="text-center cursor-pointer select-none hover:bg-gray-50" onClick={() => requestSort('costo_sucursal')}>Precio Costo <SortIcon columnKey="costo_sucursal" sortConfig={sortConfig} /></th>
                   <th className="text-center">Margen %</th>
                   <th className="text-center cursor-pointer select-none hover:bg-gray-50" onClick={() => requestSort('precio_sucursal')}>Precio Sucursal <SortIcon columnKey="precio_sucursal" sortConfig={sortConfig} /></th>
                   <th className="text-center cursor-pointer select-none hover:bg-gray-50" onClick={() => requestSort('stock_sucursal')}>Stock Sucursal <SortIcon columnKey="stock_sucursal" sortConfig={sortConfig} /></th>
@@ -490,7 +490,9 @@ const BranchManagementView = ({
                         })()}
                       </td>
                       <td className="text-center">
-                        <span className="text-gray-500">${product.precio_global?.toFixed(2)}</span>
+                        <span className="text-gray-500">
+                          {product.costo_sucursal != null ? `$${product.costo_sucursal.toFixed(2)}` : '—'}
+                        </span>
                       </td>
                       <td className="text-center">
                         <div className="flex items-center justify-center gap-1">
@@ -501,7 +503,7 @@ const BranchManagementView = ({
                             value={currentMargen}
                             onChange={(e) => {
                               const margen = parseFloat(e.target.value) || 0;
-                              onPendingMargenChange(product.product_id, margen, product.precio_global);
+                              onPendingMargenChange(product.product_id, margen, product.costo_sucursal, product.precio_global);
                             }}
                           />
                           <span className="text-sm text-gray-500">%</span>
@@ -516,7 +518,7 @@ const BranchManagementView = ({
                           value={currentPrice}
                           onChange={(e) => {
                             const precio = parseFloat(e.target.value) || 0;
-                            onPendingPrecioChange(product.product_id, precio, product.precio_global);
+                            onPendingPrecioChange(product.product_id, precio, product.costo_sucursal, product.precio_global);
                           }}
                           placeholder={product.precio_global?.toFixed(2)}
                         />

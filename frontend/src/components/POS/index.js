@@ -47,6 +47,12 @@ const POS = () => {
   const [receiptReturns, setReceiptReturns] = useState([]);
   const [afipConfig, setAfipConfig] = useState(null);
   const [returnModal, setReturnModal] = useState(null);
+  const [infoPanelVisible, setInfoPanelVisible] = useState(() => localStorage.getItem('pos_info_visible') !== 'false');
+  const toggleInfoPanel = () => setInfoPanelVisible(prev => {
+    const next = !prev;
+    localStorage.setItem('pos_info_visible', String(next));
+    return next;
+  });
   const [showPriceCheck, setShowPriceCheck] = useState(false);
   const [priceCheckQuery, setPriceCheckQuery] = useState('');
   const [priceCheckResult, setPriceCheckResult] = useState(null);
@@ -694,6 +700,8 @@ const POS = () => {
       handleCameraScan={handleCameraScan}
       branchName={branchName}
       branchCount={branchCount}
+      infoPanelVisible={infoPanelVisible}
+      toggleInfoPanel={toggleInfoPanel}
     />
   );
 };

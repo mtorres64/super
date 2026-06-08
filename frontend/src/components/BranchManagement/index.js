@@ -366,6 +366,8 @@ const BranchManagement = () => {
     if (pendingForProduct?.margen !== undefined) return pendingForProduct.margen;
     if (product.margen_sucursal !== null && product.margen_sucursal !== undefined) return product.margen_sucursal;
     const precioRef = product.precio_sucursal ?? product.precio_global;
+    const costo = product.costo_sucursal;
+    if (costo > 0) return parseFloat(((precioRef - costo) / costo * 100).toFixed(2));
     return product.precio_global > 0
       ? parseFloat(((precioRef / product.precio_global - 1) * 100).toFixed(2))
       : 0;
@@ -404,9 +406,11 @@ const BranchManagement = () => {
         if (bulkMargenTipo === 'establecer') newMargen = valor;
         else if (bulkMargenTipo === 'incrementar') newMargen = parseFloat((currentMargen + valor).toFixed(2));
         else newMargen = parseFloat((currentMargen - valor).toFixed(2));
-        const newPrecio = product.precio_global > 0
-          ? parseFloat((product.precio_global * (1 + newMargen / 100)).toFixed(2))
-          : product.precio_global;
+        const _costo = product.costo_sucursal;
+        const _base = _costo > 0 ? _costo : product.precio_global;
+        const newPrecio = _base > 0
+          ? parseFloat((_base * (1 + newMargen / 100)).toFixed(2))
+          : (product.precio_sucursal ?? product.precio_global);
         next[productId] = { ...next[productId], margen: newMargen, precio: newPrecio };
       }
       return next;
@@ -594,19 +598,21 @@ const BranchManagement = () => {
   const allFilteredSelected = selectAllGlobal || (sortedProducts.length > 0 && sortedProducts.every(p => selectedRows.has(p.product_id)));
   const someFilteredSelected = selectAllGlobal || sortedProducts.some(p => selectedRows.has(p.product_id));
 
-  const handlePendingMargenChange = (productId, margen, precioGlobal) => {
-    const newPrecio = precioGlobal > 0
-      ? parseFloat((precioGlobal * (1 + margen / 100)).toFixed(2))
-      : precioGlobal;
+  const handlePendingMargenChange = (productId, margen, costo, precioGlobal) => {
+    const base = costo > 0 ? costo : precioGlobal;
+    const newPrecio = base > 0
+      ? parseFloat((base * (1 + margen / 100)).toFixed(2))
+      : base;
     setPendingChanges(prev => ({
       ...prev,
       [productId]: { ...prev[productId], margen, precio: newPrecio }
     }));
   };
 
-  const handlePendingPrecioChange = (productId, precio, precioGlobal) => {
-    const impliedMargen = precioGlobal > 0
-      ? parseFloat(((precio / precioGlobal - 1) * 100).toFixed(2))
+  const handlePendingPrecioChange = (productId, precio, costo, precioGlobal) => {
+    const base = costo > 0 ? costo : precioGlobal;
+    const impliedMargen = base > 0
+      ? parseFloat(((precio - base) / base * 100).toFixed(2))
       : 0;
     setPendingChanges(prev => ({
       ...prev,

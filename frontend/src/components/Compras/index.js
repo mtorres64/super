@@ -16,7 +16,6 @@ const emptyItem = {
   precio_actual: null,
   margen_actual: null,
   costo_actual: null,
-  precio_venta_nuevo: null,
   actualizar_precio: true,
 };
 
@@ -54,6 +53,7 @@ const Compras = () => {
   // Branches & products for autocomplete
   const [branches, setBranches] = useState([]);
   const [branchProducts, setBranchProducts] = useState([]);
+  const [globalProducts, setGlobalProducts] = useState([]);
   const [openAutocompleteIndex, setOpenAutocompleteIndex] = useState(null);
   const [autocompleteHighlight, setAutocompleteHighlight] = useState(-1);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 240 });
@@ -63,6 +63,12 @@ const Compras = () => {
 
   // Config: precio
   const [autoUpdatePrices, setAutoUpdatePrices] = useState(true);
+
+  // Distribuir modal
+  const [distribuirModal, setDistribuirModal] = useState(null); // { compra }
+  const emptyDistribuirForm = { sucursal_id: '', opcion_stock: true, opcion_precio: true, items: [] };
+  const [distribuirForm, setDistribuirForm] = useState(emptyDistribuirForm);
+  const [distribuirLoading, setDistribuirLoading] = useState(false);
 
   // Delete confirmation modal
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -80,12 +86,29 @@ const Compras = () => {
     fetchCompras();
     fetchProveedores();
     fetchBranches();
+    fetchGlobalProducts();
     axios.get(`${API}/config`).then(res => {
       setAutoUpdatePrices(res.data.auto_update_prices ?? true);
     }).catch(() => {});
   }, []);
 
   // ── Branches ─────────────────────────────────────────────────────────────────
+
+  const fetchGlobalProducts = async () => {
+    try {
+      const res = await axios.get(`${API}/products`, { params: { per_page: 5000 } });
+      const items = res.data.items || [];
+      setGlobalProducts(items.map(p => ({
+        product_id: p.id,
+        nombre: p.nombre,
+        codigo_barras: p.codigo_barras || null,
+        precio_sucursal: null,
+        precio_global: p.precio,
+        margen_sucursal: null,
+        costo_sucursal: null,
+      })));
+    } catch {}
+  };
 
   const fetchBranches = async () => {
     try {
@@ -114,6 +137,183 @@ const Compras = () => {
     }
   };
 
+  const getSaldo = (compra, productId) => {
+    const original = compra.items
+      .filter(it => it.product_id === productId)
+      .reduce((s, it) => s + (parseFloat(it.cantidad) || 0), 0);
+    const distribuido = (compra.distribuciones || [])
+      .flatMap(d => d.items || [])
+      .filter(it => it.product_id === productId)
+      .reduce((s, it) => s + (parseFloat(it.cantidad) || 0), 0);
+    return Math.max(0, original - distribuido);
+  };
+
+  const handleOpenDistribuirModal = (compra) => {
+    const productMap = {};
+    for (const it of compra.items) {
+      if (!it.product_id) continue;
+      if (!productMap[it.product_id]) {
+        productMap[it.product_id] = {
+          product_id: it.product_id,
+          nombre: it.descripcion,
+          costo_unitario: parseFloat(it.precio_unitario) || 0,
+          cantidad_original: 0,
+          saldo: 0,
+          cantidad_aplicar: 0,
+          precio_sucursal: null,
+          margen_sucursal: null,
+          nuevo_precio: '',
+          nuevo_margen: '',
+          precio_edited: false,
+          margen_edited: false,
+        };
+      }
+      productMap[it.product_id].cantidad_original += parseFloat(it.cantidad) || 0;
+    }
+    for (const pid of Object.keys(productMap)) {
+      const saldo = getSaldo(compra, pid);
+      productMap[pid].saldo = saldo;
+      productMap[pid].cantidad_aplicar = saldo;
+    }
+    setDistribuirModal({ compra });
+    setDistribuirForm({ sucursal_id: '', opcion_stock: true, opcion_precio: true, items: Object.values(productMap) });
+  };
+
+  const closeDistribuirModal = () => {
+    setDistribuirModal(null);
+    setDistribuirForm(emptyDistribuirForm);
+  };
+
+  const handleSucursalDistribuirChange = async (branchId) => {
+    setDistribuirForm(prev => ({ ...prev, sucursal_id: branchId }));
+    if (!branchId) return;
+    try {
+      const res = await axios.get(`${API}/branches/${branchId}/products`, { params: { all: true } });
+      const bps = Array.isArray(res.data) ? res.data : (res.data.items || []);
+      setDistribuirForm(prev => ({
+        ...prev,
+        items: prev.items.map(it => {
+          const bp = bps.find(p => p.product_id === it.product_id);
+          const precio = bp?.precio_sucursal ?? null;
+          const margen = bp?.margen_sucursal ?? null;
+          const costo = it.costo_unitario || 0;
+          // Mantener margen almacenado y recalcular precio sobre el costo de la factura
+          const nuevo_precio = margen != null && costo > 0
+            ? Math.ceil(costo * (1 + margen / 100) / 100) * 100
+            : (precio ?? it.nuevo_precio);
+          return {
+            ...it,
+            precio_sucursal: precio,
+            margen_sucursal: margen,
+            nuevo_precio,
+            nuevo_margen: margen ?? it.nuevo_margen,
+            precio_edited: false,
+            margen_edited: false,
+          };
+        }),
+      }));
+    } catch {
+      toast.error('Error al cargar productos de la sucursal');
+    }
+  };
+
+  const handleDistribuirOpcionChange = (field, value) => {
+    setDistribuirForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleDistribuirItemChange = (productId, field, value) => {
+    setDistribuirForm(prev => ({
+      ...prev,
+      items: prev.items.map(it => {
+        if (it.product_id !== productId) return it;
+        const updated = { ...it, [field]: value };
+        if (field === 'nuevo_precio') {
+          updated.precio_edited = true;
+          const precio = parseFloat(value) || 0;
+          const costo = it.costo_unitario;
+          if (precio > 0 && costo > 0) {
+            updated.nuevo_margen = parseFloat(((precio / costo - 1) * 100).toFixed(2));
+          }
+        }
+        if (field === 'nuevo_margen') {
+          updated.margen_edited = true;
+          const margen = parseFloat(value);
+          const costo = it.costo_unitario;
+          if (!isNaN(margen) && costo > 0) {
+            updated.nuevo_precio = Math.ceil(costo * (1 + margen / 100) / 100) * 100;
+          }
+        }
+        return updated;
+      }),
+    }));
+  };
+
+  const handleDistribuirSubmit = async (e) => {
+    e.preventDefault();
+    if (!distribuirForm.sucursal_id) { toast.error('Seleccioná una sucursal'); return; }
+    if (!distribuirForm.opcion_stock && !distribuirForm.opcion_precio) { toast.error('Seleccioná al menos una opción'); return; }
+
+    const items = distribuirForm.items
+      .filter(it => {
+        const qty = parseFloat(it.cantidad_aplicar) || 0;
+        return (distribuirForm.opcion_stock && qty > 0) || distribuirForm.opcion_precio;
+      })
+      .map(it => ({
+        product_id: it.product_id,
+        cantidad: distribuirForm.opcion_stock ? (parseFloat(it.cantidad_aplicar) || 0) : 0,
+        nuevo_precio: distribuirForm.opcion_precio ? (parseFloat(it.nuevo_precio) || null) : null,
+        nuevo_margen: distribuirForm.opcion_precio ? (it.nuevo_margen !== '' ? parseFloat(it.nuevo_margen) : null) : null,
+        actualizar_stock: distribuirForm.opcion_stock,
+        actualizar_precio: distribuirForm.opcion_precio,
+      }));
+
+    if (items.length === 0) { toast.error('No hay ítems para aplicar'); return; }
+
+    setDistribuirLoading(true);
+    try {
+      const updated = await axios.post(`${API}/compras/${distribuirModal.compra.id}/distribuir`, {
+        sucursal_id: distribuirForm.sucursal_id,
+        items,
+      });
+      toast.success('Aplicado correctamente a la sucursal');
+      const updatedCompra = updated.data;
+      setCompras(prev => prev.map(c => c.id === distribuirModal.compra.id ? updatedCompra : c));
+      // Mantener el modal abierto y actualizar saldos para aplicar a otra sucursal
+      setDistribuirModal({ compra: updatedCompra });
+      const productMap = {};
+      for (const it of updatedCompra.items) {
+        if (!it.product_id) continue;
+        if (!productMap[it.product_id]) {
+          productMap[it.product_id] = {
+            product_id: it.product_id,
+            nombre: it.descripcion,
+            costo_unitario: parseFloat(it.precio_unitario) || 0,
+            cantidad_original: 0,
+            saldo: 0,
+            cantidad_aplicar: 0,
+            precio_sucursal: null,
+            margen_sucursal: null,
+            nuevo_precio: '',
+            nuevo_margen: '',
+            precio_edited: false,
+            margen_edited: false,
+          };
+        }
+        productMap[it.product_id].cantidad_original += parseFloat(it.cantidad) || 0;
+      }
+      for (const pid of Object.keys(productMap)) {
+        const saldo = getSaldo(updatedCompra, pid);
+        productMap[pid].saldo = saldo;
+        productMap[pid].cantidad_aplicar = saldo;
+      }
+      setDistribuirForm({ sucursal_id: '', opcion_stock: true, opcion_precio: true, items: Object.values(productMap) });
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al aplicar');
+    } finally {
+      setDistribuirLoading(false);
+    }
+  };
+
   const handleSucursalChange = (branchId) => {
     setCompraForm(prev => ({
       ...prev,
@@ -123,8 +323,7 @@ const Compras = () => {
         product_id: null,
         precio_actual: null,
         margen_actual: null,
-        costo_actual: null,
-        precio_venta_nuevo: null,
+        costo_actual: null
       }))
     }));
     fetchBranchProducts(branchId);
@@ -168,45 +367,13 @@ const Compras = () => {
       const price = parseFloat(field === 'precio_unitario' ? value : updatedItems[index].precio_unitario) || 0;
       updatedItems[index].subtotal = parseFloat((qty * price).toFixed(2));
     }
-    if (field === 'precio_unitario') {
-      const newCosto = parseFloat(value) || 0;
-      const margen = updatedItems[index].margen_actual;
-      if (newCosto > 0 && margen != null) {
-        updatedItems[index].precio_venta_nuevo = Math.ceil(newCosto * (1 + margen / 100) / 100) * 100;
-      }
-    }
+    // Clear product link if description is changed manually
     if (field === 'descripcion') {
       setAutocompleteHighlight(-1);
       updatedItems[index].product_id = null;
       updatedItems[index].precio_actual = null;
       updatedItems[index].margen_actual = null;
       updatedItems[index].costo_actual = null;
-      updatedItems[index].precio_venta_nuevo = null;
-    }
-    const { subtotal, total } = recalcTotals(updatedItems, compraForm.impuestos);
-    setCompraForm(prev => ({ ...prev, items: updatedItems, subtotal, total }));
-  };
-
-  const handleItemMargenChange = (index, value) => {
-    const updatedItems = [...compraForm.items];
-    const newMargen = value === '' ? null : parseFloat(value);
-    updatedItems[index] = { ...updatedItems[index], margen_actual: isNaN(newMargen) ? null : newMargen };
-    const costo = parseFloat(updatedItems[index].precio_unitario) || 0;
-    if (costo > 0 && newMargen != null && !isNaN(newMargen)) {
-      updatedItems[index].precio_venta_nuevo = Math.ceil(costo * (1 + newMargen / 100) / 100) * 100;
-    }
-    const { subtotal, total } = recalcTotals(updatedItems, compraForm.impuestos);
-    setCompraForm(prev => ({ ...prev, items: updatedItems, subtotal, total }));
-  };
-
-  const handleItemPrecioVentaChange = (index, value) => {
-    const updatedItems = [...compraForm.items];
-    updatedItems[index] = { ...updatedItems[index], precio_venta_nuevo: value };
-    const newPrecio = parseFloat(value) || 0;
-    const costo = parseFloat(updatedItems[index].precio_unitario) || 0;
-    if (costo > 0 && newPrecio > 0) {
-      const nuevoMargen = parseFloat(((newPrecio / costo - 1) * 100).toFixed(2));
-      updatedItems[index].margen_actual = nuevoMargen;
     }
     const { subtotal, total } = recalcTotals(updatedItems, compraForm.impuestos);
     setCompraForm(prev => ({ ...prev, items: updatedItems, subtotal, total }));
@@ -215,21 +382,15 @@ const Compras = () => {
   const handleSelectProduct = (index, product) => {
     const updatedItems = [...compraForm.items];
     const precio = product.precio_sucursal ?? product.precio_global ?? 0;
-    const margen = product.margen_sucursal ?? null;
-    const costoExistente = parseFloat(updatedItems[index].precio_unitario) || 0;
-    const precioVentaNuevo = costoExistente > 0 && margen != null
-      ? Math.ceil(costoExistente * (1 + margen / 100) / 100) * 100
-      : precio;
     updatedItems[index] = {
       ...updatedItems[index],
       descripcion: product.nombre,
       product_id: product.product_id,
       precio_actual: precio,
-      margen_actual: margen,
-      costo_actual: product.costo_sucursal ?? (precio > 0 && margen != null
-        ? parseFloat((precio / (1 + margen / 100)).toFixed(2))
+      margen_actual: product.margen_sucursal ?? null,
+      costo_actual: product.costo_sucursal ?? (precio > 0 && product.margen_sucursal != null
+        ? parseFloat((precio / (1 + product.margen_sucursal / 100)).toFixed(2))
         : null),
-      precio_venta_nuevo: precioVentaNuevo,
       actualizar_precio: autoUpdatePrices,
     };
     const qty = parseFloat(updatedItems[index].cantidad) || 0;
@@ -293,16 +454,11 @@ const Compras = () => {
                 ?? (precio != null && margen != null
                   ? parseFloat((precio / (1 + margen / 100)).toFixed(2))
                   : null);
-              const costoItem = parseFloat(it.precio_unitario) || 0;
-              const precioVentaNuevo = costoItem > 0 && margen != null
-                ? Math.ceil(costoItem * (1 + margen / 100) / 100) * 100
-                : precio;
               return {
                 ...it,
                 precio_actual: precio,
                 margen_actual: margen,
                 costo_actual: costo,
-                precio_venta_nuevo: precioVentaNuevo,
                 actualizar_precio: autoUpdatePrices,
               };
             })
@@ -337,7 +493,7 @@ const Compras = () => {
         const costoNuevo = parseFloat(it.precio_unitario) || 0;
         const willUpdate = (it.actualizar_precio ?? autoUpdatePrices) && !!it.product_id && costoNuevo > 0 && it.margen_actual != null;
         const nuevoPrecio = willUpdate
-          ? (it.precio_venta_nuevo != null ? parseFloat(it.precio_venta_nuevo) : Math.ceil(costoNuevo * (1 + it.margen_actual / 100) / 100) * 100)
+          ? Math.ceil(costoNuevo * (1 + it.margen_actual / 100) / 100) * 100
           : null;
         return {
           descripcion: it.descripcion,
@@ -405,13 +561,14 @@ const Compras = () => {
   const getAutocompleteOptions = useCallback((query) => {
     if (!query || query.length < 1) return [];
     const q = query.toLowerCase();
-    return branchProducts
+    const source = globalProducts;
+    return source
       .filter(p =>
         p.nombre.toLowerCase().includes(q) ||
         (p.codigo_barras && p.codigo_barras.includes(q))
       )
       .slice(0, 10);
-  }, [branchProducts]);
+  }, [globalProducts]);
 
   const handleDescriptionFocus = (idx, e) => {
     const rect = e.target.getBoundingClientRect();
@@ -511,6 +668,7 @@ const Compras = () => {
   const [compraModalClosing, closeCompraModalAnim] = useModalClose(closeCompraModal);
   const [proveedorModalClosing, closeProveedorModalAnim] = useModalClose(closeProveedorModal);
   const [deleteModalClosing, closeDeleteModalAnim] = useModalClose(closeDeleteModal);
+  const [distribuirModalClosing, closeDistribuirModalAnim] = useModalClose(closeDistribuirModal);
 
   const handleProveedorSubmit = async (e) => {
     e.preventDefault();
@@ -624,8 +782,6 @@ const Compras = () => {
       closeDeleteModalAnim={closeDeleteModalAnim}
       confirmDeleteCompra={confirmDeleteCompra}
       handleItemChange={handleItemChange}
-      handleItemMargenChange={handleItemMargenChange}
-      handleItemPrecioVentaChange={handleItemPrecioVentaChange}
       autocompleteHighlight={autocompleteHighlight}
       handleSelectProduct={handleSelectProduct}
       handleDescriptionFocus={handleDescriptionFocus}
@@ -642,6 +798,16 @@ const Compras = () => {
       handleSucursalChange={handleSucursalChange}
       formatDate={formatDate}
       formatMoney={formatMoney}
+      distribuirModal={distribuirModal}
+      distribuirForm={distribuirForm}
+      distribuirLoading={distribuirLoading}
+      distribuirModalClosing={distribuirModalClosing}
+      handleOpenDistribuirModal={handleOpenDistribuirModal}
+      closeDistribuirModalAnim={closeDistribuirModalAnim}
+      handleSucursalDistribuirChange={handleSucursalDistribuirChange}
+      handleDistribuirOpcionChange={handleDistribuirOpcionChange}
+      handleDistribuirItemChange={handleDistribuirItemChange}
+      handleDistribuirSubmit={handleDistribuirSubmit}
     />
   );
 };

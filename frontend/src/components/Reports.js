@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { BarChart3, ShoppingBag } from 'lucide-react';
+import { BarChart3, ShoppingBag, TrendingUp } from 'lucide-react';
 import SalesReports from './SalesReports';
 import PurchasesReport from './PurchasesReport';
+import MargensReport from './MargensReport';
 
 const TABS = [
   { key: 'ventas', label: 'Ventas', icon: BarChart3 },
-  { key: 'compras', label: 'Compras', icon: ShoppingBag }
+  { key: 'compras', label: 'Compras', icon: ShoppingBag },
+  { key: 'margenes', label: 'Márgenes', icon: TrendingUp },
 ];
 
 const Reports = () => {
@@ -36,6 +38,7 @@ const Reports = () => {
       {/* Contenido */}
       {activeTab === 'ventas' && <SalesReports />}
       {activeTab === 'compras' && <PurchasesReport />}
+      {activeTab === 'margenes' && <MargensReport />}
     </div>
   );
 };

@@ -644,6 +644,18 @@ const ProductManagementView = ({
                       required
                     />
                   </div>
+                  <div className="form-group">
+                    <label className="form-label">Precio Costo{editingProduct ? ' (actualiza todas las sucursales)' : ''}</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="form-input"
+                      value={formData.precio_costo}
+                      onChange={(e) => setFormData({...formData, precio_costo: e.target.value})}
+                      placeholder="Opcional"
+                    />
+                  </div>
                 </div>
 
                 {/* Row 4: Control de stock + Stock actual + Stock mínimo */}

@@ -10,14 +10,15 @@ import {
   X,
   Building2,
   FileText,
-  MapPin,
   TrendingUp,
   Package,
   Truck,
   Calendar,
-  Hash
+  Hash,
+  GitBranch
 } from 'lucide-react';
 import SortIcon from '../ui/SortIcon';
+import DistribuirModal from './DistribuirModal';
 
 const ComprasView = ({
   activeTab,
@@ -68,8 +69,6 @@ const ComprasView = ({
   confirmDeleteCompra,
   autocompleteHighlight,
   handleItemChange,
-  handleItemMargenChange,
-  handleItemPrecioVentaChange,
   handleSelectProduct,
   handleDescriptionFocus,
   handleDescriptionKeyDown,
@@ -85,6 +84,16 @@ const ComprasView = ({
   handleSucursalChange,
   formatDate,
   formatMoney,
+  distribuirModal,
+  distribuirForm,
+  distribuirLoading,
+  distribuirModalClosing,
+  handleOpenDistribuirModal,
+  closeDistribuirModalAnim,
+  handleSucursalDistribuirChange,
+  handleDistribuirOpcionChange,
+  handleDistribuirItemChange,
+  handleDistribuirSubmit,
 }) => {
   return (
     <div>
@@ -193,6 +202,14 @@ const ComprasView = ({
                             title="Editar"
                           >
                             <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleOpenDistribuirModal(compra)}
+                            className="btn btn-sm flex items-center gap-1"
+                            style={{ background: 'var(--secondary)', color: 'var(--secondary-text)' }}
+                            title="Aplicar a sucursal"
+                          >
+                            <GitBranch className="w-3 h-3" />
                           </button>
                           <button
                             onClick={() => handleDeleteCompra(compra)}
@@ -321,28 +338,7 @@ const ComprasView = ({
 
             <form onSubmit={handleCompraSubmit} className="modal-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 0 }}>
               <div style={{ padding: '1.25rem 1.5rem 0' }}>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4 items-start">
-                <div>
-                  <label className="form-label">
-                    <MapPin className="w-4 h-4 inline mr-1 text-gray-400" />
-                    Sucursal
-                  </label>
-                  <select
-                    className="form-input h-10"
-                    value={compraForm.sucursal_id}
-                    onChange={e => handleSucursalChange(e.target.value)}
-                  >
-                    <option value="">— Sin sucursal —</option>
-                    {branches.filter(b => b.activo).map(b => (
-                      <option key={b.id} value={b.id}>{b.nombre}</option>
-                    ))}
-                  </select>
-                  {compraForm.sucursal_id && branchProducts.length > 0 && (
-                    <p className="text-xs text-green-600 mt-1">
-                      {branchProducts.length} productos disponibles para autocompletar
-                    </p>
-                  )}
-                </div>
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-4 items-start">
                 <div>
                   <label className="form-label"><Truck className="w-4 h-4 inline mr-1 text-gray-400" />Proveedor</label>
                   <select
@@ -434,6 +430,9 @@ const ComprasView = ({
                     <tbody>
                       {compraForm.items.map((item, idx) => {
                         const costoNuevo = parseFloat(item.precio_unitario) || 0;
+                        const precioSugerido = item.product_id && costoNuevo > 0 && item.margen_actual != null
+                          ? Math.ceil(costoNuevo * (1 + item.margen_actual / 100) / 100) * 100
+                          : null;
 
                         return (
                           <React.Fragment key={idx}>
@@ -452,50 +451,16 @@ const ComprasView = ({
                                   placeholder={compraForm.sucursal_id ? 'Buscar producto...' : 'Descripción del artículo'}
                                 />
                                 {item.product_id && (
-                                  <div className="flex gap-2 mt-1.5 text-xs items-center">
-                                    <span className="flex items-center gap-1 text-blue-700">
+                                  <div className="flex flex-wrap gap-3 mt-1 text-xs text-blue-700 items-center">
+                                    <span className="flex items-center gap-1">
                                       <Package className="w-3 h-3" />
-                                      Costo ant: {item.costo_actual != null ? `$${formatMoney(item.costo_actual)}` : 'sin datos'}
+                                      Costo anterior: {item.costo_actual != null ? `$${formatMoney(item.costo_actual)}` : 'sin datos'}
                                     </span>
-                                    {item.precio_actual != null && (
-                                      <span className="text-gray-500">
-                                        Precio actual: <span className="font-medium">${formatMoney(item.precio_actual)}</span>
-                                      </span>
+                                    <span>Precio venta: ${formatMoney(item.precio_actual)}</span>
+                                    {item.margen_actual != null && (
+                                      <span>Margen: {item.margen_actual}%</span>
                                     )}
-                                    <label className="flex items-center gap-1 text-blue-700">
-                                      <TrendingUp className="w-3 h-3" />
-                                      P. venta:
-                                      <div className="relative">
-                                        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">$</span>
-                                        <input
-                                          type="text"
-                                          inputMode="decimal"
-                                          className="form-input py-0.5 text-xs text-right pl-4 w-24"
-                                          value={item.precio_venta_nuevo ?? ''}
-                                          onChange={e => handleItemPrecioVentaChange(idx, e.target.value.replace(',', '.'))}
-                                          onClick={e => e.target.select()}
-                                          onFocus={e => e.target.select()}
-                                          placeholder="0"
-                                        />
-                                      </div>
-                                    </label>
-                                    <label className="flex items-center gap-1 text-blue-700">
-                                      Margen:
-                                      <div className="flex items-center gap-0.5">
-                                        <input
-                                          type="text"
-                                          inputMode="decimal"
-                                          className="form-input py-0.5 text-xs text-right w-14"
-                                          value={item.margen_actual ?? ''}
-                                          onChange={e => handleItemMargenChange(idx, e.target.value.replace(',', '.'))}
-                                          onClick={e => e.target.select()}
-                                          onFocus={e => e.target.select()}
-                                          placeholder="0"
-                                        />
-                                        <span className="text-gray-400">%</span>
-                                      </div>
-                                    </label>
-                                    {costoNuevo > 0 && item.margen_actual != null && (
+                                    {precioSugerido != null && costoNuevo > 0 && (
                                       <label className="flex items-center gap-1.5 cursor-pointer select-none">
                                         <input
                                           type="checkbox"
@@ -503,8 +468,9 @@ const ComprasView = ({
                                           onChange={e => handleItemChange(idx, 'actualizar_precio', e.target.checked)}
                                           className="w-3.5 h-3.5 accent-green-600"
                                         />
-                                        <span className={`font-semibold ${(item.actualizar_precio ?? autoUpdatePrices) ? 'text-green-700' : 'text-gray-400'}`}>
-                                          Actualizar precio al producto
+                                        <span className={`flex items-center gap-1 font-semibold ${(item.actualizar_precio ?? autoUpdatePrices) ? 'text-green-700' : 'text-gray-400 line-through'}`}>
+                                          <TrendingUp className="w-3 h-3" />
+                                          Precio sugerido: ${formatMoney(precioSugerido)}
                                         </span>
                                       </label>
                                     )}
@@ -794,6 +760,23 @@ const ComprasView = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* ── MODAL DISTRIBUIR A SUCURSAL ── */}
+      {distribuirModal && (
+        <DistribuirModal
+          compra={distribuirModal.compra}
+          branches={branches}
+          form={distribuirForm}
+          onSucursalChange={handleSucursalDistribuirChange}
+          onOpcionChange={handleDistribuirOpcionChange}
+          onItemChange={handleDistribuirItemChange}
+          onClose={closeDistribuirModalAnim}
+          onSubmit={handleDistribuirSubmit}
+          loading={distribuirLoading}
+          closing={distribuirModalClosing}
+          formatMoney={formatMoney}
+        />
       )}
     </div>
   );

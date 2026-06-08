@@ -26,7 +26,9 @@ import {
   BarChart2,
   Package,
   FileText,
-  LayoutDashboard
+  LayoutDashboard,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 const POSView = ({
@@ -107,6 +109,8 @@ const POSView = ({
   handleCameraScan,
   branchName,
   branchCount,
+  infoPanelVisible,
+  toggleInfoPanel,
 }) => {
   const [weightInputDraft, setWeightInputDraft] = React.useState({});
   const [focusedIdx, setFocusedIdx] = React.useState(-1);
@@ -182,22 +186,33 @@ const POSView = ({
 
       {/* Left Section */}
       <div className={`pos-left ${mobileTab === 'products' ? 'pos-tab-active' : ''}${!sessionLoading && !currentSession ? ' hidden md:flex' : ''}`}>
-        <div className="hidden md:block mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+        <div className="hidden md:block mb-2">
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">
             Punto de Venta
           </h1>
-          <p className="text-gray-600">
-            Cajero: {user?.nombre}
-            {branchName && (
-              <span className="ml-3 px-2 py-0.5 text-xs font-medium bg-green-100 rounded-full" style={{ color: '#052e16' }}>
-                {branchName}{branchCount > 1 ? ' — precios diferenciados' : ''}
-              </span>
-            )}
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-gray-600">
+              Cajero: {user?.nombre}
+              {branchName && (
+                <span className="ml-3 px-2 py-0.5 text-xs font-medium bg-green-100 rounded-full" style={{ color: '#052e16' }}>
+                  {branchName}{branchCount > 1 ? ' — precios diferenciados' : ''}
+                </span>
+              )}
+            </p>
+            <button
+              type="button"
+              onClick={toggleInfoPanel}
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 select-none"
+            >
+              {infoPanelVisible ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              {infoPanelVisible ? 'Ocultar info' : 'Mostrar info'}
+            </button>
+          </div>
         </div>
 
         {/* Cash Session Alert + Scanner Info */}
-        <div className="hidden md:flex mb-2 flex-col md:flex-row gap-4">
+        <div className="hidden md:block mb-2">
+          {infoPanelVisible && <div className="flex flex-col md:flex-row gap-4">
         {sessionLoading ? (
           <div className="flex-1 bg-gray-50 border border-gray-200 p-4 rounded-lg">
             <div className="flex items-center">
@@ -249,6 +264,7 @@ const POSView = ({
             <p>• <strong>Manual:</strong> Ingresa el código y presiona Enter</p>
           </div>
         </div>
+        </div>}
         </div>
 
         {/* Search + Products (dimmed when no session) */}

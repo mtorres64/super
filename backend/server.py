@@ -739,6 +739,7 @@ class ProductCreate(BaseModel):
     stock_minimo: int = 10
     control_stock: bool = True
     combo_items: List[ComboItem] = []
+    precio_costo: Optional[float] = None
 
 class ProductUpdate(BaseModel):
     nombre: Optional[str] = None
@@ -753,6 +754,7 @@ class ProductUpdate(BaseModel):
     control_stock: Optional[bool] = None
     combo_items: Optional[List[ComboItem]] = None
     activo: Optional[bool] = None
+    precio_costo: Optional[float] = None
 
 class BulkDeleteRequest(BaseModel):
     ids: Optional[List[str]] = None
@@ -907,6 +909,7 @@ class Compra(BaseModel):
     impuestos: float = 0.0
     total: float
     notas: Optional[str] = None
+    distribuciones: List[dict] = []
     registrado_por: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -931,6 +934,18 @@ class CompraUpdate(BaseModel):
     impuestos: Optional[float] = None
     total: Optional[float] = None
     notas: Optional[str] = None
+
+class DistribucionItem(BaseModel):
+    product_id: str
+    cantidad: float = 0
+    nuevo_precio: Optional[float] = None
+    nuevo_margen: Optional[float] = None
+    actualizar_stock: bool = True
+    actualizar_precio: bool = False
+
+class DistribucionCreate(BaseModel):
+    sucursal_id: str
+    items: List[DistribucionItem]
 
 # Utility functions
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -1766,6 +1781,8 @@ async def create_product(product_data: ProductCreate, user: User = Depends(requi
             raise HTTPException(status_code=400, detail="Barcode already exists")
 
     product_dict = product_data.dict()
+    precio_costo = product_dict.pop("precio_costo", None)
+    margen = round((product_dict["precio"] - precio_costo) / precio_costo * 100, 2) if precio_costo else None
     # Combos never control their own stock
     if product_dict.get("kind") == ProductKind.COMBO:
         product_dict["control_stock"] = False
@@ -1784,15 +1801,20 @@ async def create_product(product_data: ProductCreate, user: User = Depends(requi
             "empresa_id": user.empresa_id
         })
         if not existing:
-            bp = BranchProduct(
+            bp_kwargs = dict(
                 empresa_id=user.empresa_id,
                 product_id=product.id,
                 branch_id=branch["id"],
                 precio=product.precio,
                 precio_por_peso=product.precio_por_peso,
                 stock=product.stock,
-                stock_minimo=product.stock_minimo
+                stock_minimo=product.stock_minimo,
             )
+            if precio_costo is not None:
+                bp_kwargs["costo"] = precio_costo
+            if margen is not None:
+                bp_kwargs["margen"] = margen
+            bp = BranchProduct(**bp_kwargs)
             await db.branch_products.insert_one(bp.dict())
     return product
 
@@ -2186,6 +2208,7 @@ async def update_product(product_id: str, product_data: ProductUpdate, user: Use
 
     # Update fields (handle None-exclusive fields carefully)
     update_data = {k: v for k, v in product_data.dict().items() if v is not None}
+    precio_costo = update_data.pop("precio_costo", None)
     # Explicitly include boolean and list fields even when falsy
     if product_data.control_stock is not None:
         update_data['control_stock'] = product_data.control_stock
@@ -2202,9 +2225,20 @@ async def update_product(product_id: str, product_data: ProductUpdate, user: Use
     if update_data:
         await db.products.update_one({"id": product_id, "empresa_id": user.empresa_id}, {"$set": update_data})
 
+    # Update costo/margen in all branch_products if precio_costo provided
+    if precio_costo is not None:
+        final_precio = update_data.get("precio") or existing_product.get("precio", 0)
+        margen = round((final_precio - precio_costo) / precio_costo * 100, 2) if precio_costo else None
+        bp_set = {"costo": precio_costo}
+        if margen is not None:
+            bp_set["margen"] = margen
+        await db.branch_products.update_many(
+            {"product_id": product_id, "empresa_id": user.empresa_id},
+            {"$set": bp_set}
+        )
+
     updated_product = await db.products.find_one({"id": product_id, "empresa_id": user.empresa_id})
     return Product(**updated_product)
-    return {"updated": result.modified_count}
 
 @api_router.delete("/products/bulk")
 async def bulk_delete_products(data: BulkDeleteRequest, user: User = Depends(require_role([UserRole.ADMIN]))):
@@ -3058,10 +3092,6 @@ async def create_compra(
                         costo=item.precio_unitario,
                     )
                     await db.branch_products.insert_one(new_bp.dict())
-            await db.products.update_one(
-                {"id": item.product_id, "empresa_id": user.empresa_id},
-                {"$inc": {"stock": int(item.cantidad)}}
-            )
         enriched_items.append(item_dict)
 
     compra_dict = compra_data.dict()
@@ -3132,6 +3162,124 @@ async def delete_compra(
         raise HTTPException(status_code=404, detail="Compra not found")
     await db.compras.delete_one({"id": compra_id})
     return {"message": "Compra deleted"}
+
+@api_router.post("/compras/{compra_id}/distribuir", response_model=Compra)
+async def distribuir_compra(
+    compra_id: str,
+    data: DistribucionCreate,
+    user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR]))
+):
+    compra = await db.compras.find_one({"id": compra_id, "empresa_id": user.empresa_id})
+    if not compra:
+        raise HTTPException(status_code=404, detail="Compra not found")
+
+    branch = await db.branches.find_one({"id": data.sucursal_id, "empresa_id": user.empresa_id})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Sucursal not found")
+
+    cfg = await db.configuration.find_one({"empresa_id": user.empresa_id}) or {}
+    redondeo = cfg.get("redondeo_precio", 100)
+    def _redondear(v: float) -> float:
+        import math
+        return math.ceil(v / redondeo) * redondeo if redondeo else round(v, 2)
+
+    # Calcular saldo disponible por product_id
+    ya_distribuido: dict = {}
+    for d in compra.get("distribuciones", []):
+        for it in d.get("items", []):
+            pid = it.get("product_id")
+            if pid:
+                ya_distribuido[pid] = ya_distribuido.get(pid, 0) + float(it.get("cantidad", 0))
+
+    original_qty: dict = {}
+    for it in compra.get("items", []):
+        pid = it.get("product_id")
+        if pid:
+            original_qty[pid] = original_qty.get(pid, 0) + float(it.get("cantidad", 0))
+
+    # Validar saldo
+    for item in data.items:
+        if not item.actualizar_stock or item.cantidad <= 0:
+            continue
+        saldo = original_qty.get(item.product_id, 0) - ya_distribuido.get(item.product_id, 0)
+        if item.cantidad > saldo + 0.001:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Saldo insuficiente: disponible {saldo}, solicitado {item.cantidad}"
+            )
+
+    # Aplicar a sucursal
+    distribucion_items = []
+    for item in data.items:
+        if not item.actualizar_stock and not item.actualizar_precio:
+            continue
+
+        bp = await db.branch_products.find_one({
+            "product_id": item.product_id,
+            "branch_id": data.sucursal_id,
+            "empresa_id": user.empresa_id
+        })
+
+        update_op: dict = {}
+        if item.actualizar_precio:
+            set_fields: dict = {}
+            if item.nuevo_precio is not None:
+                set_fields["precio"] = item.nuevo_precio
+            if item.nuevo_margen is not None:
+                set_fields["margen"] = item.nuevo_margen
+            if set_fields:
+                update_op["$set"] = set_fields
+
+        if item.actualizar_stock and item.cantidad > 0:
+            update_op.setdefault("$inc", {})["stock"] = int(item.cantidad)
+            await db.products.update_one(
+                {"id": item.product_id, "empresa_id": user.empresa_id},
+                {"$inc": {"stock": int(item.cantidad)}}
+            )
+
+        if update_op:
+            if bp:
+                await db.branch_products.update_one({"id": bp["id"]}, update_op)
+            else:
+                global_product = await db.products.find_one({"id": item.product_id, "empresa_id": user.empresa_id})
+                if global_product:
+                    bp_data = dict(
+                        empresa_id=user.empresa_id,
+                        product_id=item.product_id,
+                        branch_id=data.sucursal_id,
+                        precio=item.nuevo_precio or global_product.get("precio", 0),
+                        stock=int(item.cantidad) if item.actualizar_stock else 0,
+                        stock_minimo=global_product.get("stock_minimo", 10),
+                    )
+                    if item.nuevo_margen is not None:
+                        bp_data["margen"] = item.nuevo_margen
+                    new_bp = BranchProduct(**bp_data)
+                    await db.branch_products.insert_one(new_bp.dict())
+
+        distribucion_items.append({
+            "product_id": item.product_id,
+            "cantidad": item.cantidad,
+            "nuevo_precio": item.nuevo_precio,
+            "nuevo_margen": item.nuevo_margen,
+            "actualizo_stock": item.actualizar_stock,
+            "actualizo_precio": item.actualizar_precio,
+        })
+
+    if not distribucion_items:
+        raise HTTPException(status_code=400, detail="No hay ítems para aplicar")
+
+    distribucion = {
+        "id": str(uuid.uuid4()),
+        "sucursal_id": data.sucursal_id,
+        "sucursal_nombre": branch.get("nombre", ""),
+        "fecha": datetime.now(timezone.utc),
+        "aplicado_por": user.id,
+        "items": distribucion_items,
+    }
+
+    await db.compras.update_one({"id": compra_id}, {"$push": {"distribuciones": distribucion}})
+    updated = await db.compras.find_one({"id": compra_id})
+    return Compra(**updated)
 
 # ─────────────────────────────────────────────
 # CUENTA / SUSCRIPCIÓN routes

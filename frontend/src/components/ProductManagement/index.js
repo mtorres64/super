@@ -54,6 +54,7 @@ const ProductManagement = () => {
     tipo: 'codigo_barras',
     kind: 'normal',
     precio: '',
+    precio_costo: '',
     categoria_id: '',
     stock: '',
     stock_minimo: 10,
@@ -179,6 +180,7 @@ const ProductManagement = () => {
       tipo: 'codigo_barras',
       kind: 'normal',
       precio: '',
+      precio_costo: '',
       categoria_id: '',
       stock: '',
       stock_minimo: 10,
@@ -199,6 +201,7 @@ const ProductManagement = () => {
         tipo: product.tipo,
         kind: product.kind || 'normal',
         precio: product.precio.toString(),
+        precio_costo: '',
         categoria_id: product.categoria_id,
         stock: product.stock.toString(),
         stock_minimo: product.stock_minimo.toString(),
@@ -260,6 +263,7 @@ const ProductManagement = () => {
       const productData = {
         ...formData,
         precio: parseFloat(formData.precio),
+        precio_costo: formData.precio_costo !== '' ? parseFloat(formData.precio_costo) : null,
         stock: formData.control_stock ? (parseInt(formData.stock) || 0) : 0,
         stock_minimo: formData.control_stock ? (parseInt(formData.stock_minimo) || 0) : 0,
         combo_items: formData.kind === 'combo' ? formData.combo_items : []
