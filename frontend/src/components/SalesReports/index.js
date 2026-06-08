@@ -67,6 +67,9 @@ const SalesReports = () => {
     try {
       const response = await axios.get(`${API}/branches`);
       setBranches(response.data);
+      if (response.data.length === 1 && !fromCaja) {
+        setBranchFilter(response.data[0].id);
+      }
     } catch (error) {
       console.error('Error al cargar sucursales');
     }

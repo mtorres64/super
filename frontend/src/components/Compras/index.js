@@ -175,8 +175,12 @@ const Compras = () => {
       productMap[pid].saldo = saldo;
       productMap[pid].cantidad_aplicar = saldo;
     }
+    const autoSucursal = branches.length === 1 ? branches[0].id : '';
     setDistribuirModal({ compra });
-    setDistribuirForm({ sucursal_id: '', opcion_stock: true, opcion_precio: true, items: Object.values(productMap) });
+    setDistribuirForm({ sucursal_id: autoSucursal, opcion_stock: true, opcion_precio: true, items: Object.values(productMap) });
+    if (autoSucursal) {
+      handleSucursalDistribuirChange(autoSucursal);
+    }
   };
 
   const closeDistribuirModal = () => {
@@ -467,8 +471,13 @@ const Compras = () => {
       }
       setEditingCompra(compra);
     } else {
-      setCompraForm(emptyCompraForm);
-      setBranchProducts([]);
+      const autoSucursal = branches.length === 1 ? branches[0].id : '';
+      setCompraForm({ ...emptyCompraForm, sucursal_id: autoSucursal });
+      if (autoSucursal) {
+        fetchBranchProducts(autoSucursal);
+      } else {
+        setBranchProducts([]);
+      }
       setEditingCompra(null);
     }
     setShowCompraModal(true);

@@ -29,9 +29,12 @@ const Dashboard = () => {
       axios.get(`${API}/branches`)
         .then(res => {
           setBranches(res.data);
-          // Default: la sucursal del usuario, o "todas" si es admin sin sucursal asignada
           if (branchFiltro === null) {
-            setBranchFiltro(user?.branch_id || 'todas');
+            if (res.data.length === 1) {
+              setBranchFiltro(res.data[0].id);
+            } else {
+              setBranchFiltro(user?.branch_id || 'todas');
+            }
           }
         })
         .catch(() => {});

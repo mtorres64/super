@@ -28,6 +28,9 @@ const MargensReport = () => {
     try {
       const res = await axios.get(`${API}/branches`);
       setBranches(res.data);
+      if (res.data.length === 1) {
+        setBranchFilter(res.data[0].id);
+      }
     } catch {}
   };
 

@@ -34,6 +34,9 @@ const PurchasesReport = () => {
       setCompras(comprasRes.data);
       setBranches(branchesRes.data);
       setProveedores(proveedoresRes.data);
+      if (branchesRes.data.length === 1) {
+        setBranchFilter(branchesRes.data[0].id);
+      }
     } catch (error) {
       toast.error('Error al cargar los datos');
     } finally {
