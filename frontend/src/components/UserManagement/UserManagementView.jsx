@@ -134,7 +134,7 @@ const UserManagementView = ({
       {/* User Modal */}
       {showModal && (
         <div className={`modal-overlay${modalClosing ? ' closing' : ''}`}>
-          <div className={`modal-content${modalClosing ? ' closing' : ''}`}>
+          <div className={`modal-content modal-content-bounce${modalClosing ? ' closing' : ''}`}>
             <div className="modal-header">
               <h3 className="modal-title">
                 {editingUser ? 'Editar Usuario' : 'Nuevo Usuario'}

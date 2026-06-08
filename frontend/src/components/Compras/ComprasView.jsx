@@ -678,7 +678,7 @@ const ComprasView = ({
       {showProveedorModal && (
         <div className={`modal-overlay${proveedorModalClosing ? ' closing' : ''}`} onClick={closeProveedorModalAnim}>
           <div
-            className={`modal-content${proveedorModalClosing ? ' closing' : ''}`}
+            className={`modal-content modal-content-bounce${proveedorModalClosing ? ' closing' : ''}`}
             style={{ maxWidth: '480px' }}
             onClick={e => e.stopPropagation()}
           >

@@ -243,7 +243,7 @@ const CashManagerView = ({
       {/* Open Cash Modal */}
       {showOpenModal && (
         <div className={`modal-overlay${openModalClosing ? ' closing' : ''}`}>
-          <div className={`modal-content${openModalClosing ? ' closing' : ''}`}>
+          <div className={`modal-content modal-content-bounce${openModalClosing ? ' closing' : ''}`}>
             <div className="modal-header">
               <h3 className="modal-title">Abrir Caja</h3>
               <button onClick={closeOpenModal} className="modal-close">
@@ -312,7 +312,7 @@ const CashManagerView = ({
       {/* Close Cash Modal */}
       {showCloseModal && (
         <div className={`modal-overlay${closeModalClosing ? ' closing' : ''}`}>
-          <div className={`modal-content${closeModalClosing ? ' closing' : ''}`}>
+          <div className={`modal-content modal-content-bounce${closeModalClosing ? ' closing' : ''}`}>
             <div className="modal-header">
               <h3 className="modal-title">Cerrar Caja</h3>
               <button onClick={closeCloseModal} className="modal-close">

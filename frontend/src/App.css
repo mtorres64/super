@@ -1311,6 +1311,15 @@ body.no-animations .product-card:hover {
   animation: modal-slide-out 0.15s ease both;
 }
 
+.modal-content-bounce {
+  animation: ticket-modal-bounce 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  transform-origin: center center;
+}
+
+.modal-content-bounce.closing {
+  animation: ticket-modal-exit 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
 .modal-sticky-bottom {
   border-top: 1px solid #e5e7eb;
   padding: 1rem 1.5rem 0;
@@ -2028,6 +2037,8 @@ html.dark .ticket-separator    { color: #5c5c5c; }
 .no-animations .modal-overlay.closing,
 .no-animations .modal-content,
 .no-animations .modal-content.closing,
+.no-animations .modal-content-bounce,
+.no-animations .modal-content-bounce.closing,
 .no-animations .price-check-overlay,
 .no-animations .price-check-overlay.closing,
 .no-animations .price-check-modal,

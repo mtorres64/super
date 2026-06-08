@@ -526,7 +526,7 @@ const ProductManagementView = ({
       {/* Product Modal */}
       {showModal && (
         <div className={`modal-overlay${productModalClosing ? ' closing' : ''}`}>
-          <div className={`modal-content${productModalClosing ? ' closing' : ''}`} style={{ maxWidth: '960px', width: '95vw' }}>
+          <div className={`modal-content modal-content-bounce${productModalClosing ? ' closing' : ''}`} style={{ maxWidth: '960px', width: '95vw' }}>
             <div className="modal-header">
               <h3 className="modal-title">
                 {editingProduct ? 'Editar Producto' : 'Nuevo Producto'}
@@ -861,7 +861,7 @@ const ProductManagementView = ({
       {/* Import Modal */}
       {showImportModal && (
         <div className={`modal-overlay${importModalClosing ? ' closing' : ''}`} onClick={() => setShowExportMenu(false)}>
-          <div className={`modal-content${importModalClosing ? ' closing' : ''}`}>
+          <div className={`modal-content modal-content-bounce${importModalClosing ? ' closing' : ''}`}>
             <div className="modal-header">
               <h3 className="modal-title">Importar Productos</h3>
               <button onClick={closeImportModalAnim} className="modal-close">

@@ -990,7 +990,7 @@ const BranchManagementView = ({
       {/* Branch Modal */}
       {showModal && (
         <div className={`modal-overlay${branchModalClosing ? ' closing' : ''}`}>
-          <div className={`modal-content${branchModalClosing ? ' closing' : ''}`}>
+          <div className={`modal-content modal-content-bounce${branchModalClosing ? ' closing' : ''}`}>
             <div className="modal-header">
               <h3 className="modal-title">
                 {editingBranch ? 'Editar Sucursal' : 'Nueva Sucursal'}
