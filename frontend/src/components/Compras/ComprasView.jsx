@@ -127,7 +127,7 @@ const ComprasView = ({
 
       <div className="p-6">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 gap-3">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-1">Compras</h1>
           <p className="text-gray-600">Gestión de facturas de compra y proveedores</p>
@@ -183,18 +183,18 @@ const ComprasView = ({
                 <tbody>
                   {filteredCompras.map(compra => (
                     <tr key={compra.id}>
-                      <td className="text-sm text-gray-600">{formatDate(compra.fecha)}</td>
-                      <td className="font-medium">{compra.numero_factura}</td>
-                      <td className="text-gray-700">{compra.proveedor_nombre || '—'}</td>
-                      <td className="text-gray-700 text-sm">
+                      <td data-label="Fecha" className="text-sm text-gray-600">{formatDate(compra.fecha)}</td>
+                      <td data-mobile="title" className="font-medium">{compra.numero_factura}</td>
+                      <td data-label="Proveedor" className="text-gray-700">{compra.proveedor_nombre || '—'}</td>
+                      <td data-label="Sucursal" className="text-gray-700 text-sm">
                         {compra.sucursal_id
                           ? (branches.find(b => b.id === compra.sucursal_id)?.nombre || '—')
                           : '—'}
                       </td>
-                      <td className="text-right text-gray-700">{formatMoney(compra.subtotal)}</td>
-                      <td className="text-right text-gray-700">{formatMoney(compra.impuestos)}</td>
-                      <td className="text-right font-semibold text-gray-900">{formatMoney(compra.total)}</td>
-                      <td>
+                      <td data-label="Subtotal" className="text-right text-gray-700">{formatMoney(compra.subtotal)}</td>
+                      <td data-label="Impuestos" className="text-right text-gray-700">{formatMoney(compra.impuestos)}</td>
+                      <td data-label="Total" className="text-right font-semibold text-gray-900">{formatMoney(compra.total)}</td>
+                      <td data-mobile="actions">
                         <div className="flex gap-2">
                           <button
                             onClick={() => openCompraModal(compra)}
@@ -277,16 +277,16 @@ const ComprasView = ({
                 <tbody>
                   {filteredProveedores.map(prov => (
                     <tr key={prov.id}>
-                      <td className="font-medium text-gray-900">{prov.nombre}</td>
-                      <td className="text-gray-600">{prov.ruc_cuit || '—'}</td>
-                      <td className="text-gray-600">{prov.email || '—'}</td>
-                      <td className="text-gray-600">{prov.telefono || '—'}</td>
-                      <td>
+                      <td data-mobile="title" className="font-medium text-gray-900">{prov.nombre}</td>
+                      <td data-label="RUC / CUIT" className="text-gray-600">{prov.ruc_cuit || '—'}</td>
+                      <td data-label="Email" className="text-gray-600">{prov.email || '—'}</td>
+                      <td data-label="Teléfono" className="text-gray-600">{prov.telefono || '—'}</td>
+                      <td data-label="Estado">
                         <span className={`badge ${prov.activo ? 'badge-success' : 'badge-danger'}`}>
                           {prov.activo ? 'Activo' : 'Inactivo'}
                         </span>
                       </td>
-                      <td>
+                      <td data-mobile="actions">
                         <div className="flex gap-2">
                           <button
                             onClick={() => openProveedorModal(prov)}
@@ -400,7 +400,7 @@ const ComprasView = ({
                             Actualizar todos los precios
                             <span
                               className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none"
-                              style={{ background: allChecked ? '#22c55e' : someChecked ? '#86efac' : '#d1d5db' }}
+                              style={{ background: allChecked ? 'var(--primary)' : someChecked ? '#86efac' : '#d1d5db' }}
                             >
                               <span
                                 className="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform"

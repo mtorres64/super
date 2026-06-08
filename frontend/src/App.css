@@ -1596,14 +1596,137 @@ html.dark .modal-sticky-bottom {
     display: flex;
   }
 
-  /* Tables: horizontal scroll */
+  /* Tables → cards on mobile */
   .table-container {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    overflow-x: visible;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
   }
 
   .table {
-    min-width: 560px;
+    min-width: unset;
+    display: block;
+    width: 100%;
+  }
+
+  .table thead {
+    display: none;
+  }
+
+  .table tbody {
+    display: block;
+  }
+
+  .table tbody tr {
+    display: block;
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: 0.75rem;
+    padding: 0.5rem 0.875rem;
+    margin-bottom: 0.75rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  }
+
+  .table tbody tr:last-child {
+    margin-bottom: 0;
+  }
+
+  .table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.45rem 0;
+    border-bottom: 1px solid var(--border-light) !important;
+    min-height: 2rem;
+  }
+
+  .table tbody tr td:last-child {
+    border-bottom: none !important;
+  }
+
+  .table tbody tr:last-child td {
+    border-bottom: 1px solid var(--border-light) !important;
+  }
+
+  .table tbody tr:last-child td:last-child {
+    border-bottom: none !important;
+  }
+
+  .table td[data-label]::before {
+    content: attr(data-label);
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--gray-400);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-align: left;
+    flex-shrink: 0;
+    min-width: 5.5rem;
+    margin-right: 0.5rem;
+  }
+
+  .table td[data-label] {
+    text-align: left !important;
+  }
+
+  /* Neutralizar mx-auto en contenido de celdas con label */
+  .table td[data-label] > span,
+  .table td[data-label] > div {
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  /* Celda de título: sin label, ocupa todo el ancho */
+  .table td[data-mobile="title"] {
+    border-bottom: 1px solid var(--border-color) !important;
+    padding-bottom: 0.6rem;
+    margin-bottom: 0.1rem;
+  }
+  .table td[data-mobile="title"]::before {
+    display: none;
+  }
+
+  /* Checkbox: esquina superior derecha de la card */
+  .table tbody tr {
+    position: relative;
+  }
+
+  .table td[data-mobile="hide"] {
+    display: block !important;
+    position: absolute;
+    top: 0.6rem;
+    right: 0.75rem;
+    padding: 0;
+    border: none !important;
+    min-height: unset;
+    background: transparent;
+  }
+
+  .table td[data-mobile="hide"] input[type="checkbox"] {
+    width: 1.35rem;
+    height: 1.35rem;
+    cursor: pointer;
+  }
+
+  /* Espacio para el checkbox en la celda título */
+  .table td[data-mobile="title"] {
+    padding-right: 2rem;
+  }
+
+  /* Celda de acciones: sin label, alineada a la derecha */
+  .table td[data-mobile="actions"] {
+    justify-content: flex-end;
+    padding-top: 0.5rem;
+  }
+  .table td[data-mobile="actions"]::before {
+    display: none;
+  }
+
+  /* Sin hover en mobile */
+  .table tbody tr:hover td {
+    background: inherit;
   }
 
   /* Modals: full-width */

@@ -24,6 +24,7 @@ import {
 import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
 import { getCategoryIcon } from '../../utils/categoryIcons';
+import BranchBulkEditModal from './BranchBulkEditModal';
 
 const BranchManagementView = ({
   loading,
@@ -125,6 +126,14 @@ const BranchManagementView = ({
   onOpenDeleteBranchModal,
   onDeleteBranch,
   onCloseDeleteBranchModal,
+  showBranchBulkEditModal,
+  branchBulkEditItems,
+  branchBulkEditSaving,
+  branchBulkEditModalClosing,
+  onOpenBranchBulkEditModal,
+  onCloseBranchBulkEditModal,
+  onUpdateBranchBulkEditItem,
+  onHandleBranchBulkEditSave,
 }) => {
   const [focusedIdx, setFocusedIdx] = React.useState(-1);
   const [showCategoryFilter, setShowCategoryFilter] = React.useState(false);
@@ -171,7 +180,7 @@ const BranchManagementView = ({
   if (selectedBranch) {
     return (
       <div className="p-6 flex flex-col h-full" onClick={() => onSetShowExportMenu(false)}>
-        <div className="flex items-center gap-4 mb-6">
+        <div className="flex flex-col md:flex-row md:items-center gap-3 mb-6">
           <button onClick={onGoBack} className="btn btn-secondary">
             <ArrowLeft className="w-4 h-4" />
             Volver
@@ -183,7 +192,7 @@ const BranchManagementView = ({
             </h1>
             <p className="text-gray-500 text-sm">{selectedBranch.direccion}</p>
           </div>
-          <div className="ml-auto flex items-center gap-3">
+          <div className="md:ml-auto flex flex-wrap items-center gap-3">
             {hasPendingChanges && (
               <>
                 <span className="text-sm text-amber-600 font-medium">
@@ -341,10 +350,19 @@ const BranchManagementView = ({
         {/* Bulk Actions Bar */}
         {(selectedRows.size > 0 || selectAllGlobal) && (
           <div className="flex flex-col gap-2 mb-3">
-            <div className="flex items-center gap-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex flex-wrap items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
               <span className="text-sm text-blue-700 font-medium">
                 {selectAllGlobal ? `${total} seleccionado(s) (todos)` : `${selectedRows.size} seleccionado(s)`}
               </span>
+              {!selectAllGlobal && (
+                <button
+                  onClick={onOpenBranchBulkEditModal}
+                  className="btn btn-sm bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100"
+                >
+                  <Edit className="w-4 h-4" />
+                  Editar seleccionados
+                </button>
+              )}
               <button
                 onClick={() => { onSetBulkMargenTipo('establecer'); onSetBulkMargenValor(''); onSetShowBulkMargenModal(true); }}
                 className="btn btn-secondary btn-sm"
@@ -403,6 +421,16 @@ const BranchManagementView = ({
         ) : (
           <div className="table-container flex-1 min-h-0 flex flex-col">
           <div className="overflow-y-auto flex-1 min-h-0">
+            {/* Select all — solo mobile */}
+            <label className="md:hidden flex items-center gap-3 px-3 py-2 cursor-pointer select-none border-b border-gray-100">
+              <input
+                type="checkbox"
+                className="w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500 cursor-pointer"
+                checked={paginatedProducts.length > 0 && paginatedProducts.every(p => selectedRows.has(p.product_id))}
+                onChange={onToggleSelectAll}
+              />
+              <span className="text-sm text-gray-500">Seleccionar todos</span>
+            </label>
             <table className="table">
               <thead>
                 <tr>
@@ -447,7 +475,7 @@ const BranchManagementView = ({
                       data-bm-focused={focusedIdx === idx ? 'true' : undefined}
                       className={focusedIdx === idx ? 'bg-green-50 outline outline-2 outline-green-400' : hasChange ? 'bg-amber-50' : isSelected ? 'bg-blue-50' : ''}
                     >
-                      <td>
+                      <td data-mobile="hide">
                         <input
                           type="checkbox"
                           className="rounded border-gray-300 text-green-600 focus:ring-green-500"
@@ -455,7 +483,7 @@ const BranchManagementView = ({
                           onChange={() => onToggleSelectRow(product.product_id)}
                         />
                       </td>
-                      <td>
+                      <td data-mobile="title">
                         <div className="flex items-center gap-3">
                           {(() => {
                             const cat = categories.find(c => c.id === product.categoria_id);
@@ -477,7 +505,7 @@ const BranchManagementView = ({
                           </div>
                         </div>
                       </td>
-                      <td>
+                      <td data-label="Categoría">
                         {(() => {
                           const cat = categories.find(c => c.id === product.categoria_id);
                           const CatIcon = getCategoryIcon(cat?.nombre, cat?.icono);
@@ -489,12 +517,12 @@ const BranchManagementView = ({
                           );
                         })()}
                       </td>
-                      <td className="text-center">
+                      <td data-label="Precio Costo" className="text-center">
                         <span className="text-gray-500">
                           {product.costo_sucursal != null ? `$${product.costo_sucursal.toFixed(2)}` : '—'}
                         </span>
                       </td>
-                      <td className="text-center bg-yellow-50">
+                      <td data-label="Margen %" className="text-center bg-yellow-50">
                         <div className="flex items-center justify-center gap-1">
                           <input
                             type="number"
@@ -509,7 +537,7 @@ const BranchManagementView = ({
                           <span className="text-sm text-gray-500">%</span>
                         </div>
                       </td>
-                      <td className="text-center bg-yellow-50">
+                      <td data-label="Precio Sucursal" className="text-center bg-yellow-50">
                         <input
                           type="number"
                           step="0.01"
@@ -536,7 +564,7 @@ const BranchManagementView = ({
                           </div>
                         )}
                       </td>
-                      <td className="text-center bg-yellow-50">
+                      <td data-label="Stock" className="text-center bg-yellow-50">
                         <input
                           type="number"
                           min="0"
@@ -545,7 +573,7 @@ const BranchManagementView = ({
                           onChange={(e) => onProductFieldChange(product.product_id, 'stock', parseInt(e.target.value) || 0)}
                         />
                       </td>
-                      <td className="text-center">
+                      <td data-label="Stock Mínimo" className="text-center">
                         <input
                           type="number"
                           min="0"
@@ -554,14 +582,14 @@ const BranchManagementView = ({
                           onChange={(e) => onProductFieldChange(product.product_id, 'stock_minimo', parseInt(e.target.value) || 0)}
                         />
                       </td>
-                      <td className="text-center">
+                      <td data-label="Activo" className="text-center">
                         <button
                           type="button"
                           disabled={!product.branch_product_id}
                           onClick={() => onToggleBranchProductActive(product)}
                           title={!product.branch_product_id ? 'Guarda cambios primero para activar/desactivar' : product.activo_sucursal ? 'Activo — clic para desactivar' : 'Inactivo — clic para activar'}
                           className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-40"
-                          style={{ background: product.activo_sucursal ? '#22c55e' : '#d1d5db' }}
+                          style={{ background: product.activo_sucursal ? 'var(--primary)' : '#d1d5db' }}
                         >
                           <span
                             className="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform"
@@ -884,6 +912,17 @@ const BranchManagementView = ({
             </div>
           </div>
         )}
+
+      {(showBranchBulkEditModal || branchBulkEditModalClosing) && (
+        <BranchBulkEditModal
+          items={branchBulkEditItems}
+          onItemChange={onUpdateBranchBulkEditItem}
+          closing={branchBulkEditModalClosing}
+          onClose={onCloseBranchBulkEditModal}
+          onSave={onHandleBranchBulkEditSave}
+          saving={branchBulkEditSaving}
+        />
+      )}
       </div>
     );
   }
@@ -891,7 +930,7 @@ const BranchManagementView = ({
   // Branch list view
   return (
     <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 gap-3">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-1">
             Gestión de Sucursales
@@ -974,7 +1013,7 @@ const BranchManagementView = ({
                   onClick={() => onToggleBranchActive(branch)}
                   title={branch.activo ? 'Activo — clic para desactivar' : 'Inactivo — clic para activar'}
                   className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-1"
-                  style={{ background: branch.activo ? '#22c55e' : '#d1d5db' }}
+                  style={{ background: branch.activo ? 'var(--primary)' : '#d1d5db' }}
                 >
                   <span
                     className="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform"
@@ -1131,6 +1170,7 @@ const BranchManagementView = ({
           </div>
         </div>
       )}
+
     </div>
   );
 };

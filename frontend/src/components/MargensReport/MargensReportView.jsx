@@ -64,7 +64,7 @@ const MargensReportView = ({
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="flex justify-between items-start mb-6">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-start mb-6 gap-3">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-1 flex items-center gap-2">
             <TrendingUp className="w-7 h-7 text-primary" />
@@ -187,13 +187,13 @@ const MargensReportView = ({
                     <tbody>
                       {data.por_fecha.map((row, i) => (
                         <tr key={row.fecha} className={`border-b border-gray-100 ${i % 2 === 0 ? '' : 'bg-gray-50/40'}`}>
-                          <td className="px-4 py-2 font-medium text-gray-800">{formatDate(row.fecha)}</td>
-                          <td className="px-4 py-2 text-right text-gray-600">${formatMoney(row.ventas_total)}</td>
-                          <td className="px-4 py-2 text-right text-gray-500">${formatMoney(row.costo_total)}</td>
-                          <td className="px-4 py-2 text-right font-semibold text-green-700">${formatMoney(row.margen_total)}</td>
-                          <td className="px-4 py-2 text-center"><MargenBadge pct={row.margen_pct} /></td>
-                          <td className="px-4 py-2 text-right text-gray-500">{row.num_ventas}</td>
-                          <td className="px-3 py-2 text-center">
+                          <td data-mobile="title" className="px-4 py-2 font-medium text-gray-800">{formatDate(row.fecha)}</td>
+                          <td data-label="Ventas" className="px-4 py-2 text-right text-gray-600">${formatMoney(row.ventas_total)}</td>
+                          <td data-label="Costo" className="px-4 py-2 text-right text-gray-500">${formatMoney(row.costo_total)}</td>
+                          <td data-label="Margen $" className="px-4 py-2 text-right font-semibold text-green-700">${formatMoney(row.margen_total)}</td>
+                          <td data-label="Markup %" className="px-4 py-2 text-center"><MargenBadge pct={row.margen_pct} /></td>
+                          <td data-label="Ventas" className="px-4 py-2 text-right text-gray-500">{row.num_ventas}</td>
+                          <td data-mobile="actions" className="px-3 py-2 text-center">
                             <button
                               type="button"
                               onClick={() => setDetailModal({ type: 'por_fecha', row, _allVentas: data.por_venta })}
@@ -248,13 +248,13 @@ const MargensReportView = ({
                     <tbody>
                       {data.por_dia_semana.map((row, i) => (
                         <tr key={row.dia_numero} className={`border-b border-gray-100 ${i % 2 === 0 ? '' : 'bg-gray-50/40'}`}>
-                          <td className="px-4 py-2 font-medium text-gray-800">{row.dia_nombre}</td>
-                          <td className="px-4 py-2 text-right text-gray-600">${formatMoney(row.ventas_total)}</td>
-                          <td className="px-4 py-2 text-right text-gray-500">${formatMoney(row.costo_total)}</td>
-                          <td className="px-4 py-2 text-right font-semibold text-green-700">${formatMoney(row.margen_total)}</td>
-                          <td className="px-4 py-2 text-center"><MargenBadge pct={row.margen_pct} /></td>
-                          <td className="px-4 py-2 text-right text-gray-500">{row.num_ventas}</td>
-                          <td className="px-3 py-2 text-center">
+                          <td data-mobile="title" className="px-4 py-2 font-medium text-gray-800">{row.dia_nombre}</td>
+                          <td data-label="Ventas" className="px-4 py-2 text-right text-gray-600">${formatMoney(row.ventas_total)}</td>
+                          <td data-label="Costo" className="px-4 py-2 text-right text-gray-500">${formatMoney(row.costo_total)}</td>
+                          <td data-label="Margen $" className="px-4 py-2 text-right font-semibold text-green-700">${formatMoney(row.margen_total)}</td>
+                          <td data-label="Markup %" className="px-4 py-2 text-center"><MargenBadge pct={row.margen_pct} /></td>
+                          <td data-label="Transacciones" className="px-4 py-2 text-right text-gray-500">{row.num_ventas}</td>
+                          <td data-mobile="actions" className="px-3 py-2 text-center">
                             <button
                               type="button"
                               onClick={() => setDetailModal({ type: 'por_dia', row, _allVentas: data.por_venta })}
@@ -309,13 +309,13 @@ const MargensReportView = ({
                     <tbody>
                       {data.por_sucursal.map((row, i) => (
                         <tr key={row.branch_id} className={`border-b border-gray-100 ${i % 2 === 0 ? '' : 'bg-gray-50/40'}`}>
-                          <td className="px-4 py-2 font-medium text-gray-800">{row.branch_nombre || '—'}</td>
-                          <td className="px-4 py-2 text-right text-gray-600">${formatMoney(row.ventas_total)}</td>
-                          <td className="px-4 py-2 text-right text-gray-500">${formatMoney(row.costo_total)}</td>
-                          <td className="px-4 py-2 text-right font-semibold text-green-700">${formatMoney(row.margen_total)}</td>
-                          <td className="px-4 py-2 text-center"><MargenBadge pct={row.margen_pct} /></td>
-                          <td className="px-4 py-2 text-right text-gray-500">{row.num_ventas}</td>
-                          <td className="px-3 py-2 text-center">
+                          <td data-mobile="title" className="px-4 py-2 font-medium text-gray-800">{row.branch_nombre || '—'}</td>
+                          <td data-label="Ventas" className="px-4 py-2 text-right text-gray-600">${formatMoney(row.ventas_total)}</td>
+                          <td data-label="Costo" className="px-4 py-2 text-right text-gray-500">${formatMoney(row.costo_total)}</td>
+                          <td data-label="Margen $" className="px-4 py-2 text-right font-semibold text-green-700">${formatMoney(row.margen_total)}</td>
+                          <td data-label="Markup %" className="px-4 py-2 text-center"><MargenBadge pct={row.margen_pct} /></td>
+                          <td data-label="Transacciones" className="px-4 py-2 text-right text-gray-500">{row.num_ventas}</td>
+                          <td data-mobile="actions" className="px-3 py-2 text-center">
                             <button
                               type="button"
                               onClick={() => setDetailModal({ type: 'por_sucursal', row, _allVentas: data.por_venta })}
@@ -371,14 +371,14 @@ const MargensReportView = ({
                     <tbody>
                       {data.por_venta.map((row, i) => (
                         <tr key={row.sale_id} className={`border-b border-gray-100 ${i % 2 === 0 ? '' : 'bg-gray-50/40'}`}>
-                          <td className="px-4 py-2 text-gray-600 text-xs">{formatDateTime(row.fecha)}</td>
-                          <td className="px-4 py-2 font-medium text-gray-800">{row.numero_factura}</td>
-                          <td className="px-4 py-2 text-gray-600">{row.branch_nombre || '—'}</td>
-                          <td className="px-4 py-2 text-right text-gray-600">${formatMoney(row.ventas_total)}</td>
-                          <td className="px-4 py-2 text-right text-gray-500">${formatMoney(row.costo_total)}</td>
-                          <td className="px-4 py-2 text-right font-semibold text-green-700">${formatMoney(row.margen_total)}</td>
-                          <td className="px-4 py-2 text-center"><MargenBadge pct={row.margen_pct} /></td>
-                          <td className="px-3 py-2 text-center">
+                          <td data-label="Fecha" className="px-4 py-2 text-gray-600 text-xs">{formatDateTime(row.fecha)}</td>
+                          <td data-mobile="title" className="px-4 py-2 font-medium text-gray-800">{row.numero_factura}</td>
+                          <td data-label="Sucursal" className="px-4 py-2 text-gray-600">{row.branch_nombre || '—'}</td>
+                          <td data-label="Ventas" className="px-4 py-2 text-right text-gray-600">${formatMoney(row.ventas_total)}</td>
+                          <td data-label="Costo" className="px-4 py-2 text-right text-gray-500">${formatMoney(row.costo_total)}</td>
+                          <td data-label="Margen $" className="px-4 py-2 text-right font-semibold text-green-700">${formatMoney(row.margen_total)}</td>
+                          <td data-label="Markup %" className="px-4 py-2 text-center"><MargenBadge pct={row.margen_pct} /></td>
+                          <td data-mobile="actions" className="px-3 py-2 text-center">
                             <button
                               type="button"
                               onClick={() => setDetailModal({ type: 'por_venta', row })}

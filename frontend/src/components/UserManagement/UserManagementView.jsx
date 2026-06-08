@@ -40,7 +40,7 @@ const UserManagementView = ({
 
   return (
     <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 gap-3">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             Gestión de Usuarios
@@ -68,7 +68,7 @@ const UserManagementView = ({
           <tbody>
             {users.map(user => (
               <tr key={user.id}>
-                <td>
+                <td data-mobile="title">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
                       <Users className="w-4 h-4 text-gray-500" />
@@ -76,13 +76,13 @@ const UserManagementView = ({
                     <span className="font-medium text-gray-900">{user.nombre}</span>
                   </div>
                 </td>
-                <td>
+                <td data-label="Email">
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <Mail className="w-4 h-4" />
                     {user.email}
                   </div>
                 </td>
-                <td>
+                <td data-label="Rol">
                   <div className="flex items-center gap-1">
                     <Shield className="w-3 h-3 text-gray-400" />
                     <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getRoleBadge(user.rol)}`}>
@@ -90,19 +90,19 @@ const UserManagementView = ({
                     </span>
                   </div>
                 </td>
-                <td>
+                <td data-label="Sucursal">
                   <div className="flex items-center gap-1 text-sm text-gray-600">
                     <Building2 className="w-4 h-4 text-gray-400" />
                     {getBranchNames(user.branch_ids)}
                   </div>
                 </td>
-                <td>
+                <td data-label="Estado">
                   <button
                     type="button"
                     onClick={() => toggleUserActive(user)}
                     title={user.activo ? 'Activo — clic para desactivar' : 'Inactivo — clic para activar'}
                     className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-1"
-                    style={{ background: user.activo ? '#22c55e' : '#d1d5db' }}
+                    style={{ background: user.activo ? 'var(--primary)' : '#d1d5db' }}
                   >
                     <span
                       className="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform"
@@ -110,7 +110,7 @@ const UserManagementView = ({
                     />
                   </button>
                 </td>
-                <td className="text-center">
+                <td data-mobile="actions">
                   <button
                     onClick={() => openModal(user)}
                     className="btn-edit mx-auto"
@@ -201,23 +201,31 @@ const UserManagementView = ({
                     <p className="text-sm text-gray-400">No hay sucursales registradas</p>
                   ) : (
                     <div className="border border-gray-200 rounded-lg p-2 space-y-1 max-h-32 overflow-y-auto">
-                      {branches.map(branch => (
-                        <label key={branch.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5">
-                          <input
-                            type="checkbox"
-                            className="accent-green-600"
-                            checked={formData.branch_ids.includes(branch.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setFormData({ ...formData, branch_ids: [...formData.branch_ids, branch.id] });
-                              } else {
-                                setFormData({ ...formData, branch_ids: formData.branch_ids.filter(id => id !== branch.id) });
-                              }
-                            }}
-                          />
-                          {branch.nombre}
-                        </label>
-                      ))}
+                      {branches.map(branch => {
+                        const active = formData.branch_ids.includes(branch.id);
+                        return (
+                          <div key={branch.id} className="flex items-center justify-between text-sm px-1 py-0.5">
+                            <span>{branch.nombre}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (active) {
+                                  setFormData({ ...formData, branch_ids: formData.branch_ids.filter(id => id !== branch.id) });
+                                } else {
+                                  setFormData({ ...formData, branch_ids: [...formData.branch_ids, branch.id] });
+                                }
+                              }}
+                              className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-1"
+                              style={{ background: active ? 'var(--primary)' : '#d1d5db' }}
+                            >
+                              <span
+                                className="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform"
+                                style={{ transform: active ? 'translateX(1.1rem)' : 'translateX(0.2rem)' }}
+                              />
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

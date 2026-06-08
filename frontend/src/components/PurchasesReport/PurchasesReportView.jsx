@@ -45,12 +45,12 @@ const PurchasesReportView = ({
 }) => {
   return (
     <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 gap-3">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Reporte de Compras</h1>
           <p className="text-gray-600">Análisis y estadísticas de compras a proveedores</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={handleExportPDF}
             className="btn btn-secondary flex items-center gap-2"
@@ -290,30 +290,30 @@ const PurchasesReportView = ({
             <tbody>
               {filteredCompras.slice(0, 50).map(compra => (
                 <tr key={compra.id}>
-                  <td>
+                  <td data-mobile="title">
                     <span className="font-medium text-blue-600">{compra.numero_factura}</span>
                   </td>
-                  <td>{formatDate(compra.fecha)}</td>
-                  <td>
+                  <td data-label="Fecha">{formatDate(compra.fecha)}</td>
+                  <td data-label="Sucursal">
                     <span className="flex items-center gap-1 text-sm text-gray-600">
                       <Building2 className="w-3 h-3" />
                       {getBranchName(compra.sucursal_id)}
                     </span>
                   </td>
-                  <td>
+                  <td data-label="Proveedor">
                     <span className="flex items-center gap-1 text-sm text-gray-600">
                       <Truck className="w-3 h-3" />
                       {getProveedorName(compra.proveedor_id)}
                     </span>
                   </td>
-                  <td className="text-center">
+                  <td data-label="Items" className="text-center">
                     <span className="bg-gray-100 text-gray-800 px-2 py-1 rounded-full text-sm">
                       {compra.items.length} productos
                     </span>
                   </td>
-                  <td className="text-right">${formatAmount(compra.subtotal)}</td>
-                  <td className="text-right">${formatAmount(compra.impuestos)}</td>
-                  <td className="text-right">
+                  <td data-label="Subtotal" className="text-right">${formatAmount(compra.subtotal)}</td>
+                  <td data-label="Impuestos" className="text-right">${formatAmount(compra.impuestos)}</td>
+                  <td data-label="Total" className="text-right">
                     <span className="font-semibold text-orange-600">${formatAmount(compra.total)}</span>
                   </td>
                 </tr>

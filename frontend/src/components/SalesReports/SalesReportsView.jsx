@@ -86,12 +86,12 @@ const SalesReportsView = ({
 
   return (
     <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 gap-3">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Reportes de Ventas</h1>
           <p className="text-gray-600">Análisis y estadísticas de ventas</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={onHandleExportPDF}
             className="btn btn-secondary flex items-center gap-2"
@@ -377,23 +377,23 @@ const SalesReportsView = ({
             <tbody>
               {pagedSales.map(sale => (
                 <tr key={sale.id}>
-                  <td>
+                  <td data-mobile="title">
                     <span className="font-medium text-blue-600">{sale.numero_factura}</span>
                   </td>
-                  <td className="hidden lg:table-cell">{formatDate(sale.fecha)}</td>
-                  <td className="hidden lg:table-cell">
+                  <td className="hidden lg:table-cell" data-label="Fecha">{formatDate(sale.fecha)}</td>
+                  <td className="hidden lg:table-cell" data-label="Sucursal">
                     <span className="flex items-center gap-1 text-sm text-gray-600">
                       <Building2 className="w-3 h-3" />
                       {getBranchName(sale.branch_id)}
                     </span>
                   </td>
-                  <td className="text-center">
+                  <td className="text-center" data-label="Items">
                     <span className="bg-gray-100 text-gray-800 px-2 py-1 rounded-full text-sm">
                       {sale.items.length} productos
                     </span>
                   </td>
-                  <td className="hidden lg:table-cell text-right">${formatAmount(sale.subtotal)}</td>
-                  <td className="hidden lg:table-cell text-right">
+                  <td className="hidden lg:table-cell text-right" data-label="Subtotal">${formatAmount(sale.subtotal)}</td>
+                  <td className="hidden lg:table-cell text-right" data-label="Desc./Recargo">
                     {(() => {
                       const adj = sale.total - sale.subtotal - (sale.impuestos || 0);
                       if (Math.abs(adj) < 0.01) return <span className="text-gray-300">—</span>;
@@ -404,12 +404,12 @@ const SalesReportsView = ({
                       );
                     })()}
                   </td>
-                  <td className="text-right">
+                  <td className="text-right" data-label="Total">
                     <span className="font-semibold text-green-600">
                       ${formatAmount(sale.total - (saleNetTotal?.[sale.id] || 0))}
                     </span>
                   </td>
-                  <td className="text-center">
+                  <td className="text-center" data-label="Pago">
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                       sale.metodo_pago === 'efectivo'
                         ? 'bg-green-100 text-green-800'
@@ -420,7 +420,7 @@ const SalesReportsView = ({
                       {getPaymentMethodLabel(sale.metodo_pago)}
                     </span>
                   </td>
-                  <td className="hidden md:table-cell">
+                  <td className="hidden md:table-cell" data-label="Estado">
                     {sale.estado === 'cancelado' ? (
                       <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">Cancelada</span>
                     ) : sale.estado === 'devolucion_parcial' ? (
@@ -429,7 +429,7 @@ const SalesReportsView = ({
                       <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Activa</span>
                     )}
                   </td>
-                  <td>
+                  <td data-mobile="actions">
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => onHandleReprintSale(sale)}

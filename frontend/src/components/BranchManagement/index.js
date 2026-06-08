@@ -236,6 +236,9 @@ const BranchManagement = () => {
   const [showDeleteBranchModal, setShowDeleteBranchModal] = useState(false);
   const [branchToDelete, setBranchToDelete] = useState(null);
   const [deletingBranch, setDeletingBranch] = useState(false);
+  const [showBranchBulkEditModal, setShowBranchBulkEditModal] = useState(false);
+  const [branchBulkEditItems, setBranchBulkEditItems] = useState([]);
+  const [branchBulkEditSaving, setBranchBulkEditSaving] = useState(false);
 
   const [branchModalClosing, closeBranchModal] = useModalClose(closeModal);
   const [deleteBranchModalClosing, closeDeleteBranchModal] = useModalClose(() => {
@@ -246,6 +249,7 @@ const BranchManagement = () => {
   const [bulkMargenModalClosing, closeBulkMargenModal] = useModalClose(() => setShowBulkMargenModal(false));
   const [bulkStockMinModalClosing, closeBulkStockMinModal] = useModalClose(() => setShowBulkStockMinModal(false));
   const [bulkStockModalClosing, closeBulkStockModal] = useModalClose(() => setShowBulkStockModal(false));
+  const [branchBulkEditModalClosing, closeBranchBulkEditModal] = useModalClose(() => { setShowBranchBulkEditModal(false); setBranchBulkEditItems([]); });
 
   const [savingBranch, setSavingBranch] = useState(false);
 
@@ -515,6 +519,85 @@ const BranchManagement = () => {
     }
   };
 
+  const openBranchBulkEditModal = () => {
+    const selected = [...selectedRows].map(id => branchProductsCache[id]).filter(Boolean);
+    setBranchBulkEditItems(selected.map(p => {
+      const costo = p.costo_sucursal ?? 0;
+      const precio = p.precio_sucursal ?? p.precio_global ?? 0;
+      const margen = p.margen_sucursal != null
+        ? p.margen_sucursal
+        : costo > 0
+          ? parseFloat(((precio / costo - 1) * 100).toFixed(2))
+          : 0;
+      return {
+        product_id: p.product_id,
+        branch_product_id: p.branch_product_id,
+        nombre: p.nombre,
+        tipo: p.tipo,
+        costo: costo.toString(),
+        margen: margen.toString(),
+        precio: precio.toString(),
+        stock: (p.stock_sucursal ?? p.stock_global ?? 0).toString(),
+      };
+    }));
+    setShowBranchBulkEditModal(true);
+  };
+
+  const updateBranchBulkEditItem = (productId, field, value) => {
+    setBranchBulkEditItems(prev => prev.map(item => {
+      if (item.product_id !== productId) return item;
+      const updated = { ...item, [field]: value };
+      const costo = parseFloat(field === 'costo' ? value : item.costo) || 0;
+      const precio = parseFloat(field === 'precio' ? value : item.precio) || 0;
+      const margen = parseFloat(field === 'margen' ? value : item.margen) || 0;
+      if (field === 'margen' && costo > 0) {
+        updated.precio = parseFloat((costo * (1 + margen / 100)).toFixed(2)).toString();
+      }
+      if (field === 'precio' && costo > 0) {
+        updated.margen = parseFloat(((precio / costo - 1) * 100).toFixed(2)).toString();
+      }
+      if (field === 'costo' && costo > 0) {
+        const prevMargen = parseFloat(item.margen);
+        if (!isNaN(prevMargen)) {
+          updated.precio = parseFloat((costo * (1 + prevMargen / 100)).toFixed(2)).toString();
+        } else if (precio > 0) {
+          updated.margen = parseFloat(((precio / costo - 1) * 100).toFixed(2)).toString();
+        }
+      }
+      return updated;
+    }));
+  };
+
+  const handleBranchBulkEditSave = async () => {
+    setBranchBulkEditSaving(true);
+    const results = await Promise.allSettled(
+      branchBulkEditItems.map(item => {
+        const payload = {
+          precio: parseFloat(item.precio) || 0,
+          margen: parseFloat(item.margen) || 0,
+          costo: parseFloat(item.costo) || 0,
+          stock: parseInt(item.stock) || 0,
+        };
+        if (item.branch_product_id) {
+          return axios.put(`${API}/branch-products/${item.branch_product_id}`, payload);
+        }
+        return axios.post(`${API}/branch-products`, {
+          product_id: item.product_id,
+          branch_id: selectedBranch.id,
+          ...payload,
+        });
+      })
+    );
+    const ok = results.filter(r => r.status === 'fulfilled').length;
+    const fail = results.filter(r => r.status === 'rejected').length;
+    if (ok > 0) toast.success(`${ok} producto${ok !== 1 ? 's' : ''} actualizado${ok !== 1 ? 's' : ''}`);
+    if (fail > 0) toast.error(`${fail} producto${fail !== 1 ? 's' : ''} con error`);
+    setBranchBulkEditSaving(false);
+    closeBranchBulkEditModal();
+    handleClearSelection();
+    await reloadBranchProducts();
+  };
+
   const saveProductChanges = async () => {
     const entries = Object.entries(pendingChanges);
     if (entries.length === 0) return;
@@ -729,6 +812,14 @@ const BranchManagement = () => {
       onOpenDeleteBranchModal={openDeleteBranchModal}
       onDeleteBranch={deleteBranch}
       onCloseDeleteBranchModal={closeDeleteBranchModal}
+      showBranchBulkEditModal={showBranchBulkEditModal}
+      branchBulkEditItems={branchBulkEditItems}
+      branchBulkEditSaving={branchBulkEditSaving}
+      branchBulkEditModalClosing={branchBulkEditModalClosing}
+      onOpenBranchBulkEditModal={openBranchBulkEditModal}
+      onCloseBranchBulkEditModal={closeBranchBulkEditModal}
+      onUpdateBranchBulkEditItem={updateBranchBulkEditItem}
+      onHandleBranchBulkEditSave={handleBranchBulkEditSave}
     />
   );
 };

@@ -502,7 +502,7 @@ const CuentaView = ({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="table w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
                   <th onClick={() => requestSort('fecha')} className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:bg-gray-100">Fecha <SortIcon columnKey="fecha" sortConfig={sortConfig} /></th>
@@ -518,10 +518,10 @@ const CuentaView = ({
                   const estadoConf = PAGO_ESTADO_CONFIG[pago.estado] || { label: pago.estado, color: 'bg-gray-100 text-gray-700' };
                   return (
                     <tr key={pago.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 text-gray-700 whitespace-nowrap">
+                      <td className="px-6 py-4 text-gray-700 whitespace-nowrap" data-label="Fecha">
                         {formatDate(pago.fecha)}
                       </td>
-                      <td className="px-6 py-4 text-gray-700">
+                      <td className="px-6 py-4 text-gray-700" data-mobile="title">
                         {pago.concepto}
                         {pago.periodo_inicio && pago.periodo_fin && (
                           <p className="text-xs text-gray-400 mt-0.5">
@@ -529,18 +529,18 @@ const CuentaView = ({
                           </p>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-right font-medium text-gray-900 whitespace-nowrap">
+                      <td className="px-6 py-4 text-right font-medium text-gray-900 whitespace-nowrap" data-label="Monto">
                         {formatCurrency(pago.monto, pago.moneda)}
                       </td>
-                      <td className="px-6 py-4 text-center">
+                      <td className="px-6 py-4 text-center" data-label="Estado">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${estadoConf.color}`}>
                           {estadoConf.label}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-gray-400 text-xs font-mono">
+                      <td className="px-6 py-4 text-gray-400 text-xs font-mono" data-label="ID Pago">
                         {pago.mp_payment_id || '-'}
                       </td>
-                      <td className="px-4 py-4 text-center">
+                      <td className="px-4 py-4 text-center" data-mobile="actions">
                         {pago.estado === 'approved' && (
                           <button
                             onClick={() => onDescargarRecibo(pago)}

@@ -41,7 +41,7 @@ const StockAlertsView = ({
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-3">
         <div className="flex items-center gap-3">
           <Link
             to="/dashboard"
@@ -64,7 +64,7 @@ const StockAlertsView = ({
         </div>
 
         {/* Export buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={onRefresh}
             className="btn btn-secondary flex items-center gap-2"
@@ -142,7 +142,7 @@ const StockAlertsView = ({
                     const isCritical = item.stock === 0;
                     return (
                       <tr key={item.branch_product_id || index} className="hover:bg-gray-50">
-                        <td className="px-4 py-3">
+                        <td data-mobile="title" className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isCritical ? 'bg-red-600' : 'bg-yellow-400'}`} />
                             <div>
@@ -154,22 +154,22 @@ const StockAlertsView = ({
                           </div>
                         </td>
                         {user?.rol === 'admin' && (
-                          <td className="px-4 py-3 text-sm text-gray-600">{item.sucursal || '—'}</td>
+                          <td data-label="Sucursal" className="px-4 py-3 text-sm text-gray-600">{item.sucursal || '—'}</td>
                         )}
-                        <td className="px-4 py-3 text-center">
+                        <td data-label="Stock Actual" className="px-4 py-3 text-center">
                           <span className={`text-sm font-bold ${isCritical ? 'text-red-700' : 'text-orange-600'}`}>
                             {item.stock}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-center text-sm text-gray-600">
+                        <td data-label="Stock Mínimo" className="px-4 py-3 text-center text-sm text-gray-600">
                           {item.stock_minimo}
                         </td>
-                        <td className="px-4 py-3 text-center">
+                        <td data-label="Diferencia" className="px-4 py-3 text-center">
                           <span className={`text-sm ${getDiffColor(diff)}`}>
                             {diff}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-center">
+                        <td data-label="Estado" className="px-4 py-3 text-center">
                           {isCritical ? (
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
                               Sin stock
@@ -181,7 +181,7 @@ const StockAlertsView = ({
                           )}
                         </td>
                         {user?.rol === 'admin' && (
-                          <td className="px-4 py-3 text-center">
+                          <td data-mobile="actions" className="px-4 py-3 text-center">
                             <div className="flex items-center justify-center gap-2">
                               <button
                                 onClick={() => onOpenModal(item, 'stock')}

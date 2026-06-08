@@ -6,6 +6,7 @@ import {
 import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
 import { getCategoryIcon, ICON_OPTIONS } from '../../utils/categoryIcons';
+import BulkEditModal from './BulkEditModal';
 
 const ProductManagementView = ({
   user,
@@ -102,6 +103,14 @@ const ProductManagementView = ({
   normalize,
   sortConfig,
   requestSort,
+  showBulkEditModal,
+  bulkEditItems,
+  bulkEditSaving,
+  bulkEditModalClosing,
+  openBulkEditModal,
+  closeBulkEditModal,
+  updateBulkEditItem,
+  handleBulkEditSave,
 }) => {
   const [categorySearch, setCategorySearch] = useState('');
   const [categoryInputText, setCategoryInputText] = useState('');
@@ -174,7 +183,7 @@ const ProductManagementView = ({
 
   return (
     <div className="p-6 flex flex-col h-full" onClick={() => setShowExportMenu(false)}>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 gap-3">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             Gestión de Productos
@@ -190,7 +199,7 @@ const ProductManagementView = ({
             Lista de precios de sucursal
           </button>
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="flex flex-wrap gap-2 items-center">
           <button
             onClick={() => setShowImportModal(true)}
             className="btn"
@@ -325,10 +334,19 @@ const ProductManagementView = ({
       {/* Bulk Actions Bar */}
       {(selectedRows.size > 0 || selectAllGlobal) && (
         <div className="flex flex-col gap-2 mb-3">
-          <div className="flex items-center gap-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex flex-wrap items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
             <span className="text-sm text-blue-700 font-medium">
               {selectAllGlobal ? `${total} seleccionado(s) (todos)` : `${selectedRows.size} seleccionado(s)`}
             </span>
+            {!selectAllGlobal && (
+              <button
+                onClick={openBulkEditModal}
+                className="btn btn-sm bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100"
+              >
+                <Edit className="w-4 h-4" />
+                Editar seleccionados
+              </button>
+            )}
             <button
               onClick={() => handleBulkSetControlStock(true)}
               className="btn btn-sm bg-green-50 text-green-700 border border-green-200 hover:bg-green-100"
@@ -373,6 +391,16 @@ const ProductManagementView = ({
       {/* Products Table */}
       <div className="table-container flex-1 min-h-0 flex flex-col">
         <div className="overflow-y-auto flex-1 min-h-0">
+        {/* Select all — solo mobile */}
+        <label className="md:hidden flex items-center gap-3 px-3 py-2 cursor-pointer select-none border-b border-gray-100">
+          <input
+            type="checkbox"
+            className="w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500 cursor-pointer"
+            checked={paginatedProducts.length > 0 && paginatedProducts.every(p => selectedRows.has(p.id))}
+            onChange={toggleSelectAll}
+          />
+          <span className="text-sm text-gray-500">Seleccionar todos</span>
+        </label>
         <table className="table">
           <thead>
             <tr>
@@ -404,7 +432,7 @@ const ProductManagementView = ({
                 data-pm-focused={focusedIdx === idx ? 'true' : undefined}
                 className={focusedIdx === idx ? 'bg-green-50 outline outline-2 outline-green-400' : selectedRows.has(product.id) ? 'bg-blue-50' : ''}
               >
-                <td>
+                <td data-mobile="hide">
                   <input
                     type="checkbox"
                     className="rounded border-gray-300 text-green-600 focus:ring-green-500"
@@ -412,7 +440,7 @@ const ProductManagementView = ({
                     onChange={() => toggleSelectRow(product.id)}
                   />
                 </td>
-                <td>
+                <td data-mobile="title">
                   <div className="flex items-center gap-3">
                     {(() => {
                       const cat = categories.find(c => c.id === product.categoria_id);
@@ -433,12 +461,12 @@ const ProductManagementView = ({
                     </div>
                   </div>
                 </td>
-                <td className="text-center">
+                <td className="text-center" data-label="Código">
                   <span className="text-sm text-blue-600">
                     {product.codigo_barras || 'N/A'}
                   </span>
                 </td>
-                <td className="text-center">
+                <td className="text-center" data-label="Categoría">
                   {(() => {
                     const cat = categories.find(c => c.id === product.categoria_id);
                     const CatIcon = getCategoryIcon(cat?.nombre, cat?.icono);
@@ -450,7 +478,7 @@ const ProductManagementView = ({
                     );
                   })()}
                 </td>
-                <td className="text-center">
+                <td className="text-center" data-label="Clase">
                   {product.kind === 'combo' ? (
                     <span className="px-2 py-1 text-xs font-medium bg-purple-100 text-purple-800 rounded-full flex items-center gap-1 w-fit mx-auto">
                       <Layers className="w-3 h-3" /> Combo
@@ -459,14 +487,14 @@ const ProductManagementView = ({
                     <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full w-fit mx-auto block">Normal</span>
                   )}
                 </td>
-                <td className="text-center">
+                <td className="text-center" data-label="Control Stock">
                   <button
                     type="button"
                     disabled={product.kind === 'combo'}
                     onClick={() => handleToggleControlStock(product)}
                     title={product.kind === 'combo' ? 'No aplica en combos' : product.control_stock ? 'Activo — clic para desactivar' : 'Inactivo — clic para activar'}
                     className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-40"
-                    style={{ background: product.control_stock ? '#22c55e' : '#d1d5db' }}
+                    style={{ background: product.control_stock ? 'var(--primary)' : '#d1d5db' }}
                   >
                     <span
                       className="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform"
@@ -474,12 +502,12 @@ const ProductManagementView = ({
                     />
                   </button>
                 </td>
-                <td className="text-center">
+                <td className="text-center" data-label="Stock Mín.">
                   <span className="font-medium text-gray-900">
                     {product.stock_minimo}
                   </span>
                 </td>
-                <td className="text-center">
+                <td className="text-center" data-label="Estado">
                   <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                     product.activo
                       ? 'bg-green-100 text-green-800'
@@ -488,16 +516,14 @@ const ProductManagementView = ({
                     {product.activo ? 'Activo' : 'Inactivo'}
                   </span>
                 </td>
-                <td className="text-center">
-                  <div className="">
-                    <button
-                      onClick={() => openModal(product)}
-                      className="btn-edit"
-                      title="Editar"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                  </div>
+                <td data-mobile="actions">
+                  <button
+                    onClick={() => openModal(product)}
+                    className="btn-edit"
+                    title="Editar"
+                  >
+                    <Edit className="w-4 h-4" />
+                  </button>
                 </td>
               </tr>
             ))}
@@ -669,7 +695,7 @@ const ProductManagementView = ({
                       disabled={formData.kind === 'combo'}
                       onClick={() => formData.kind !== 'combo' && setFormData({...formData, control_stock: !formData.control_stock})}
                       className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
-                      style={{ background: formData.control_stock ? '#22c55e' : '#d1d5db' }}
+                      style={{ background: formData.control_stock ? 'var(--primary)' : '#d1d5db' }}
                       aria-pressed={formData.control_stock}
                     >
                       <span
@@ -1265,6 +1291,19 @@ const ProductManagementView = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Bulk Edit Modal */}
+      {(showBulkEditModal || bulkEditModalClosing) && (
+        <BulkEditModal
+          items={bulkEditItems}
+          onItemChange={updateBulkEditItem}
+          categories={categories}
+          closing={bulkEditModalClosing}
+          onClose={closeBulkEditModal}
+          onSave={handleBulkEditSave}
+          saving={bulkEditSaving}
+        />
       )}
     </div>
   );

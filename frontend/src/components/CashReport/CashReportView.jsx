@@ -52,7 +52,7 @@ const CashReportView = ({
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6 print:shadow-none">
-          <div className="flex justify-between items-start mb-6">
+          <div className="flex flex-col md:flex-row md:justify-between md:items-start mb-6 gap-3">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">
                 <FileText className="w-8 h-8 inline mr-2" />
@@ -292,10 +292,10 @@ const CashReportView = ({
               <tbody>
                 {movements.map(movement => (
                   <tr key={movement.id} className="border-b border-gray-100">
-                    <td className="py-2 text-sm">
+                    <td data-mobile="title" className="py-2 text-sm">
                       {formatDate(movement.fecha)}
                     </td>
-                    <td className="py-2">
+                    <td data-label="Tipo" className="py-2">
                       <span className={`px-2 py-1 text-xs font-medium rounded-full capitalize ${
                         movement.tipo === 'apertura' ? 'bg-blue-100 text-blue-800' :
                         movement.tipo === 'venta' ? 'bg-green-100 text-green-800' :
@@ -305,8 +305,8 @@ const CashReportView = ({
                         {movement.tipo}
                       </span>
                     </td>
-                    <td className="py-2 text-sm">{movement.descripcion}</td>
-                    <td className="py-2 text-right font-medium">
+                    <td data-label="Descripción" className="py-2 text-sm">{movement.descripcion}</td>
+                    <td data-label="Monto" className="py-2 text-right font-medium">
                       {formatCurrency(movement.monto)}
                     </td>
                   </tr>

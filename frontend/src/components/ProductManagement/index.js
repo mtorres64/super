@@ -44,6 +44,9 @@ const ProductManagement = () => {
   const [selectAllGlobal, setSelectAllGlobal] = useState(false);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [showBulkEditModal, setShowBulkEditModal] = useState(false);
+  const [bulkEditItems, setBulkEditItems] = useState([]);
+  const [bulkEditSaving, setBulkEditSaving] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedKind, setSelectedKind] = useState('');
   const [selectedActivo, setSelectedActivo] = useState('');
@@ -433,6 +436,7 @@ const ProductManagement = () => {
   const [importModalClosing, closeImportModalAnim] = useModalClose(() => { setShowImportModal(false); setImportFile(null); setImportResult(null); setImportProgress(0); });
   const [categoryModalClosing, closeCategoryModal] = useModalClose(() => setShowCategoryModal(false));
   const [bulkDeleteModalClosing, closeBulkDeleteModal] = useModalClose(() => setShowBulkDeleteModal(false));
+  const [bulkEditModalClosing, closeBulkEditModal] = useModalClose(() => { setShowBulkEditModal(false); setBulkEditItems([]); });
 
   const closeImportModal = () => {
     setShowImportModal(false);
@@ -520,6 +524,58 @@ const ProductManagement = () => {
     } catch {
       toast.error('Error al actualizar el control de stock');
     }
+  };
+
+  const openBulkEditModal = () => {
+    const selected = paginatedProducts.filter(p => selectedRows.has(p.id));
+    setBulkEditItems(selected.map(p => ({
+      id: p.id,
+      _nombre_original: p.nombre,
+      nombre: p.nombre,
+      codigo_barras: p.codigo_barras || '',
+      tipo: p.tipo,
+      kind: p.kind || 'normal',
+      precio: p.precio?.toString() ?? '',
+      precio_costo: p.precio_costo != null ? p.precio_costo.toString() : '',
+      categoria_id: p.categoria_id || '',
+      control_stock: p.control_stock ?? true,
+      stock: p.stock?.toString() ?? '0',
+      stock_minimo: p.stock_minimo?.toString() ?? '0',
+    })));
+    setShowBulkEditModal(true);
+  };
+
+  const updateBulkEditItem = (id, field, value) => {
+    setBulkEditItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
+  };
+
+  const handleBulkEditSave = async () => {
+    setBulkEditSaving(true);
+    const results = await Promise.allSettled(
+      bulkEditItems.map(item =>
+        axios.put(`${API}/products/${item.id}`, {
+          nombre: item.nombre,
+          codigo_barras: item.codigo_barras || null,
+          tipo: item.tipo,
+          kind: item.kind,
+          precio: parseFloat(item.precio) || 0,
+          precio_costo: item.precio_costo !== '' ? parseFloat(item.precio_costo) : null,
+          categoria_id: item.categoria_id || null,
+          control_stock: item.control_stock,
+          stock: item.control_stock ? (parseInt(item.stock) || 0) : 0,
+          stock_minimo: item.control_stock ? (parseInt(item.stock_minimo) || 0) : 0,
+          combo_items: item.kind === 'combo' ? [] : [],
+        })
+      )
+    );
+    const ok = results.filter(r => r.status === 'fulfilled').length;
+    const fail = results.filter(r => r.status === 'rejected').length;
+    if (ok > 0) toast.success(`${ok} producto${ok !== 1 ? 's' : ''} actualizado${ok !== 1 ? 's' : ''}`);
+    if (fail > 0) toast.error(`${fail} producto${fail !== 1 ? 's' : ''} con error`);
+    setBulkEditSaving(false);
+    closeBulkEditModal();
+    handleClearSelection();
+    loadProducts(currentPage, debouncedSearch, config?.items_per_page || 50);
   };
 
   const handleToggleControlStock = async (product) => {
@@ -647,6 +703,14 @@ const ProductManagement = () => {
       handleBulkDelete={handleBulkDelete}
       handleBulkSetControlStock={handleBulkSetControlStock}
       handleToggleControlStock={handleToggleControlStock}
+      showBulkEditModal={showBulkEditModal}
+      bulkEditItems={bulkEditItems}
+      bulkEditSaving={bulkEditSaving}
+      bulkEditModalClosing={bulkEditModalClosing}
+      openBulkEditModal={openBulkEditModal}
+      closeBulkEditModal={closeBulkEditModal}
+      updateBulkEditItem={updateBulkEditItem}
+      handleBulkEditSave={handleBulkEditSave}
       handleDownloadTemplate={handleDownloadTemplate}
       handlePageChange={handlePageChange}
       toggleSelectRow={toggleSelectRow}

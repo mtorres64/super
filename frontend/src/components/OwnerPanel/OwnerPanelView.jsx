@@ -1238,11 +1238,11 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
               <tbody>
                 {sortedClientePagos.map(p => (
                   <tr key={p.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                    <td className="py-3 px-2 text-gray-400">{formatDate(p.fecha)}</td>
-                    <td className="py-3 px-2 text-gray-200">{p.concepto}</td>
-                    <td className="py-3 px-2 text-emerald-400 font-semibold">{formatMoney(p.monto)}</td>
-                    <td className="py-3 px-2 text-gray-400 text-xs capitalize">{p.plan_tipo || '—'}</td>
-                    <td className="py-3 px-2">
+                    <td data-label="Fecha" className="py-3 px-2 text-gray-400">{formatDate(p.fecha)}</td>
+                    <td data-mobile="title" className="py-3 px-2 text-gray-200">{p.concepto}</td>
+                    <td data-label="Monto" className="py-3 px-2 text-emerald-400 font-semibold">{formatMoney(p.monto)}</td>
+                    <td data-label="Tipo" className="py-3 px-2 text-gray-400 text-xs capitalize">{p.plan_tipo || '—'}</td>
+                    <td data-label="Estado" className="py-3 px-2">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                         p.estado === 'approved' ? 'bg-green-900/40 text-green-300' :
                         p.estado === 'pending'  ? 'bg-yellow-900/40 text-yellow-300' :
@@ -1251,7 +1251,7 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
                         {p.estado === 'approved' ? 'Aprobado' : p.estado === 'pending' ? 'Pendiente' : p.estado}
                       </span>
                     </td>
-                    <td className="py-3 px-2 text-gray-500 text-xs">
+                    <td data-label="Período" className="py-3 px-2 text-gray-500 text-xs">
                       {p.periodo_inicio && p.periodo_fin
                         ? `${formatDate(p.periodo_inicio)} → ${formatDate(p.periodo_fin)}`
                         : '—'}
@@ -1572,12 +1572,12 @@ const CobrosView = ({ token }) => {
               <tbody>
                 {filtered.map((p, i) => (
                   <tr key={p.id || i} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                    <td className="py-3 px-2 text-gray-400">{formatDate(p.fecha)}</td>
-                    <td className="py-3 px-2 text-white font-medium">{p.empresa_nombre}</td>
-                    <td className="py-3 px-2 text-gray-300">{p.concepto}</td>
-                    <td className="py-3 px-2 text-emerald-400 font-semibold">{formatMoney(p.monto)}</td>
-                    <td className="py-3 px-2 text-gray-400 text-xs capitalize">{p.plan_tipo || '—'}</td>
-                    <td className="py-3 px-2">
+                    <td data-label="Fecha" className="py-3 px-2 text-gray-400">{formatDate(p.fecha)}</td>
+                    <td data-mobile="title" className="py-3 px-2 text-white font-medium">{p.empresa_nombre}</td>
+                    <td data-label="Concepto" className="py-3 px-2 text-gray-300">{p.concepto}</td>
+                    <td data-label="Monto" className="py-3 px-2 text-emerald-400 font-semibold">{formatMoney(p.monto)}</td>
+                    <td data-label="Tipo" className="py-3 px-2 text-gray-400 text-xs capitalize">{p.plan_tipo || '—'}</td>
+                    <td data-label="Origen" className="py-3 px-2">
                       {p.origen === 'preapproval' ? (
                         <span className="flex items-center gap-1 text-xs text-indigo-400">
                           <Zap className="w-3 h-3" /> Auto
@@ -1586,7 +1586,7 @@ const CobrosView = ({ token }) => {
                         <span className="text-xs text-gray-600">Manual</span>
                       )}
                     </td>
-                    <td className="py-3 px-2">
+                    <td data-label="Estado" className="py-3 px-2">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                         p.estado === 'approved' ? 'bg-green-900/40 text-green-300' :
                         p.estado === 'pending'  ? 'bg-yellow-900/40 text-yellow-300' :
