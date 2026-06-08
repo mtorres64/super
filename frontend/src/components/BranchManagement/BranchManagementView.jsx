@@ -418,9 +418,9 @@ const BranchManagementView = ({
                   <th onClick={() => requestSort('nombre')} className="cursor-pointer select-none hover:bg-gray-50">Producto <SortIcon columnKey="nombre" sortConfig={sortConfig} /></th>
                   <th>Categoría</th>
                   <th className="text-center cursor-pointer select-none hover:bg-gray-50" onClick={() => requestSort('costo_sucursal')}>Precio Costo <SortIcon columnKey="costo_sucursal" sortConfig={sortConfig} /></th>
-                  <th className="text-center">Margen %</th>
-                  <th className="text-center cursor-pointer select-none hover:bg-gray-50" onClick={() => requestSort('precio_sucursal')}>Precio Sucursal <SortIcon columnKey="precio_sucursal" sortConfig={sortConfig} /></th>
-                  <th className="text-center cursor-pointer select-none hover:bg-gray-50" onClick={() => requestSort('stock_sucursal')}>Stock Sucursal <SortIcon columnKey="stock_sucursal" sortConfig={sortConfig} /></th>
+                  <th className="text-center bg-yellow-100">Margen %</th>
+                  <th className="text-center cursor-pointer select-none bg-yellow-100 hover:bg-yellow-200" onClick={() => requestSort('precio_sucursal')}>Precio Sucursal <SortIcon columnKey="precio_sucursal" sortConfig={sortConfig} /></th>
+                  <th className="text-center cursor-pointer select-none bg-yellow-100 hover:bg-yellow-200" onClick={() => requestSort('stock_sucursal')}>Stock Sucursal <SortIcon columnKey="stock_sucursal" sortConfig={sortConfig} /></th>
                   <th className="text-center cursor-pointer select-none hover:bg-gray-50" onClick={() => requestSort('stock_minimo_sucursal')}>Stock Mínimo <SortIcon columnKey="stock_minimo_sucursal" sortConfig={sortConfig} /></th>
                   <th className="text-center">Activo</th>
                 </tr>
@@ -494,12 +494,12 @@ const BranchManagementView = ({
                           {product.costo_sucursal != null ? `$${product.costo_sucursal.toFixed(2)}` : '—'}
                         </span>
                       </td>
-                      <td className="text-center">
+                      <td className="text-center bg-yellow-50">
                         <div className="flex items-center justify-center gap-1">
                           <input
                             type="number"
                             step="0.01"
-                            className={`w-20 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.margen !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200'}`}
+                            className={`w-20 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.margen !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}`}
                             value={currentMargen}
                             onChange={(e) => {
                               const margen = parseFloat(e.target.value) || 0;
@@ -509,12 +509,12 @@ const BranchManagementView = ({
                           <span className="text-sm text-gray-500">%</span>
                         </div>
                       </td>
-                      <td className="text-center">
+                      <td className="text-center bg-yellow-50">
                         <input
                           type="number"
                           step="0.01"
                           min="0"
-                          className={`w-28 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.precio !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200'}`}
+                          className={`w-28 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.precio !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}`}
                           value={currentPrice}
                           onChange={(e) => {
                             const precio = parseFloat(e.target.value) || 0;
@@ -528,7 +528,7 @@ const BranchManagementView = ({
                               type="number"
                               step="0.01"
                               min="0"
-                              className="w-28 text-center border border-gray-200 rounded px-2 py-1 text-xs"
+                              className="w-28 text-center border border-gray-200 rounded px-2 py-1 text-xs bg-white"
                               value={changes.precio_por_peso !== undefined ? changes.precio_por_peso : (product.precio_por_peso_sucursal ?? '')}
                               onChange={(e) => onProductFieldChange(product.product_id, 'precio_por_peso', parseFloat(e.target.value) || 0)}
                               placeholder="precio/kg"
@@ -536,11 +536,11 @@ const BranchManagementView = ({
                           </div>
                         )}
                       </td>
-                      <td className="text-center">
+                      <td className="text-center bg-yellow-50">
                         <input
                           type="number"
                           min="0"
-                          className={`w-20 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.stock !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200'}`}
+                          className={`w-20 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.stock !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}`}
                           value={currentStock}
                           onChange={(e) => onProductFieldChange(product.product_id, 'stock', parseInt(e.target.value) || 0)}
                         />
@@ -1037,6 +1037,28 @@ const BranchManagementView = ({
                     onChange={(e) => onSetFormData(prev => ({ ...prev, telefono: e.target.value }))}
                   />
                 </div>
+                {!editingBranch && (
+                  <div className="form-group">
+                    <label className="form-label">
+                      Ajuste de margen sobre precios de referencia
+                      <span className="ml-1 text-gray-400 font-normal">(opcional)</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="0.1"
+                        className="form-input"
+                        placeholder="Ej: 10 para +10%, -5 para -5%"
+                        value={formData.margen_ajuste}
+                        onChange={(e) => onSetFormData(prev => ({ ...prev, margen_ajuste: e.target.value }))}
+                      />
+                      <span className="text-gray-500 text-sm font-medium shrink-0">%</span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Si ingresás un valor, todos los precios de esta sucursal se calcularán aplicando ese porcentaje sobre los precios actuales.
+                    </p>
+                  </div>
+                )}
               </div>
               <div className="flex justify-end space-x-3 mt-6">
                 <button type="button" onClick={onCloseBranchModal} disabled={savingBranch} className="btn btn-secondary">

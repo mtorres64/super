@@ -51,7 +51,8 @@ const BranchManagement = () => {
   const [formData, setFormData] = useState({
     nombre: '',
     direccion: '',
-    telefono: ''
+    telefono: '',
+    margen_ajuste: ''
   });
 
   useEffect(() => {
@@ -220,7 +221,7 @@ const BranchManagement = () => {
       });
       setEditingBranch(branch);
     } else {
-      setFormData({ nombre: '', direccion: '', telefono: '' });
+      setFormData({ nombre: '', direccion: '', telefono: '', margen_ajuste: '' });
       setEditingBranch(null);
     }
     setShowModal(true);
@@ -253,11 +254,17 @@ const BranchManagement = () => {
     setSavingBranch(true);
     try {
       if (editingBranch) {
-        await axios.put(`${API}/branches/${editingBranch.id}`, formData);
+        const { margen_ajuste, ...editPayload } = formData;
+        await axios.put(`${API}/branches/${editingBranch.id}`, editPayload);
         toast.success('Sucursal actualizada');
       } else {
-        await axios.post(`${API}/branches`, formData);
-        toast.success('Sucursal creada. Los productos se han sincronizado automáticamente.');
+        const ajuste = formData.margen_ajuste !== '' ? parseFloat(formData.margen_ajuste) : null;
+        const payload = { ...formData, margen_ajuste: isNaN(ajuste) ? null : ajuste };
+        await axios.post(`${API}/branches`, payload);
+        const msg = ajuste && ajuste !== 0
+          ? `Sucursal creada con ajuste de margen ${ajuste > 0 ? '+' : ''}${ajuste}%. Productos sincronizados.`
+          : 'Sucursal creada. Los productos se han sincronizado automáticamente.';
+        toast.success(msg);
       }
       fetchBranches();
       closeBranchModal();

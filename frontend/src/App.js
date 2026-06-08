@@ -170,6 +170,7 @@ export const AuthProvider = ({ children }) => {
   const [userBranches, setUserBranches] = useState([]);
   const [showBranchModal, setShowBranchModal] = useState(false);
   const [branchModalLoading, setBranchModalLoading] = useState(false);
+  const freshLoginRef = React.useRef(false);
 
   const fetchSuscripcion = React.useCallback((currentToken) => {
     const tkn = currentToken || localStorage.getItem('token');
@@ -224,19 +225,24 @@ export const AuthProvider = ({ children }) => {
           fetchSuscripcion(token);
           const branchIds = res.data.branch_ids || [];
           const activeBranchId = res.data.active_branch_id;
-          if (branchIds.length > 1 && !activeBranchId) {
-            // Token viejo sin sucursal seleccionada — forzar selección
-            setBranchModalLoading(true);
-            setShowBranchModal(true);
-            try {
-              const brRes = await axios.get(`${API}/branches`);
-              const owned = brRes.data.filter(b => branchIds.includes(b.id));
-              setUserBranches(owned);
-            } catch (_) {}
-            setBranchModalLoading(false);
-          } else {
-            fetchUserBranches(branchIds, activeBranchId);
-          }
+          const isAdmin = res.data.rol === 'admin';
+          const isFreshLogin = freshLoginRef.current;
+          freshLoginRef.current = false;
+          try {
+            const brRes = await axios.get(`${API}/branches`);
+            const allBranches = brRes.data;
+            const available = isAdmin ? allBranches : allBranches.filter(b => branchIds.includes(b.id));
+            setUserBranches(available);
+            if (available.length > 1 && (isFreshLogin || !activeBranchId)) {
+              // Login fresco con múltiples sucursales, o token sin sucursal activa: pedir selección
+              setShowBranchModal(true);
+            } else if (activeBranchId) {
+              const branch = available.find(b => b.id === activeBranchId);
+              if (branch) setActiveBranch(branch);
+            } else if (available.length === 1) {
+              setActiveBranch(available[0]);
+            }
+          } catch (_) {}
         })
         .catch(() => {
           // Token inválido o expirado
@@ -254,34 +260,13 @@ export const AuthProvider = ({ children }) => {
     }
   }, [token]);
 
-  const login = async (userData, accessToken) => {
+  const login = (userData, accessToken) => {
     resetTheme();
     axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
-
-    const branchCount = userData.branch_ids?.length || 0;
-
-    if (branchCount > 1) {
-      // Multiple branches: fetch names, then show modal
-      setBranchModalLoading(true);
-      setUser(userData);
-      setToken(accessToken);
-      localStorage.setItem('token', accessToken);
-      setShowBranchModal(true);
-      try {
-        const res = await axios.get(`${API}/branches`);
-        const owned = res.data.filter(b => userData.branch_ids.includes(b.id));
-        setUserBranches(owned);
-      } catch (_) {}
-      setBranchModalLoading(false);
-    } else {
-      // 0 or 1 branch: token already carries active_branch_id (auto-set by backend)
-      setUser(userData);
-      setToken(accessToken);
-      localStorage.setItem('token', accessToken);
-      if (userData.active_branch_id) {
-        fetchUserBranches(userData.branch_ids, userData.active_branch_id);
-      }
-    }
+    freshLoginRef.current = true;  // Marcar como login fresco (no recarga)
+    setUser(userData);
+    setToken(accessToken);
+    localStorage.setItem('token', accessToken);
   };
 
   const selectBranch = async (branchId) => {

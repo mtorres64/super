@@ -487,6 +487,7 @@ class BranchCreate(BaseModel):
     nombre: str
     direccion: str
     telefono: Optional[str] = None
+    margen_ajuste: Optional[float] = None  # % de ajuste sobre precios de referencia al crear
 
 class BranchUpdate(BaseModel):
     nombre: Optional[str] = None
@@ -681,10 +682,10 @@ class User(BaseModel):
     @property
     def branch_id(self) -> Optional[str]:
         active = self.active_branch_id
-        if active and active in self.branch_ids:
-            return active
-        # Solo usar fallback automático si hay exactamente una sucursal
-        # Para múltiples sucursales se requiere selección explícita vía active_branch_id
+        if active:
+            # Admin puede operar en cualquier sucursal seleccionada, otros solo en las asignadas
+            if self.rol == UserRole.ADMIN or active in self.branch_ids:
+                return active
         if len(self.branch_ids) == 1:
             return self.branch_ids[0]
         return None
@@ -996,8 +997,10 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             raise HTTPException(status_code=401, detail="User not found")
 
         user = User(**user_doc)
-        if active_branch_id and active_branch_id in user.branch_ids:
-            user = user.copy(update={"active_branch_id": active_branch_id})
+        if active_branch_id:
+            # Admin puede usar cualquier sucursal de su empresa; otros usuarios solo las asignadas
+            if user.rol == UserRole.ADMIN or active_branch_id in user.branch_ids:
+                user = user.copy(update={"active_branch_id": active_branch_id})
         return user
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid authentication credentials")
@@ -1037,16 +1040,29 @@ async def create_branch(branch_data: BranchCreate, user: User = Depends(require_
         })
         if not existing:
             ref = ref_map.get(product["id"])
+            base_precio = ref["precio"] if ref else product["precio"]
+            base_precio_por_peso = ref.get("precio_por_peso") if ref else product.get("precio_por_peso")
+            base_costo = ref.get("costo") if ref else None
+            ajuste = branch_data.margen_ajuste
+            if ajuste is not None and ajuste != 0:
+                factor = 1 + ajuste / 100
+                base_precio = round(base_precio * factor, 2)
+                if base_precio_por_peso:
+                    base_precio_por_peso = round(base_precio_por_peso * factor, 2)
+            nuevo_margen = (
+                round((base_precio - base_costo) / base_costo * 100, 2)
+                if base_costo and base_costo > 0 else (ref.get("margen") if ref else None)
+            )
             bp = BranchProduct(
                 empresa_id=user.empresa_id,
                 product_id=product["id"],
                 branch_id=branch.id,
-                precio=ref["precio"] if ref else product["precio"],
-                precio_por_peso=ref.get("precio_por_peso") if ref else product.get("precio_por_peso"),
+                precio=base_precio,
+                precio_por_peso=base_precio_por_peso,
                 stock=product.get("stock", 0),
                 stock_minimo=product.get("stock_minimo", 10),
-                margen=ref.get("margen") if ref else None,
-                costo=ref.get("costo") if ref else None,
+                margen=nuevo_margen,
+                costo=base_costo,
             )
             await db.branch_products.insert_one(bp.dict())
     return branch
@@ -1605,7 +1621,8 @@ async def login(user_data: UserLogin):
     user = User(**user_doc)
 
     token_data: dict = {"sub": user_doc['id'], "empresa_id": user_doc['empresa_id']}
-    if len(user.branch_ids) == 1:
+    # Solo auto-asignar sucursal para usuarios no-admin con exactamente una sucursal asignada
+    if user.rol != UserRole.ADMIN and len(user.branch_ids) == 1:
         token_data["active_branch_id"] = user.branch_ids[0]
         user = user.copy(update={"active_branch_id": user.branch_ids[0]})
 
@@ -1622,7 +1639,12 @@ class SelectBranchRequest(BaseModel):
 @api_router.post("/auth/select-branch", response_model=Token)
 async def select_branch(data: SelectBranchRequest, current_user: User = Depends(get_current_user)):
     if data.branch_id not in current_user.branch_ids:
-        raise HTTPException(status_code=403, detail="No tiene acceso a esa sucursal")
+        if current_user.rol == UserRole.ADMIN:
+            branch = await db.branches.find_one({"id": data.branch_id, "empresa_id": current_user.empresa_id})
+            if not branch:
+                raise HTTPException(status_code=403, detail="Sucursal no encontrada en esta empresa")
+        else:
+            raise HTTPException(status_code=403, detail="No tiene acceso a esa sucursal")
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": current_user.id, "empresa_id": current_user.empresa_id, "active_branch_id": data.branch_id},
