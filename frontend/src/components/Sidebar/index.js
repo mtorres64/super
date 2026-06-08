@@ -90,7 +90,7 @@ const menuItems = [
 ];
 
 const Sidebar = ({ isOpen, onClose, stockAlertCount = 0, notifCount = 0 }) => {
-  const { user, logout, modulosActivos } = useContext(AuthContext);
+  const { user, logout, modulosActivos, activeBranch, userBranches, openBranchSelector } = useContext(AuthContext);
   const location = useLocation();
   const [config, setConfig] = useState(null);
 
@@ -138,6 +138,9 @@ const Sidebar = ({ isOpen, onClose, stockAlertCount = 0, notifCount = 0 }) => {
       isActive={isActive}
       onClose={onClose}
       onLogout={handleLogout}
+      activeBranch={activeBranch}
+      canSwitchBranch={userBranches.length > 1}
+      onSwitchBranch={openBranchSelector}
     />
   );
 };

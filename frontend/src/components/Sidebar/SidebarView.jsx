@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import PulsLogo from '../PulsLogo';
-import { LogOut, X } from 'lucide-react';
+import { LogOut, X, ArrowLeftRight } from 'lucide-react';
 
 const SidebarView = ({
   isOpen,
@@ -13,6 +13,9 @@ const SidebarView = ({
   isActive,
   onClose,
   onLogout,
+  activeBranch,
+  canSwitchBranch,
+  onSwitchBranch,
 }) => {
   return (
     <div className={`sidebar ${isOpen ? 'sidebar-open' : ''}`}>
@@ -71,10 +74,24 @@ const SidebarView = ({
           <div className="user-avatar">
             {user?.nombre?.charAt(0).toUpperCase()}
           </div>
-          <div className="user-details">
-            <h4>{user?.nombre}</h4>
+          <div className="user-details flex-1 min-w-0">
+            <h4 className="truncate">{user?.nombre}</h4>
             <p className="capitalize">{user?.rol}</p>
+            {activeBranch && (
+              <p className="text-xs font-medium truncate" style={{ color: 'var(--primary, #10b981)' }}>
+                {activeBranch.nombre}
+              </p>
+            )}
           </div>
+          {canSwitchBranch && (
+            <button
+              onClick={onSwitchBranch}
+              title="Cambiar sucursal"
+              className="shrink-0 p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-700"
+            >
+              <ArrowLeftRight className="w-4 h-4" />
+            </button>
+          )}
         </div>
         <button
           onClick={onLogout}

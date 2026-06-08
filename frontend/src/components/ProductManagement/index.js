@@ -12,7 +12,7 @@ const normalize = (str) =>
 
 const ProductManagement = () => {
   const navigate = useNavigate();
-  const { user } = useContext(AuthContext);
+  const { user, activeBranch } = useContext(AuthContext);
   const [products, setProducts] = useState([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -565,6 +565,7 @@ const ProductManagement = () => {
   return (
     <ProductManagementView
       user={user}
+      activeBranch={activeBranch}
       navigate={navigate}
       products={comboProducts}
       total={total}

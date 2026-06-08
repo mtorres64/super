@@ -25,6 +25,7 @@ import StockAlerts from './components/StockAlerts';
 import Notificaciones from './components/Notificaciones';
 import Manual from './components/Manual';
 import { Toaster } from './components/ui/sonner';
+import BranchSelectionModal from './components/BranchSelectionModal';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -165,6 +166,10 @@ export const AuthProvider = ({ children }) => {
   const [modulosActivos, setModulosActivos] = useState([]);
   const [isImpersonating] = useState(() => localStorage.getItem('impersonation_active') === 'true');
   const impersonationEmpresa = localStorage.getItem('impersonation_empresa_nombre') || '';
+  const [activeBranch, setActiveBranch] = useState(null);
+  const [userBranches, setUserBranches] = useState([]);
+  const [showBranchModal, setShowBranchModal] = useState(false);
+  const [branchModalLoading, setBranchModalLoading] = useState(false);
 
   const fetchSuscripcion = React.useCallback((currentToken) => {
     const tkn = currentToken || localStorage.getItem('token');
@@ -196,14 +201,42 @@ export const AuthProvider = ({ children }) => {
     return () => axios.interceptors.response.eject(interceptor);
   }, []);
 
+  const fetchUserBranches = React.useCallback(async (branchIds, activeBranchId) => {
+    if (!branchIds || branchIds.length === 0) return;
+    try {
+      const res = await axios.get(`${API}/branches`);
+      const owned = res.data.filter(b => branchIds.includes(b.id));
+      setUserBranches(owned);
+      if (activeBranchId) {
+        const branch = owned.find(b => b.id === activeBranchId);
+        if (branch) setActiveBranch(branch);
+      }
+    } catch (_) {}
+  }, []);
+
   useEffect(() => {
     if (token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       // Restaurar usuario tras recarga de página
       axios.get(`${API}/auth/me`)
-        .then(res => {
+        .then(async res => {
           setUser(res.data);
           fetchSuscripcion(token);
+          const branchIds = res.data.branch_ids || [];
+          const activeBranchId = res.data.active_branch_id;
+          if (branchIds.length > 1 && !activeBranchId) {
+            // Token viejo sin sucursal seleccionada — forzar selección
+            setBranchModalLoading(true);
+            setShowBranchModal(true);
+            try {
+              const brRes = await axios.get(`${API}/branches`);
+              const owned = brRes.data.filter(b => branchIds.includes(b.id));
+              setUserBranches(owned);
+            } catch (_) {}
+            setBranchModalLoading(false);
+          } else {
+            fetchUserBranches(branchIds, activeBranchId);
+          }
         })
         .catch(() => {
           // Token inválido o expirado
@@ -221,13 +254,49 @@ export const AuthProvider = ({ children }) => {
     }
   }, [token]);
 
-  const login = (userData, accessToken) => {
-    resetTheme(); // limpiar tema de sesión anterior antes de cargar el nuevo
-    setUser(userData);
-    setToken(accessToken);
-    localStorage.setItem('token', accessToken);
+  const login = async (userData, accessToken) => {
+    resetTheme();
     axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
-    // fetchSuscripcion se llama desde el useEffect vía /auth/me, no directamente acá
+
+    const branchCount = userData.branch_ids?.length || 0;
+
+    if (branchCount > 1) {
+      // Multiple branches: fetch names, then show modal
+      setBranchModalLoading(true);
+      setUser(userData);
+      setToken(accessToken);
+      localStorage.setItem('token', accessToken);
+      setShowBranchModal(true);
+      try {
+        const res = await axios.get(`${API}/branches`);
+        const owned = res.data.filter(b => userData.branch_ids.includes(b.id));
+        setUserBranches(owned);
+      } catch (_) {}
+      setBranchModalLoading(false);
+    } else {
+      // 0 or 1 branch: token already carries active_branch_id (auto-set by backend)
+      setUser(userData);
+      setToken(accessToken);
+      localStorage.setItem('token', accessToken);
+      if (userData.active_branch_id) {
+        fetchUserBranches(userData.branch_ids, userData.active_branch_id);
+      }
+    }
+  };
+
+  const selectBranch = async (branchId) => {
+    try {
+      const res = await axios.post(`${API}/auth/select-branch`, { branch_id: branchId });
+      const newToken = res.data.access_token;
+      const newUser = res.data.user;
+      setToken(newToken);
+      setUser(newUser);
+      localStorage.setItem('token', newToken);
+      axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+      const branch = userBranches.find(b => b.id === branchId);
+      setActiveBranch(branch || null);
+      setShowBranchModal(false);
+    } catch (_) {}
   };
 
   const logout = () => {
@@ -235,6 +304,9 @@ export const AuthProvider = ({ children }) => {
     setToken(null);
     setSuscripcion(null);
     setModulosActivos([]);
+    setActiveBranch(null);
+    setUserBranches([]);
+    setShowBranchModal(false);
     localStorage.removeItem('token');
     localStorage.removeItem('dark_mode');
     localStorage.removeItem('impersonation_active');
@@ -242,7 +314,6 @@ export const AuthProvider = ({ children }) => {
     document.documentElement.classList.remove('dark');
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#ffffff');
     delete axios.defaults.headers.common['Authorization'];
-    // Restaurar colores por defecto (verde) al cerrar sesión
     resetTheme();
   };
 
@@ -254,8 +325,21 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading, suscripcion, modulosActivos, refreshSuscripcion: fetchSuscripcion, isImpersonating, impersonationEmpresa, stopImpersonation }}>
+    <AuthContext.Provider value={{
+      user, token, login, logout, loading,
+      suscripcion, modulosActivos, refreshSuscripcion: fetchSuscripcion,
+      isImpersonating, impersonationEmpresa, stopImpersonation,
+      activeBranch, userBranches, selectBranch,
+      openBranchSelector: () => setShowBranchModal(true),
+    }}>
       {children}
+      {showBranchModal && (
+        <BranchSelectionModal
+          branches={userBranches}
+          loading={branchModalLoading}
+          onSelect={selectBranch}
+        />
+      )}
     </AuthContext.Provider>
   );
 };

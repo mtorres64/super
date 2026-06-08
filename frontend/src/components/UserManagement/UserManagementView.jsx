@@ -26,7 +26,7 @@ const UserManagementView = ({
   toggleUserActive,
   getRoleBadge,
   getRoleLabel,
-  getBranchName,
+  getBranchNames,
   sortConfig,
   requestSort,
 }) => {
@@ -93,7 +93,7 @@ const UserManagementView = ({
                 <td>
                   <div className="flex items-center gap-1 text-sm text-gray-600">
                     <Building2 className="w-4 h-4 text-gray-400" />
-                    {getBranchName(user.branch_id)}
+                    {getBranchNames(user.branch_ids)}
                   </div>
                 </td>
                 <td>
@@ -182,35 +182,44 @@ const UserManagementView = ({
                   </>
                 )}
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="form-group">
-                    <label className="form-label">Rol *</label>
-                    <select
-                      className="form-select"
-                      value={formData.rol}
-                      onChange={(e) => setFormData({ ...formData, rol: e.target.value })}
-                    >
-                      <option value="cajero">Cajero</option>
-                      <option value="supervisor">Supervisor</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </div>
+                <div className="form-group">
+                  <label className="form-label">Rol *</label>
+                  <select
+                    className="form-select"
+                    value={formData.rol}
+                    onChange={(e) => setFormData({ ...formData, rol: e.target.value })}
+                  >
+                    <option value="cajero">Cajero</option>
+                    <option value="supervisor">Supervisor</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
 
-                  <div className="form-group">
-                    <label className="form-label">Sucursal</label>
-                    <select
-                      className="form-select"
-                      value={formData.branch_id}
-                      onChange={(e) => setFormData({ ...formData, branch_id: e.target.value })}
-                    >
-                      <option value="">Sin sucursal</option>
+                <div className="form-group">
+                  <label className="form-label">Sucursales</label>
+                  {branches.length === 0 ? (
+                    <p className="text-sm text-gray-400">No hay sucursales registradas</p>
+                  ) : (
+                    <div className="border border-gray-200 rounded-lg p-2 space-y-1 max-h-32 overflow-y-auto">
                       {branches.map(branch => (
-                        <option key={branch.id} value={branch.id}>
+                        <label key={branch.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5">
+                          <input
+                            type="checkbox"
+                            className="accent-green-600"
+                            checked={formData.branch_ids.includes(branch.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setFormData({ ...formData, branch_ids: [...formData.branch_ids, branch.id] });
+                              } else {
+                                setFormData({ ...formData, branch_ids: formData.branch_ids.filter(id => id !== branch.id) });
+                              }
+                            }}
+                          />
                           {branch.nombre}
-                        </option>
+                        </label>
                       ))}
-                    </select>
-                  </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

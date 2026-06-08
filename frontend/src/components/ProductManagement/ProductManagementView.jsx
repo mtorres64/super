@@ -9,6 +9,7 @@ import { getCategoryIcon, ICON_OPTIONS } from '../../utils/categoryIcons';
 
 const ProductManagementView = ({
   user,
+  activeBranch,
   navigate,
   products,
   total,
@@ -182,7 +183,7 @@ const ProductManagementView = ({
             {total} productos registrados
           </p>
           <button
-            onClick={() => navigate('/branches', { state: { branchId: user?.branch_id } })}
+            onClick={() => navigate('/branches', { state: { branchId: activeBranch?.id || user?.branch_id } })}
             className="mt-1 text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
           >
             <Tag className="w-3 h-3" />

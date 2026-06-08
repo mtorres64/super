@@ -56,10 +56,9 @@ const POS = () => {
   const [showPriceCheck, setShowPriceCheck] = useState(false);
   const [priceCheckQuery, setPriceCheckQuery] = useState('');
   const [priceCheckResult, setPriceCheckResult] = useState(null);
-  const [branchName, setBranchName] = useState(null);
   const [branchCount, setBranchCount] = useState(0);
   const [receiptClosing, setReceiptClosing] = useState(false);
-  const { user } = useContext(AuthContext);
+  const { user, activeBranch } = useContext(AuthContext);
 
   const closeReceipt = () => {
     setReceiptClosing(true);
@@ -88,17 +87,10 @@ const POS = () => {
   const searchingRef = useRef(false);
 
   useEffect(() => {
-    const branchId = user?.branch_id || currentSession?.branch_id;
-    if (branchId) {
-      axios.get(`${API}/branches`)
-        .then(res => {
-          setBranchCount(res.data.length);
-          const branch = res.data.find(b => b.id === branchId);
-          if (branch) setBranchName(branch.nombre);
-        })
-        .catch(() => {});
-    }
-  }, [user, currentSession]);
+    axios.get(`${API}/branches`)
+      .then(res => setBranchCount(res.data.length))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetchCategories();
@@ -140,11 +132,11 @@ const POS = () => {
     setCurrentPage(1);
   };
 
-  // Reload products when page or search changes (wait for config first)
+  // Reload products when page, search, or active branch changes (wait for config first)
   useEffect(() => {
     if (!configLoaded) return;
     loadProducts(currentPage, debouncedSearch);
-  }, [currentPage, debouncedSearch, configLoaded]);
+  }, [currentPage, debouncedSearch, configLoaded, activeBranch?.id]);
 
   const fetchCurrentSession = async () => {
     try {
@@ -185,7 +177,7 @@ const POS = () => {
     const perPage = config?.items_per_page || 10;
     try {
       let response;
-      if (user?.branch_id) {
+      if (activeBranch?.id || user?.branch_id) {
         response = await axios.get(`${API}/branch-products`, {
           params: { page, per_page: perPage, ...(search && { search }) }
         });
@@ -219,7 +211,7 @@ const POS = () => {
     searchingRef.current = true;
 
     try {
-      const endpoint = user?.branch_id ? `${API}/branch-products` : `${API}/products`;
+      const endpoint = (activeBranch?.id || user?.branch_id) ? `${API}/branch-products` : `${API}/products`;
       const response = await axios.get(endpoint, { params: { search: code, per_page: 10, page: 1 } });
       const items = response.data.items || [];
       const match = items.find(p => p.codigo_barras === code);
@@ -513,7 +505,7 @@ const POS = () => {
     const q = query.trim();
     if (!q) return;
     try {
-      const endpoint = user?.branch_id ? `${API}/branch-products` : `${API}/products`;
+      const endpoint = (activeBranch?.id || user?.branch_id) ? `${API}/branch-products` : `${API}/products`;
       const response = await axios.get(endpoint, { params: { search: q, per_page: 20, page: 1 } });
       const items = response.data.items || [];
       const exact = items.find(p => p.codigo_barras === q);
@@ -698,7 +690,7 @@ const POS = () => {
       searchPriceCheck={searchPriceCheck}
       showBarcodeScanner={showBarcodeScanner}
       handleCameraScan={handleCameraScan}
-      branchName={branchName}
+      branchName={activeBranch?.nombre || null}
       branchCount={branchCount}
       infoPanelVisible={infoPanelVisible}
       toggleInfoPanel={toggleInfoPanel}

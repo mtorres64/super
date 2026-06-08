@@ -10,7 +10,7 @@ import re
 import json
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, root_validator
 from typing import List, Optional
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -513,6 +513,7 @@ class CashSession(BaseModel):
 class CashSessionCreate(BaseModel):
     monto_inicial: float
     observaciones: Optional[str] = None
+    branch_id: Optional[str] = None
 
 class CashSessionClose(BaseModel):
     monto_final: float
@@ -666,22 +667,45 @@ class User(BaseModel):
     nombre: str
     email: str
     rol: UserRole
-    branch_id: Optional[str] = None
+    branch_ids: List[str] = []
+    active_branch_id: Optional[str] = None
     activo: bool = True
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @root_validator(pre=True)
+    def migrate_branch_id(cls, values):
+        if not values.get('branch_ids') and values.get('branch_id'):
+            values['branch_ids'] = [values['branch_id']]
+        return values
+
+    @property
+    def branch_id(self) -> Optional[str]:
+        active = self.active_branch_id
+        if active and active in self.branch_ids:
+            return active
+        # Solo usar fallback automático si hay exactamente una sucursal
+        # Para múltiples sucursales se requiere selección explícita vía active_branch_id
+        if len(self.branch_ids) == 1:
+            return self.branch_ids[0]
+        return None
+
+    def dict(self, **kwargs):
+        d = super().dict(**kwargs)
+        d['branch_id'] = self.branch_id
+        return d
 
 class UserCreate(BaseModel):
     nombre: str
     email: str
     password: str
     rol: UserRole
-    branch_id: Optional[str] = None
+    branch_ids: List[str] = []
 
 class UserUpdate(BaseModel):
     nombre: Optional[str] = None
     email: Optional[str] = None
     rol: Optional[UserRole] = None
-    branch_id: Optional[str] = None
+    branch_ids: Optional[List[str]] = None
     activo: Optional[bool] = None
 
 class UserLogin(BaseModel):
@@ -963,14 +987,18 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
         empresa_id: str = payload.get("empresa_id")
+        active_branch_id: Optional[str] = payload.get("active_branch_id")
         if user_id is None or empresa_id is None:
             raise HTTPException(status_code=401, detail="Invalid authentication credentials")
 
-        user = await db.users.find_one({"id": user_id, "empresa_id": empresa_id})
-        if user is None:
+        user_doc = await db.users.find_one({"id": user_id, "empresa_id": empresa_id})
+        if user_doc is None:
             raise HTTPException(status_code=401, detail="User not found")
 
-        return User(**user)
+        user = User(**user_doc)
+        if active_branch_id and active_branch_id in user.branch_ids:
+            user = user.copy(update={"active_branch_id": active_branch_id})
+        return user
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid authentication credentials")
 
@@ -1200,6 +1228,10 @@ async def delete_branch(branch_id: str, user: User = Depends(require_role([UserR
     await db.cash_sessions.delete_many({"branch_id": branch_id, "empresa_id": user.empresa_id})
     await db.branch_products.delete_many({"branch_id": branch_id, "empresa_id": user.empresa_id})
     await db.users.update_many(
+        {"empresa_id": user.empresa_id},
+        {"$pull": {"branch_ids": branch_id}}
+    )
+    await db.users.update_many(
         {"branch_id": branch_id, "empresa_id": user.empresa_id},
         {"$unset": {"branch_id": ""}}
     )
@@ -1208,8 +1240,17 @@ async def delete_branch(branch_id: str, user: User = Depends(require_role([UserR
 # Cash Session routes
 @api_router.post("/cash-sessions", response_model=CashSession)
 async def open_cash_session(session_data: CashSessionCreate, user: User = Depends(get_current_user)):
-    if not user.branch_id:
+    if not user.branch_ids:
         raise HTTPException(status_code=400, detail="El usuario debe estar asignado a una sucursal")
+
+    session_branch_id = session_data.branch_id
+    if not session_branch_id:
+        if len(user.branch_ids) == 1:
+            session_branch_id = user.branch_ids[0]
+        else:
+            raise HTTPException(status_code=400, detail="Debe seleccionar una sucursal para abrir la caja")
+    elif session_branch_id not in user.branch_ids:
+        raise HTTPException(status_code=403, detail="No tiene acceso a esa sucursal")
 
     # Check if there's already an open session for this user
     existing_session = await db.cash_sessions.find_one({
@@ -1223,7 +1264,7 @@ async def open_cash_session(session_data: CashSessionCreate, user: User = Depend
     # Create new session
     session = CashSession(
         empresa_id=user.empresa_id,
-        branch_id=user.branch_id,
+        branch_id=session_branch_id,
         user_id=user.id,
         monto_inicial=session_data.monto_inicial,
         observaciones=session_data.observaciones
@@ -1296,8 +1337,8 @@ async def get_cash_sessions(user: User = Depends(get_current_user)):
         sessions = await db.cash_sessions.find({"user_id": user.id, "empresa_id": user.empresa_id}).sort("fecha_apertura", -1).to_list(100)
     else:
         query = {"empresa_id": user.empresa_id}
-        if user.branch_id and user.rol != UserRole.ADMIN:
-            query["branch_id"] = user.branch_id
+        if user.branch_ids and user.rol != UserRole.ADMIN:
+            query["branch_id"] = {"$in": user.branch_ids}
         sessions = await db.cash_sessions.find(query).sort("fecha_apertura", -1).to_list(1000)
 
     return [CashSession(**session) for session in sessions]
@@ -1444,8 +1485,8 @@ async def register(user_data: UserCreate, current_user: User = Depends(require_r
     user_dict.pop('password')
     user = User(**user_dict, empresa_id=current_user.empresa_id)
 
-    # Store in database
-    user_doc = user.dict()
+    # Store in database (exclude computed/runtime fields)
+    user_doc = user.dict(exclude={'active_branch_id', 'branch_id'})
     user_doc['password'] = hashed_password
     await db.users.insert_one(user_doc)
 
@@ -1560,19 +1601,35 @@ async def login(user_data: UserLogin):
     if empresa_doc and not empresa_doc.get('email_verificado', True):
         raise HTTPException(status_code=403, detail="Correo no verificado. Completá el registro de tu empresa.")
 
-    # Create access token with empresa_id
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user_doc['id'], "empresa_id": user_doc['empresa_id']},
-        expires_delta=access_token_expires
-    )
-
     user = User(**user_doc)
+
+    token_data: dict = {"sub": user_doc['id'], "empresa_id": user_doc['empresa_id']}
+    if len(user.branch_ids) == 1:
+        token_data["active_branch_id"] = user.branch_ids[0]
+        user = user.copy(update={"active_branch_id": user.branch_ids[0]})
+
+    access_token = create_access_token(data=token_data, expires_delta=access_token_expires)
     return Token(access_token=access_token, token_type="bearer", user=user)
 
 @api_router.get("/auth/me", response_model=User)
 async def get_me(user: User = Depends(get_current_user)):
     return user
+
+class SelectBranchRequest(BaseModel):
+    branch_id: str
+
+@api_router.post("/auth/select-branch", response_model=Token)
+async def select_branch(data: SelectBranchRequest, current_user: User = Depends(get_current_user)):
+    if data.branch_id not in current_user.branch_ids:
+        raise HTTPException(status_code=403, detail="No tiene acceso a esa sucursal")
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": current_user.id, "empresa_id": current_user.empresa_id, "active_branch_id": data.branch_id},
+        expires_delta=access_token_expires
+    )
+    updated_user = current_user.copy(update={"active_branch_id": data.branch_id})
+    return Token(access_token=access_token, token_type="bearer", user=updated_user)
 
 # Category routes
 @api_router.post("/categories", response_model=Category)
@@ -2278,9 +2335,9 @@ async def update_user(user_id: str, user_data: UserUpdate, current_user: User = 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     update_data = {k: v for k, v in user_data.dict().items() if v is not None}
-    # Allow explicitly setting branch_id to None (removing branch assignment)
-    if "branch_id" in user_data.dict() and user_data.branch_id is None:
-        update_data["branch_id"] = None
+    # Allow explicitly setting branch_ids to empty list (removing all branch assignments)
+    if user_data.branch_ids is not None:
+        update_data["branch_ids"] = user_data.branch_ids
     if update_data:
         await db.users.update_one({"id": user_id, "empresa_id": current_user.empresa_id}, {"$set": update_data})
     updated = await db.users.find_one({"id": user_id, "empresa_id": current_user.empresa_id})

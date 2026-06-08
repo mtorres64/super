@@ -18,7 +18,7 @@ const UserManagement = () => {
     email: '',
     password: '',
     rol: 'cajero',
-    branch_id: ''
+    branch_ids: []
   });
 
   useEffect(() => {
@@ -47,7 +47,7 @@ const UserManagement = () => {
   };
 
   const resetForm = () => {
-    setFormData({ nombre: '', email: '', password: '', rol: 'cajero', branch_id: '' });
+    setFormData({ nombre: '', email: '', password: '', rol: 'cajero', branch_ids: [] });
     setEditingUser(null);
   };
 
@@ -58,7 +58,7 @@ const UserManagement = () => {
         email: user.email,
         password: '',
         rol: user.rol,
-        branch_id: user.branch_id || ''
+        branch_ids: user.branch_ids || []
       });
       setEditingUser(user);
     } else {
@@ -80,7 +80,7 @@ const UserManagement = () => {
         const updateData = {
           nombre: formData.nombre,
           rol: formData.rol,
-          branch_id: formData.branch_id || null
+          branch_ids: formData.branch_ids
         };
         await axios.put(`${API}/users/${editingUser.id}`, updateData);
         toast.success('Usuario actualizado exitosamente');
@@ -90,7 +90,7 @@ const UserManagement = () => {
           email: formData.email.toLowerCase(),
           password: formData.password,
           rol: formData.rol,
-          branch_id: formData.branch_id || null
+          branch_ids: formData.branch_ids
         };
         await axios.post(`${API}/auth/register`, createData);
         toast.success('Usuario creado exitosamente');
@@ -126,9 +126,12 @@ const UserManagement = () => {
     return labels[rol] || rol;
   };
 
-  const getBranchName = (branchId) => {
-    const branch = branches.find(b => b.id === branchId);
-    return branch ? branch.nombre : '—';
+  const getBranchNames = (branchIds) => {
+    if (!branchIds || branchIds.length === 0) return '—';
+    return branchIds.map(id => {
+      const branch = branches.find(b => b.id === id);
+      return branch ? branch.nombre : '?';
+    }).join(', ');
   };
 
   const { sortedItems: sortedUsers, sortConfig, requestSort } = useSortableData(users);
@@ -151,7 +154,7 @@ const UserManagement = () => {
       toggleUserActive={toggleUserActive}
       getRoleBadge={getRoleBadge}
       getRoleLabel={getRoleLabel}
-      getBranchName={getBranchName}
+      getBranchNames={getBranchNames}
     />
   );
 };
