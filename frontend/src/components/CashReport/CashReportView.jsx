@@ -48,30 +48,53 @@ const CashReportView = ({
   const { sortedItems: movements, sortConfig, requestSort } = useSortableData(rawMovements || []);
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6">
+    <div className="p-6">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6 print:shadow-none">
-          <div className="flex flex-col md:flex-row md:justify-between md:items-start mb-6 gap-3">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                <FileText className="w-8 h-8 inline mr-2" />
-                Reporte de Arqueo de Caja
-              </h1>
-              <p className="text-gray-600">
-                Sesión ID: {session.id.slice(0, 8)}...
-              </p>
+        <div className="bg-white rounded-lg shadow-lg mb-6 print:shadow-none overflow-hidden">
+          {/* Banner identificador */}
+          <div className="px-6 py-4" style={{ background: 'var(--primary)', color: 'var(--primary-text)' }}>
+            <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
+              <div>
+                <div className="flex items-center gap-2 mb-1" style={{ opacity: 0.75 }}>
+                  <FileText className="w-5 h-5" />
+                  <span className="text-sm font-medium uppercase tracking-wider">Reporte de Arqueo de Caja</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="flex items-center gap-1.5 text-lg font-bold">
+                    <User className="w-5 h-5" style={{ opacity: 0.75 }} />
+                    {user?.nombre}
+                  </span>
+                  <span style={{ opacity: 0.5 }}>·</span>
+                  <span className="flex items-center gap-1.5 text-lg font-semibold">
+                    <MapPin className="w-5 h-5" style={{ opacity: 0.75 }} />
+                    {branch?.nombre}
+                  </span>
+                  <span style={{ opacity: 0.5 }}>·</span>
+                  <span className="px-2 py-0.5 rounded-full text-sm font-medium" style={{ background: 'rgba(0,0,0,0.2)' }}>
+                    {isClosed ? 'Cerrada' : 'Abierta'}
+                  </span>
+                </div>
+                <p className="text-xs mt-1" style={{ opacity: 0.6 }}>
+                  ID sesión: {session.id.slice(0, 8).toUpperCase()}
+                  {branch?.direccion && <span> · {branch.direccion}</span>}
+                </p>
+              </div>
+              <button
+                onClick={handlePrint}
+                disabled={generatingPdf}
+                className="print:hidden flex items-center gap-2 px-4 py-2 rounded font-medium text-sm transition-colors whitespace-nowrap"
+                style={{ background: 'rgba(255,255,255,0.2)', color: 'var(--primary-text)', border: '1px solid rgba(255,255,255,0.3)' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
+              >
+                <Printer className="w-4 h-4" />
+                {generatingPdf ? 'Generando PDF...' : 'Descargar PDF'}
+              </button>
             </div>
-
-            <button
-              onClick={handlePrint}
-              disabled={generatingPdf}
-              className="btn btn-secondary print:hidden flex items-center gap-2"
-            >
-              <Printer className="w-4 h-4" />
-              {generatingPdf ? 'Generando PDF...' : 'Descargar PDF'}
-            </button>
           </div>
+
+          <div className="p-6">
 
           {/* Session Info */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -130,6 +153,7 @@ const CashReportView = ({
               </div>
             </div>
           </div>
+          </div>{/* /p-6 */}
         </div>
 
         {/* Financial Summary */}

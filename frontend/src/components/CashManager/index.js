@@ -21,6 +21,8 @@ const CashManager = () => {
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historyTotalPages, setHistoryTotalPages] = useState(1);
   const [historyPerPage, setHistoryPerPage] = useState(10);
+  const [historyBranchFilter, setHistoryBranchFilter] = useState('');
+  const [branches, setBranches] = useState([]);
   const [showAdminCloseModal, setShowAdminCloseModal] = useState(false);
   const [adminCloseTarget, setAdminCloseTarget] = useState(null);
   const [adminCloseForm, setAdminCloseForm] = useState({ monto_final: '', observaciones: '' });
@@ -50,21 +52,31 @@ const CashManager = () => {
 
   const fetchConfig = async () => {
     try {
-      const response = await axios.get(`${API}/config`);
-      const perPage = response.data?.items_per_page || 10;
+      const [configRes, branchesRes] = await Promise.all([
+        axios.get(`${API}/config`),
+        axios.get(`${API}/branches`),
+      ]);
+      const perPage = configRes.data?.items_per_page || 10;
       setHistoryPerPage(perPage);
-      fetchHistory(1, perPage);
+      setBranches(branchesRes.data || []);
+      const defaultBranch = activeBranch?.id || '';
+      setHistoryBranchFilter(defaultBranch);
+      fetchHistory(1, perPage, defaultBranch);
     } catch {
-      fetchHistory(1, historyPerPage);
+      fetchHistory(1, historyPerPage, historyBranchFilter);
     }
   };
 
-  const fetchHistory = async (page = 1, perPage) => {
+  const fetchHistory = async (page = 1, perPage, branchId) => {
     setHistoryLoading(true);
     try {
-      const response = await axios.get(`${API}/cash-sessions/history`, {
-        params: { page, per_page: perPage ?? historyPerPage },
-      });
+      const params = {
+        page,
+        per_page: perPage ?? historyPerPage,
+      };
+      const branch = branchId !== undefined ? branchId : historyBranchFilter;
+      if (branch) params.branch_id = branch;
+      const response = await axios.get(`${API}/cash-sessions/history`, { params });
       setSessionHistory(response.data.items);
       setHistoryTotal(response.data.total);
       setHistoryTotalPages(response.data.total_pages);
@@ -78,6 +90,11 @@ const CashManager = () => {
 
   const handleHistoryPageChange = (page) => {
     fetchHistory(page);
+  };
+
+  const handleBranchFilterChange = (branchId) => {
+    setHistoryBranchFilter(branchId);
+    fetchHistory(1, undefined, branchId);
   };
 
   const openAdminCloseModal = (session) => {
@@ -208,6 +225,9 @@ const CashManager = () => {
       historyTotalPages={historyTotalPages}
       historyPerPage={historyPerPage}
       onHistoryPageChange={handleHistoryPageChange}
+      branches={branches}
+      historyBranchFilter={historyBranchFilter}
+      onBranchFilterChange={handleBranchFilterChange}
       showAdminCloseModal={showAdminCloseModal}
       adminCloseTarget={adminCloseTarget}
       adminCloseForm={adminCloseForm}

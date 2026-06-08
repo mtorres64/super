@@ -11,7 +11,9 @@ import {
   BookOpen,
   Clock,
   History,
-  Eye
+  Eye,
+  Filter,
+  Building2
 } from 'lucide-react';
 
 const CashManagerView = ({
@@ -44,6 +46,9 @@ const CashManagerView = ({
   historyTotalPages,
   historyPerPage,
   onHistoryPageChange,
+  branches,
+  historyBranchFilter,
+  onBranchFilterChange,
   showAdminCloseModal,
   adminCloseTarget,
   adminCloseForm,
@@ -265,6 +270,30 @@ const CashManagerView = ({
           <div className="flex items-center mb-4">
             <History className="w-5 h-5 text-gray-600 mr-2" />
             <h2 className="text-xl font-semibold text-gray-900">Historial de Cajas</h2>
+          </div>
+
+          {/* Filtros */}
+          <div className="bg-white rounded-lg shadow p-4 mb-4">
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-gray-500" />
+                <span className="font-medium text-gray-700">Filtrar por:</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-gray-400" />
+                <select
+                  className="form-select"
+                  value={historyBranchFilter}
+                  onChange={(e) => onBranchFilterChange(e.target.value)}
+                >
+                  <option value="">Todas las sucursales</option>
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>{b.nombre}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
 
           {historyLoading ? (

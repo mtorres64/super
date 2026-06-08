@@ -1384,6 +1384,7 @@ async def get_cash_sessions_history(
     user: User = Depends(get_current_user),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
+    branch_id: Optional[str] = Query(None),
 ):
     if user.rol == UserRole.CAJERO:
         raise HTTPException(status_code=403, detail="No tiene permisos para ver el historial")
@@ -1391,6 +1392,8 @@ async def get_cash_sessions_history(
     query = {"empresa_id": user.empresa_id}
     if user.rol != UserRole.ADMIN and user.branch_ids:
         query["branch_id"] = {"$in": user.branch_ids}
+    if branch_id:
+        query["branch_id"] = branch_id
 
     total = await db.cash_sessions.count_documents(query)
     skip = (page - 1) * per_page
