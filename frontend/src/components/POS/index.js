@@ -163,6 +163,11 @@ const POS = () => {
     setCurrentPage(1);
   };
 
+  // Re-fetch cash session when branch changes
+  useEffect(() => {
+    fetchCurrentSession();
+  }, [activeBranch?.id]);
+
   // Reload products when page, search, or active branch changes (wait for config first)
   useEffect(() => {
     if (!configLoaded) return;
@@ -369,7 +374,23 @@ const POS = () => {
     }
   }, [cart.length]);
 
+  // Autocompletar CUIT del receptor cuando el cliente tiene CUIT y se usa Factura A
+  useEffect(() => {
+    if (
+      invoiceConfig.tipo_comprobante === 'factura_a' &&
+      selectedCustomer?.tipo_documento === 'cuit' &&
+      selectedCustomer?.documento
+    ) {
+      setInvoiceConfig(prev => ({ ...prev, cuit_receptor: selectedCustomer.documento }));
+    }
+  }, [selectedCustomer, invoiceConfig.tipo_comprobante]);
+
   const addToCart = (product, quantity = 1) => {
+    if (!currentSession) {
+      const sucursal = activeBranch?.nombre || 'esta sucursal';
+      toast.error(`No hay caja abierta en ${sucursal}. Abrí la caja desde Gestión de Caja para poder vender.`);
+      return;
+    }
     const stockControlActive = config?.auto_update_inventory !== false;
     const productControlsStock = product.control_stock !== false;
     if (stockControlActive && productControlsStock && (product.stock ?? 0) <= 0) {
@@ -485,6 +506,11 @@ const POS = () => {
       return;
     }
 
+    if (invoiceConfig.tipo_comprobante === 'factura_a' && !invoiceConfig.cuit_receptor?.trim()) {
+      toast.error('Factura A requiere el CUIT del receptor');
+      return;
+    }
+
     setLoading(true);
     try {
       const descuento = calculateDiscount();
@@ -550,7 +576,6 @@ const POS = () => {
 
   const sessionDisabledStyle = {
     opacity: !sessionLoading && !currentSession ? 0.5 : 1,
-    pointerEvents: !sessionLoading && !currentSession ? 'none' : 'auto',
   };
 
   const closePriceCheck = () => {

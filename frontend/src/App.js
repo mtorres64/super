@@ -26,6 +26,7 @@ import Notificaciones from './components/Notificaciones';
 import Manual from './components/Manual';
 import CustomerManagement from './components/CustomerManagement';
 import { Toaster } from './components/ui/sonner';
+import { toast } from 'sonner';
 import BranchSelectionModal from './components/BranchSelectionModal';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;

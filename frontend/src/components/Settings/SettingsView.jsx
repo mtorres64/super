@@ -22,7 +22,8 @@ import {
   Zap,
   ZapOff,
   Moon,
-  Sun
+  Sun,
+  FileText
 } from 'lucide-react';
 import { COLOR_THEMES, getContrastColor } from './index';
 
@@ -68,9 +69,8 @@ const SettingsView = ({
     { id: 'pos', label: 'Punto de Venta', icon: ShoppingCart },
     { id: 'inventory', label: 'Inventario', icon: Archive },
     { id: 'interface', label: 'Interfaz', icon: Grid3X3 },
-    { id: 'system', label: 'Sistema', icon: Globe },
     { id: 'receipt', label: 'Recibos', icon: Receipt },
-    // { id: 'afip', label: 'ARCA / AFIP', icon: FileText },
+    { id: 'afip', label: 'ARCA / AFIP', icon: FileText },
   ];
 
   if (loading) {
@@ -113,7 +113,7 @@ const SettingsView = ({
               Configuración del Sistema
             </h1>
             <p className="text-gray-600">
-              Personaliza la configuración de tu supermercado
+              Personaliza la configuración de tu negocio
             </p>
           </div>
           {saving && (
@@ -1052,6 +1052,12 @@ const SettingsView = ({
                     <label className="form-label">Archivo .p12 (certificado + clave)</label>
                     <input type="file" accept=".p12,.pfx" className="form-input"
                       onChange={e => { setP12File(e.target.files[0]); setCertFile(null); setKeyFile(null); }} />
+                    {!p12File && afipStatus?.tiene_certificado && afipStatus?.tiene_clave && (
+                      <p className="text-xs text-green-700 mt-1">✅ Certificado y clave ya cargados — subir nuevo archivo para reemplazar</p>
+                    )}
+                    {p12File && (
+                      <p className="text-xs text-blue-700 mt-1">📄 {p12File.name} — listo para guardar</p>
+                    )}
                   </div>
                   {p12File && (
                     <div className="form-group">
@@ -1066,11 +1072,19 @@ const SettingsView = ({
                         <label className="form-label">Certificado .pem (alternativa)</label>
                         <input type="file" accept=".pem,.crt,.cer" className="form-input"
                           onChange={e => setCertFile(e.target.files[0])} />
+                        {!certFile && afipStatus?.tiene_certificado && (
+                          <p className="text-xs text-green-700 mt-1">✅ Certificado .pem ya cargado — subir nuevo para reemplazar</p>
+                        )}
+                        {certFile && <p className="text-xs text-blue-700 mt-1">📄 {certFile.name}</p>}
                       </div>
                       <div className="form-group">
                         <label className="form-label">Clave privada .pem (alternativa)</label>
                         <input type="file" accept=".pem,.key" className="form-input"
                           onChange={e => setKeyFile(e.target.files[0])} />
+                        {!keyFile && afipStatus?.tiene_clave && (
+                          <p className="text-xs text-green-700 mt-1">✅ Clave privada ya cargada — subir nuevo para reemplazar</p>
+                        )}
+                        {keyFile && <p className="text-xs text-blue-700 mt-1">📄 {keyFile.name}</p>}
                       </div>
                     </>
                   )}

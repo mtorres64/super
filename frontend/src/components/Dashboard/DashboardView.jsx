@@ -161,6 +161,16 @@ const DashboardView = ({
             <p className="text-sm text-gray-500 mt-2">
               {stats.ventas_hoy.cantidad} transacciones
             </p>
+            {user?.rol === 'admin' && stats.ventas_hoy.por_sucursal?.length > 0 && (
+              <div className="mt-3 border-t border-gray-100 pt-3 space-y-1">
+                {stats.ventas_hoy.por_sucursal.map(s => (
+                  <div key={s.branch_id} className="flex justify-between text-xs text-gray-500">
+                    <span>{s.nombre}</span>
+                    <span className="font-medium">${formatAmount(s.total)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <Link to="/stock-alerts" className={`stat-card border-l-4 hover:shadow-md transition-shadow cursor-pointer ${stats.productos.bajo_stock > 0 ? 'border-red-400' : 'border-gray-200'}`}>
@@ -240,9 +250,9 @@ const DashboardView = ({
 
       {/* Quick Actions */}
       <div className="mb-8">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">
+        <span className="inline-block text-xs font-semibold uppercase tracking-wide text-gray-500 bg-gray-100 px-3 py-1 rounded-full mb-4">
           Acciones Rápidas
-        </h2>
+        </span>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {quickActions.map((action, index) => {
             const IconComponent = ICON_MAP[action.icon];

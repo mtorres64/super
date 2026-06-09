@@ -1,20 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '../../App';
-import { parseApiDate } from '../../lib/utils';
 import { toast } from 'sonner';
-import MargensReportView from './MargensReportView';
+import IncomeExpenseReportView from './IncomeExpenseReportView';
 
-const MargensReport = () => {
-  const [data, setData] = useState(null);
-  const [branches, setBranches] = useState([]);
-  const [loading, setLoading] = useState(true);
+const IncomeExpenseReport = () => {
   const [dateFilter, setDateFilter] = useState('month');
-  const [branchFilter, setBranchFilter] = useState('all');
   const [customDateFrom, setCustomDateFrom] = useState('');
   const [customDateTo, setCustomDateTo] = useState('');
-  const [detailModal, setDetailModal] = useState(null); // { type, row }
-  const [expandedSection, setExpandedSection] = useState('por_fecha');
+  const [branchFilter, setBranchFilter] = useState('all');
+  const [branches, setBranches] = useState([]);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchBranches();
@@ -28,9 +25,7 @@ const MargensReport = () => {
     try {
       const res = await axios.get(`${API}/branches`);
       setBranches(res.data);
-      if (res.data.length === 1) {
-        setBranchFilter(res.data[0].id);
-      }
+      if (res.data.length === 1) setBranchFilter(res.data[0].id);
     } catch {}
   };
 
@@ -40,12 +35,10 @@ const MargensReport = () => {
     const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
     if (dateFilter === 'month') {
-      const desde = new Date(today.getFullYear(), today.getMonth(), 1);
-      return { desde: fmt(desde), hasta: fmt(today) };
+      return { desde: fmt(new Date(today.getFullYear(), today.getMonth(), 1)), hasta: fmt(today) };
     }
     if (dateFilter === 'year') {
-      const desde = new Date(today.getFullYear(), 0, 1);
-      return { desde: fmt(desde), hasta: fmt(today) };
+      return { desde: `${today.getFullYear()}-01-01`, hasta: fmt(today) };
     }
     if (dateFilter === 'custom') {
       if (!customDateFrom || !customDateTo) return null;
@@ -61,55 +54,36 @@ const MargensReport = () => {
     try {
       const params = { fecha_desde: range.desde, fecha_hasta: range.hasta };
       if (branchFilter !== 'all') params.branch_id = branchFilter;
-      const res = await axios.get(`${API}/reportes/margenes`, { params });
+      const res = await axios.get(`${API}/reportes/ingresos-egresos`, { params });
       setData(res.data);
     } catch {
-      toast.error('Error al cargar el reporte de márgenes');
+      toast.error('Error al cargar el reporte de ingresos y egresos');
     } finally {
       setLoading(false);
     }
   };
 
   const formatMoney = (val) => {
-    if (val === null || val === undefined) return '—';
+    if (val == null) return '—';
     return Number(val).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
-  const formatDate = (iso) => {
-    if (!iso) return '—';
-    const [y, m, d] = iso.slice(0, 10).split('-');
-    return `${d}/${m}/${y}`;
-  };
-
-  const formatDateTime = (iso) => {
-    if (!iso) return '—';
-    const d = parseApiDate(iso);
-    return d.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  };
-
   return (
-    <MargensReportView
-      data={data}
-      branches={branches}
-      loading={loading}
+    <IncomeExpenseReportView
       dateFilter={dateFilter}
       setDateFilter={setDateFilter}
-      branchFilter={branchFilter}
-      setBranchFilter={setBranchFilter}
       customDateFrom={customDateFrom}
       setCustomDateFrom={setCustomDateFrom}
       customDateTo={customDateTo}
       setCustomDateTo={setCustomDateTo}
-      detailModal={detailModal}
-      setDetailModal={setDetailModal}
-      expandedSection={expandedSection}
-      setExpandedSection={setExpandedSection}
+      branchFilter={branchFilter}
+      setBranchFilter={setBranchFilter}
+      branches={branches}
+      data={data}
+      loading={loading}
       formatMoney={formatMoney}
-      formatDate={formatDate}
-      formatDateTime={formatDateTime}
-      onRefresh={fetchData}
     />
   );
 };
 
-export default MargensReport;
+export default IncomeExpenseReport;

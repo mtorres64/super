@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
-import { BarChart3, ShoppingBag, TrendingUp } from 'lucide-react';
+import { BarChart3, ShoppingBag, TrendingUp, Scale, Archive } from 'lucide-react';
 import SalesReports from './SalesReports';
 import PurchasesReport from './PurchasesReport';
 import MargensReport from './MargensReport';
+import IncomeExpenseReport from './IncomeExpenseReport';
+import CashReportsTab from './CashReportsTab';
 
 const TABS = [
-  { key: 'ventas', label: 'Ventas', icon: BarChart3 },
-  { key: 'compras', label: 'Compras', icon: ShoppingBag },
-  { key: 'margenes', label: 'Márgenes', icon: TrendingUp },
+  { key: 'ventas',           label: 'Ventas',              icon: BarChart3 },
+  { key: 'compras',          label: 'Compras',             icon: ShoppingBag },
+  { key: 'margenes',         label: 'Márgenes',            icon: TrendingUp },
+  { key: 'ingresos-egresos', label: 'Ingresos / Egresos',  icon: Scale },
+  { key: 'caja',             label: 'Caja',                icon: Archive },
 ];
 
 const Reports = () => {
@@ -36,9 +40,11 @@ const Reports = () => {
       </div>
 
       {/* Contenido */}
-      {activeTab === 'ventas' && <SalesReports />}
-      {activeTab === 'compras' && <PurchasesReport />}
-      {activeTab === 'margenes' && <MargensReport />}
+      {activeTab === 'ventas'           && <SalesReports />}
+      {activeTab === 'compras'          && <PurchasesReport />}
+      {activeTab === 'margenes'         && <MargensReport />}
+      {activeTab === 'ingresos-egresos' && <IncomeExpenseReport />}
+      {activeTab === 'caja'             && <CashReportsTab />}
     </div>
   );
 };

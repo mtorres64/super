@@ -2,6 +2,7 @@
 Servicio de integración con ARCA/AFIP — Factura Electrónica
 Implementa WSAA (autenticación) y WSFE (facturación electrónica v1)
 """
+import asyncio
 import base64
 import hashlib
 import logging
@@ -12,7 +13,6 @@ from xml.etree import ElementTree as ET
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.serialization import pkcs7, pkcs12
-from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.fernet import Fernet
 
 logger = logging.getLogger(__name__)
@@ -69,10 +69,8 @@ def extract_p12(p12_bytes: bytes, password: Optional[bytes] = None) -> Tuple[byt
 class AfipService:
     """
     Encapsula la comunicación con WSAA y WSFE de ARCA/AFIP.
-    Uso:
-        service = AfipService()
-        token, sign = await service.get_token_sign(afip_cfg, db, jwt_secret)
-        resultado = await service.solicitar_cae(sale, afip_cfg, token, sign, tipo_cbte)
+    Todas las operaciones zeep (SOAP sincrónico) se ejecutan en un
+    thread pool para no bloquear el event loop de FastAPI.
     """
 
     def _get_urls(self, ambiente: str) -> Tuple[str, str]:
@@ -85,8 +83,8 @@ class AfipService:
     def _build_tra(self, service_name: str = "wsfe") -> str:
         """Construye el Ticket de Requerimiento de Acceso (TRA) en XML."""
         now = datetime.now(timezone.utc)
-        gen_time = (now - timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%S")
-        exp_time = (now + timedelta(hours=12)).strftime("%Y-%m-%dT%H:%M:%S")
+        gen_time = (now - timedelta(minutes=10)).isoformat(timespec='seconds')
+        exp_time = (now + timedelta(hours=12)).isoformat(timespec='seconds')
         unique_id = str(int(now.timestamp()))
         return (
             '<?xml version="1.0" encoding="UTF-8"?>'
@@ -106,24 +104,26 @@ class AfipService:
         cert = x509.load_pem_x509_certificate(cert_pem)
         privkey = serialization.load_pem_private_key(key_pem, password=None)
 
+        # WSAA requiere contenido embebido (no detached) + Binary para no canonicalizar el XML
         signed = (
             pkcs7.PKCS7SignatureBuilder()
             .set_data(tra_xml.encode())
             .add_signer(cert, privkey, hashes.SHA256())
-            .sign(serialization.Encoding.DER, [pkcs7.PKCS7Options.DetachedSignature])
+            .sign(serialization.Encoding.DER, [
+                pkcs7.PKCS7Options.Binary,
+                pkcs7.PKCS7Options.NoCapabilities,
+            ])
         )
         return base64.b64encode(signed).decode()
 
     def _parse_ta(self, ta_xml: str) -> Tuple[str, str, datetime]:
         """Parsea el Ticket de Acceso (TA) XML y retorna (token, sign, expiration)."""
         root = ET.fromstring(ta_xml)
-        ns = ""
-        token = root.findtext(f"{ns}credentials/token") or root.findtext("credentials/token")
-        sign = root.findtext(f"{ns}credentials/sign") or root.findtext("credentials/sign")
-        exp_str = root.findtext(f"{ns}header/expirationTime") or root.findtext("header/expirationTime")
+        token = root.findtext("credentials/token")
+        sign = root.findtext("credentials/sign")
+        exp_str = root.findtext("header/expirationTime")
         if not token or not sign:
             raise ValueError(f"No se pudo parsear el Ticket de Acceso. XML: {ta_xml[:300]}")
-        # Parsear expiración
         try:
             exp = datetime.fromisoformat(exp_str.replace("Z", "+00:00")) if exp_str else datetime.now(timezone.utc) + timedelta(hours=11)
         except Exception:
@@ -144,19 +144,21 @@ class AfipService:
         tra_xml = self._build_tra("wsfe")
         cms_b64 = self._sign_tra(tra_xml, cert_pem, key_pem)
 
-        try:
+        def _do_login():
             client = zeep.Client(wsaa_url)
-            response = client.service.loginCms(in0=cms_b64)
+            return client.service.loginCms(in0=cms_b64)
+
+        try:
+            response = await asyncio.to_thread(_do_login)
         except Exception as e:
             raise RuntimeError(f"Error comunicando con WSAA: {e}")
 
-        token, sign, exp = self._parse_ta(response)
-        return token, sign, exp
+        return self._parse_ta(response)
 
     async def get_token_sign(self, afip_cfg: dict, db, jwt_secret: str) -> Tuple[str, str]:
         """
         Retorna (token, sign) vigentes. Usa caché en db.afip_tokens.
-        Si el token está por vencer (< 10 min) o no existe, re-autentica.
+        Re-autentica si el token está por vencer (< 10 min) o no existe.
         """
         now = datetime.now(timezone.utc)
         cached = await db.afip_tokens.find_one({"empresa_id": afip_cfg["empresa_id"]})
@@ -168,7 +170,6 @@ class AfipService:
             if exp > now + timedelta(minutes=10):
                 return cached["token"], cached["sign"]
 
-        # Re-autenticar
         token, sign, exp = await self._authenticate(afip_cfg, jwt_secret)
 
         await db.afip_tokens.update_one(
@@ -188,44 +189,21 @@ class AfipService:
             raise RuntimeError("La librería 'zeep' no está instalada.")
 
         _, wsfe_url = self._get_urls(afip_cfg["ambiente"])
-        try:
+
+        def _do_test():
             client = zeep.Client(wsfe_url)
-            result = client.service.FEDummy()
+            return client.service.FEDummy()
+
+        try:
+            result = await asyncio.to_thread(_do_test)
             return {
                 "ok": True,
                 "AppServer": result.AppServer,
                 "DbServer": result.DbServer,
-                "AuthServer": result.AuthServer
+                "AuthServer": result.AuthServer,
             }
         except Exception as e:
             return {"ok": False, "error": str(e)}
-
-    async def get_ultimo_cbte(self, afip_cfg: dict, token: str, sign: str, tipo_cbte: int) -> int:
-        """Retorna el último número de comprobante autorizado para el punto de venta."""
-        try:
-            import zeep
-        except ImportError:
-            raise RuntimeError("La librería 'zeep' no está instalada.")
-
-        _, wsfe_url = self._get_urls(afip_cfg["ambiente"])
-        client = zeep.Client(wsfe_url)
-
-        auth = {
-            "Token": token,
-            "Sign": sign,
-            "Cuit": int(afip_cfg["cuit"].replace("-", ""))
-        }
-        result = client.service.FECompUltimoAutorizado(
-            Auth=auth,
-            PtoVta=afip_cfg["punto_venta"],
-            CbteTipo=tipo_cbte
-        )
-        if result.Errors:
-            errs = result.Errors.Err
-            msgs = [f"{e.Code}: {e.Msg}" for e in errs]
-            raise RuntimeError(f"WSFE FECompUltimoAutorizado error: {'; '.join(msgs)}")
-
-        return result.CbteNro  # Puede ser 0 si nunca se emitió
 
     async def solicitar_cae(
         self,
@@ -234,10 +212,12 @@ class AfipService:
         token: str,
         sign: str,
         tipo_cbte: int,
-        cuit_receptor: Optional[str] = None
+        cuit_receptor: Optional[str] = None,
+        cbtes_asoc: Optional[list] = None,
     ) -> dict:
         """
-        Solicita CAE para una venta. Retorna dict con cae, cae_vencimiento, nro_comprobante.
+        Solicita CAE para una venta via FECAESolicitar.
+        Retorna dict con cae, cae_vencimiento, nro_comprobante.
         tipo_cbte: 1=Factura A, 6=Factura B, 11=Factura C
         """
         try:
@@ -246,93 +226,125 @@ class AfipService:
             raise RuntimeError("La librería 'zeep' no está instalada.")
 
         _, wsfe_url = self._get_urls(afip_cfg["ambiente"])
-        client = zeep.Client(wsfe_url)
-
         cuit_emisor = int(afip_cfg["cuit"].replace("-", ""))
         auth = {"Token": token, "Sign": sign, "Cuit": cuit_emisor}
 
-        # Obtener próximo número
-        ultimo_nro = await self.get_ultimo_cbte(afip_cfg, token, sign, tipo_cbte)
+        # ── Obtener próximo número de comprobante ──────────────────────────────
+        def _get_ultimo():
+            client = zeep.Client(wsfe_url)
+            result = client.service.FECompUltimoAutorizado(
+                Auth=auth,
+                PtoVta=afip_cfg["punto_venta"],
+                CbteTipo=tipo_cbte,
+            )
+            if result.Errors:
+                msgs = [f"{e.Code}: {e.Msg}" for e in result.Errors.Err]
+                raise RuntimeError(f"WSFE FECompUltimoAutorizado error: {'; '.join(msgs)}")
+            return result.CbteNro
+
+        ultimo_nro = await asyncio.to_thread(_get_ultimo)
         nro_cbte = ultimo_nro + 1
 
-        # Receptor: Factura A requiere CUIT, B y C van como consumidor final
-        if tipo_cbte == 1 and cuit_receptor:
+        # ── Receptor ──────────────────────────────────────────────────────────
+        # CondicionIVAReceptorId obligatorio desde RG 5616
+        # 1=Resp.Inscripto  5=Consumidor Final  6=Monotributista
+        # Tipos que requieren CUIT: Factura A (1) y Nota de Crédito A (3)
+        TIPOS_CON_CUIT = {1, 3}
+        if tipo_cbte in TIPOS_CON_CUIT:
+            if not cuit_receptor:
+                raise RuntimeError(
+                    "Comprobante clase A requiere CUIT del receptor. "
+                    "La venta original no tiene CUIT registrado."
+                )
             doc_tipo = DOC_TIPO_CUIT
             doc_nro = int(cuit_receptor.replace("-", ""))
+            cond_iva_receptor = 1   # IVA Responsable Inscripto
         else:
             doc_tipo = DOC_TIPO_CONSUMIDOR_FINAL
             doc_nro = 0
+            cond_iva_receptor = 5   # Consumidor Final
 
         fecha_cbte = datetime.now(timezone.utc).strftime("%Y%m%d")
 
-        # Importes — WSFE requiere 2 decimales, sin IVA discriminado para monotributo
+        # ── Importes ──────────────────────────────────────────────────────────
+        # imp_neto e imp_iva se calculan DESDE el total final para que la ecuación
+        # ImpTotal = ImpNeto + ImpIVA + ImpTrib cuadre aunque haya descuentos/recargos.
         imp_total = round(sale["total"], 2)
-        imp_neto = round(sale["subtotal"], 2)
-        imp_iva = round(sale["impuestos"], 2)
+        imp_trib  = round(sale.get("impuestos_extra_total", 0.0), 2)
 
-        # Para Factura C (monotributista) ImpIVA siempre 0
-        if tipo_cbte == 11:
-            imp_iva = 0.0
-            imp_neto = imp_total
-
-        # Alícuota de IVA (21% = código 5, 10.5% = código 4, 0% = código 3)
-        # Usamos la tasa configurada
         tax_rate = afip_cfg.get("tax_rate", 0.21)
         if abs(tax_rate - 0.21) < 0.01:
-            alicuota_id = 5   # 21%
+            alicuota_id = 5    # 21%
         elif abs(tax_rate - 0.105) < 0.01:
-            alicuota_id = 4   # 10.5%
+            alicuota_id = 4    # 10.5%
         else:
-            alicuota_id = 3   # 0%
+            alicuota_id = 3    # 0%
+
+        # Factura C (monotributista): sin IVA discriminado
+        if tipo_cbte == 11:
+            imp_neto = round(imp_total - imp_trib, 2)
+            imp_iva  = 0.0
+        else:
+            # Descomponer el total final en neto + IVA
+            base     = round(imp_total - imp_trib, 2)
+            imp_neto = round(base / (1 + tax_rate), 2)
+            imp_iva  = round(base - imp_neto, 2)
+            # Corrección de centavo por redondeo
+            diff = round(imp_total - imp_trib - imp_neto - imp_iva, 2)
+            if diff:
+                imp_iva = round(imp_iva + diff, 2)
 
         iva_array = None
         if tipo_cbte != 11 and imp_iva > 0:
             iva_array = {"AlicIva": [{"Id": alicuota_id, "BaseImp": imp_neto, "Importe": imp_iva}]}
 
-        fe_cab_req = {
-            "CantReg": 1,
-            "PtoVta": afip_cfg["punto_venta"],
-            "CbteTipo": tipo_cbte
-        }
-
-        fe_det_req = {
-            "Concepto": 1,          # 1=Productos, 2=Servicios, 3=Productos y Servicios
-            "DocTipo": doc_tipo,
-            "DocNro": doc_nro,
-            "CbteDesde": nro_cbte,
-            "CbteHasta": nro_cbte,
-            "CbteFch": fecha_cbte,
-            "ImpTotal": imp_total,
-            "ImpTotConc": 0.0,
-            "ImpNeto": imp_neto,
-            "ImpOpEx": 0.0,
-            "ImpIVA": imp_iva,
-            "ImpTrib": 0.0,
-            "MonId": "PES",
-            "MonCotiz": 1.0,
-        }
-        if iva_array:
-            fe_det_req["Iva"] = iva_array
+        concepto = afip_cfg.get("concepto_default", 1)
 
         fe_cae_req = {
-            "FeCabReq": fe_cab_req,
-            "FeDetReq": {"FECAEDetRequest": [fe_det_req]}
+            "FeCabReq": {
+                "CantReg": 1,
+                "PtoVta": afip_cfg["punto_venta"],
+                "CbteTipo": tipo_cbte,
+            },
+            "FeDetReq": {
+                "FECAEDetRequest": [{
+                    "Concepto":    concepto,
+                    "DocTipo":     doc_tipo,
+                    "DocNro":      doc_nro,
+                    "CbteDesde":   nro_cbte,
+                    "CbteHasta":   nro_cbte,
+                    "CbteFch":     fecha_cbte,
+                    "ImpTotal":    imp_total,
+                    "ImpTotConc":  0.0,
+                    "ImpNeto":     imp_neto,
+                    "ImpOpEx":     0.0,
+                    "ImpIVA":      imp_iva,
+                    "ImpTrib":     imp_trib,
+                    "MonId":                  "PES",
+                    "MonCotiz":               1.0,
+                    "CondicionIVAReceptorId": cond_iva_receptor,
+                    **({"Iva": iva_array} if iva_array else {}),
+                    **({"CbtesAsoc": {"CbteAsoc": cbtes_asoc}} if cbtes_asoc else {}),
+                }]
+            },
         }
 
+        # ── Solicitar CAE ──────────────────────────────────────────────────────
+        def _do_cae():
+            client = zeep.Client(wsfe_url)
+            return client.service.FECAESolicitar(Auth=auth, FeCAEReq=fe_cae_req)
+
         try:
-            result = client.service.FECAESolicitar(Auth=auth, FeCAEReq=fe_cae_req)
+            result = await asyncio.to_thread(_do_cae)
         except Exception as e:
             raise RuntimeError(f"Error en FECAESolicitar: {e}")
 
-        # Verificar errores generales
         if result.Errors:
-            errs = result.Errors.Err
-            msgs = [f"{e.Code}: {e.Msg}" for e in errs]
+            msgs = [f"{e.Code}: {e.Msg}" for e in result.Errors.Err]
             raise RuntimeError(f"WSFE error: {'; '.join(msgs)}")
 
         det = result.FeDetResp.FECAEDetResponse[0]
 
-        # Verificar observaciones de AFIP
         if det.Resultado == "R":
             obs = []
             if det.Observaciones:
@@ -343,8 +355,8 @@ class AfipService:
             raise RuntimeError("AFIP no devolvió CAE. Resultado: " + str(det.Resultado))
 
         return {
-            "cae": det.CAE,
-            "cae_vencimiento": det.CAEFchVto,   # formato "AAAAMMDD"
-            "nro_comprobante": nro_cbte,
-            "tipo_comprobante": tipo_cbte
+            "cae":              det.CAE,
+            "cae_vencimiento":  det.CAEFchVto,   # "AAAAMMDD"
+            "nro_comprobante":  nro_cbte,
+            "tipo_comprobante": tipo_cbte,
         }

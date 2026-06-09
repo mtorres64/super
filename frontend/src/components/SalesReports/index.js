@@ -16,13 +16,15 @@ const PAYMENT_COLORS = {
 };
 
 const SalesReports = () => {
-  const { user: currentUser } = useContext(AuthContext);
+  const { user: currentUser, activeBranch } = useContext(AuthContext);
   const [searchParams] = useSearchParams();
   const fromCaja = searchParams.get('from') === 'caja';
-  const canFilterByUser = !fromCaja && ['admin', 'supervisor'].includes(currentUser?.rol);
+  const canFilterByUser = ['admin', 'supervisor'].includes(currentUser?.rol);
+  const isCajero = currentUser?.rol === 'cajero';
 
   const [sales, setSales] = useState([]);
   const [allReturns, setAllReturns] = useState([]);
+  const [allCreditNotes, setAllCreditNotes] = useState([]);
   const [branches, setBranches] = useState([]);
   const [users, setUsers] = useState([]);
   const [config, setConfig] = useState(null);
@@ -30,8 +32,13 @@ const SalesReports = () => {
   const [loading, setLoading] = useState(true);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [dateFilter, setDateFilter] = useState('today');
-  const [branchFilter, setBranchFilter] = useState(fromCaja && currentUser?.branch_id ? currentUser.branch_id : 'all');
-  const [userFilter, setUserFilter] = useState(fromCaja ? (currentUser?.id || 'all') : 'all');
+  const cajeroDefaultBranch = activeBranch?.id || currentUser?.active_branch_id || null;
+  const [branchFilter, setBranchFilter] = useState(
+    (fromCaja || isCajero) && cajeroDefaultBranch ? cajeroDefaultBranch : 'all'
+  );
+  const [userFilter, setUserFilter] = useState(
+    (fromCaja || isCajero) ? (currentUser?.id || 'all') : 'all'
+  );
   const [page, setPage] = useState(1);
   const [customDateFrom, setCustomDateFrom] = useState('');
   const [customDateTo, setCustomDateTo] = useState('');
@@ -39,6 +46,14 @@ const SalesReports = () => {
   const [reprintSale, setReprintSale] = useState(null);
   const [reprintReturns, setReprintReturns] = useState([]);
   const [retryingAfip, setRetryingAfip] = useState(null);
+  const [retryingAfipNc, setRetryingAfipNc] = useState(null);
+
+  useEffect(() => {
+    if (isCajero && activeBranch?.id) {
+      setBranchFilter(activeBranch.id);
+      setPage(1);
+    }
+  }, [activeBranch?.id]);
 
   useEffect(() => {
     fetchSales();
@@ -50,12 +65,14 @@ const SalesReports = () => {
 
   const fetchSales = async () => {
     try {
-      const [salesRes, returnsRes] = await Promise.all([
+      const [salesRes, returnsRes, creditNotesRes] = await Promise.all([
         axios.get(`${API}/sales`),
         axios.get(`${API}/returns`),
+        axios.get(`${API}/credit-notes`),
       ]);
       setSales(salesRes.data);
       setAllReturns(returnsRes.data);
+      setAllCreditNotes(creditNotesRes.data);
     } catch (error) {
       toast.error('Error al cargar las ventas');
     } finally {
@@ -166,7 +183,7 @@ const SalesReports = () => {
 
   const calculateStats = (salesData, netTotals = {}) => {
     const totalSales = salesData.length;
-    const totalRevenue = salesData.reduce((sum, sale) => sum + (sale.total - (netTotals[sale.id] || 0)), 0);
+    const totalRevenue = salesData.reduce((sum, sale) => sum + Math.max(0, sale.total - (netTotals[sale.id] || 0)), 0);
     const averageSale = totalSales > 0 ? totalRevenue / totalSales : 0;
 
     const paymentMethods = {};
@@ -222,6 +239,30 @@ const SalesReports = () => {
       toast.error(error.response?.data?.detail || 'Error al reintentar con AFIP');
     } finally {
       setRetryingAfip(null);
+    }
+  };
+
+  const handleRetryAfipNc = async (creditNoteId, tipoComprobante = null) => {
+    let cuitReceptor = null;
+    if (tipoComprobante === 3) {
+      const input = window.prompt('Nota de Crédito A requiere CUIT del receptor.\nIngrese el CUIT (ej: 20-12345678-9):');
+      if (input === null) return;
+      cuitReceptor = input.trim();
+      if (!cuitReceptor) {
+        toast.error('El CUIT es obligatorio para Nota de Crédito A');
+        return;
+      }
+    }
+    setRetryingAfipNc(creditNoteId);
+    try {
+      const body = cuitReceptor ? { cuit_receptor: cuitReceptor } : {};
+      const response = await axios.post(`${API}/afip/reintentar-nc/${creditNoteId}`, body);
+      toast.success(`CAE de NC obtenido: ${response.data.cae}`);
+      fetchSales();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error al reintentar CAE de nota de crédito');
+    } finally {
+      setRetryingAfipNc(null);
     }
   };
 
@@ -397,7 +438,7 @@ const SalesReports = () => {
   const getDailyData = (data) => {
     const byDay = {};
     data.forEach(item => {
-      const net = item.total - (saleNetTotal[item.id] || 0);
+      const net = Math.max(0, item.total - (saleNetTotal[item.id] || 0));
       const d = new Date(item.fecha);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const label = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -461,6 +502,13 @@ const SalesReports = () => {
   allReturns.forEach(ret => {
     saleNetTotal[ret.sale_id] = (saleNetTotal[ret.sale_id] || 0) + ret.total;
   });
+
+  // Mapa de notas de crédito por venta
+  const saleCreditNotesMap = {};
+  allCreditNotes.forEach(nc => {
+    if (!saleCreditNotesMap[nc.sale_id]) saleCreditNotesMap[nc.sale_id] = [];
+    saleCreditNotesMap[nc.sale_id].push(nc);
+  });
   const stats = calculateStats(filteredSales, saleNetTotal);
   const dailyData = getDailyData(filteredSales);
   const topProducts = getTopProducts(filteredSales);
@@ -517,6 +565,8 @@ const SalesReports = () => {
       topProducts={topProducts}
       paymentPieData={paymentPieData}
       saleNetTotal={saleNetTotal}
+      allCreditNotes={allCreditNotes}
+      saleCreditNotesMap={saleCreditNotesMap}
       TIPO_CBTE_NOMBRES={TIPO_CBTE_NOMBRES}
       onSetDateFilter={(val) => { setDateFilter(val); setPage(1); }}
       onSetBranchFilter={(val) => { setBranchFilter(val); setPage(1); }}
@@ -532,6 +582,8 @@ const SalesReports = () => {
       onExportToXLSX={exportToXLSX}
       onOpenReturnModal={openReturnModal}
       onHandleRetryAfip={handleRetryAfip}
+      retryingAfipNc={retryingAfipNc}
+      onHandleRetryAfipNc={handleRetryAfipNc}
       onFetchSales={fetchSales}
       onPrintReprintTicket={printReprintTicket}
       getBranchName={getBranchName}

@@ -9,8 +9,10 @@ import {
   Building2,
   Printer,
   RotateCcw,
+  RefreshCw,
   X,
-  User
+  User,
+  FileText
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -50,6 +52,8 @@ const SalesReportsView = ({
   topProducts,
   paymentPieData,
   saleNetTotal,
+  allCreditNotes,
+  saleCreditNotesMap,
   onSetDateFilter,
   onSetBranchFilter,
   onSetUserFilter,
@@ -62,6 +66,8 @@ const SalesReportsView = ({
   onExportToXLSX,
   onOpenReturnModal,
   onHandleRetryAfip,
+  retryingAfipNc,
+  onHandleRetryAfipNc,
   onFetchSales,
   onPrintReprintTicket,
   onSetReprintSale,
@@ -120,7 +126,7 @@ const SalesReportsView = ({
           </div>
 
           {/* Filtro usuario */}
-          {fromCaja ? (
+          {fromCaja && !canFilterByUser ? (
             <div className="flex items-center gap-2">
               <User className="w-4 h-4 text-gray-400" />
               <span className="form-select bg-gray-50 cursor-default text-gray-700">
@@ -144,11 +150,11 @@ const SalesReportsView = ({
           )}
 
           {/* Filtro sucursal */}
-          {fromCaja ? (
+          {!canFilterByUser ? (
             <div className="flex items-center gap-2">
               <Building2 className="w-4 h-4 text-gray-400" />
               <span className="form-select bg-gray-50 cursor-default text-gray-700">
-                {currentUser?.branch_id ? (branches.find(b => b.id === currentUser.branch_id)?.nombre || 'Mi sucursal') : 'Sin sucursal'}
+                {branchFilter && branchFilter !== 'all' ? (branches.find(b => b.id === branchFilter)?.nombre || 'Mi sucursal') : 'Sin sucursal'}
               </span>
             </div>
           ) : (
@@ -378,7 +384,18 @@ const SalesReportsView = ({
               {pagedSales.map(sale => (
                 <tr key={sale.id}>
                   <td data-mobile="title">
-                    <span className="font-medium text-blue-600">{sale.numero_factura}</span>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-medium text-blue-600">{sale.numero_factura}</span>
+                      {sale.tipo_comprobante
+                        ? <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-medium w-fit">{{ 1: 'Factura A', 6: 'Factura B', 11: 'Factura C' }[sale.tipo_comprobante] || 'Factura'}</span>
+                        : <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-medium w-fit">Ticket</span>
+                      }
+                      {(saleCreditNotesMap?.[sale.id] || []).map(nc => (
+                        <span key={nc.id} className="text-xs px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-medium w-fit flex items-center gap-1">
+                          <FileText className="w-3 h-3" />{nc.numero_nota_credito}
+                        </span>
+                      ))}
+                    </div>
                   </td>
                   <td className="hidden lg:table-cell" data-label="Fecha">{formatDate(sale.fecha)}</td>
                   <td className="hidden lg:table-cell" data-label="Sucursal">
@@ -406,7 +423,7 @@ const SalesReportsView = ({
                   </td>
                   <td className="text-right" data-label="Total">
                     <span className="font-semibold text-green-600">
-                      ${formatAmount(sale.total - (saleNetTotal?.[sale.id] || 0))}
+                      ${formatAmount(Math.max(0, sale.total - (saleNetTotal?.[sale.id] || 0)))}
                     </span>
                   </td>
                   <td className="text-center" data-label="Pago">
@@ -421,13 +438,23 @@ const SalesReportsView = ({
                     </span>
                   </td>
                   <td className="hidden md:table-cell" data-label="Estado">
-                    {sale.estado === 'cancelado' ? (
-                      <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">Cancelada</span>
-                    ) : sale.estado === 'devolucion_parcial' ? (
-                      <span className="px-2 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-800">Dev. parcial</span>
-                    ) : (
-                      <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Activa</span>
-                    )}
+                    <div className="flex flex-col gap-1">
+                      {sale.estado === 'cancelado' ? (
+                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">Cancelada</span>
+                      ) : sale.estado === 'devolucion_parcial' ? (
+                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-800">Dev. parcial</span>
+                      ) : (
+                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Activa</span>
+                      )}
+                      {sale.afip_estado === 'autorizado' && (
+                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">CAE ✓</span>
+                      )}
+                      {(sale.afip_estado === 'contingencia' || sale.afip_estado === 'error') && (
+                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800">
+                          {sale.afip_estado === 'contingencia' ? 'Contingencia' : 'Error AFIP'}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td data-mobile="actions">
                     <div className="flex items-center gap-1">
@@ -449,6 +476,17 @@ const SalesReportsView = ({
                           <RotateCcw className="w-3 h-3" />
                         </button>
                       )}
+                      {(sale.afip_estado === 'contingencia' || sale.afip_estado === 'error') && currentUser?.rol === 'admin' && (
+                        <button
+                          onClick={() => onHandleRetryAfip(sale.id)}
+                          disabled={retryingAfip === sale.id}
+                          className="btn btn-sm flex items-center gap-1"
+                          style={{ background: '#d97706', color: '#fff' }}
+                          title="Reintentar obtener CAE"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${retryingAfip === sale.id ? 'animate-spin' : ''}`} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -466,6 +504,106 @@ const SalesReportsView = ({
           itemName="ventas"
         />
       </div>
+
+      {/* Notas de Crédito */}
+      {(() => {
+        const filteredSaleIds = new Set(filteredSales.map(s => s.id));
+        const filteredNotes = (allCreditNotes || []).filter(nc => filteredSaleIds.has(nc.sale_id));
+        if (filteredNotes.length === 0) return null;
+        return (
+          <div className="table-container mt-6">
+            <div className="flex items-center gap-2 p-4 border-b border-gray-200">
+              <FileText className="w-5 h-5 text-amber-600" />
+              <h3 className="text-lg font-semibold text-gray-900">
+                Notas de Crédito ({filteredNotes.length})
+              </h3>
+            </div>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>N° Nota de Crédito</th>
+                  <th>Factura Original</th>
+                  <th className="hidden lg:table-cell">Fecha</th>
+                  <th className="hidden lg:table-cell">Motivo</th>
+                  <th style={{ textAlign: 'right' }}>Total</th>
+                  <th style={{ textAlign: 'center' }}>Tipo</th>
+                  <th style={{ textAlign: 'center' }}>AFIP</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredNotes.map(nc => (
+                  <tr key={nc.id}>
+                    <td>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-medium text-amber-700 flex items-center gap-1">
+                          <FileText className="w-3.5 h-3.5" />{nc.numero_nota_credito}
+                        </span>
+                        {nc.nro_comprobante_afip && (
+                          <span className="text-xs text-gray-500">
+                            Nº {String(nc.nro_comprobante_afip).padStart(8, '0')}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <span className="text-blue-600 font-medium">{nc.numero_factura_original}</span>
+                    </td>
+                    <td className="hidden lg:table-cell">{formatDate(nc.fecha)}</td>
+                    <td className="hidden lg:table-cell text-gray-500 text-sm">
+                      {nc.motivo || <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="text-right">
+                      <span className="font-semibold text-red-600">${formatAmount(nc.total)}</span>
+                    </td>
+                    <td className="text-center">
+                      {nc.tipo === 'total'
+                        ? <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">Total</span>
+                        : <span className="px-2 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800">Parcial</span>
+                      }
+                    </td>
+                    <td className="text-center">
+                      {nc.afip_estado === 'autorizado' ? (
+                        <div className="flex flex-col items-center gap-0.5">
+                          <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">CAE ✓</span>
+                          {nc.cae_vencimiento && (
+                            <span className="text-xs text-gray-500">
+                              Vto: {nc.cae_vencimiento.slice(6,8)}/{nc.cae_vencimiento.slice(4,6)}/{nc.cae_vencimiento.slice(0,4)}
+                            </span>
+                          )}
+                        </div>
+                      ) : nc.afip_estado === 'contingencia' ? (
+                        <div className="flex flex-col items-center gap-1">
+                          <div className="flex items-center gap-1">
+                            <span className="px-2 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800">Contingencia</span>
+                            {currentUser?.rol === 'admin' && (
+                              <button
+                                onClick={() => onHandleRetryAfipNc(nc.id, nc.tipo_comprobante_nc)}
+                                disabled={retryingAfipNc === nc.id}
+                                className="btn btn-sm"
+                                style={{ background: '#d97706', color: '#fff', padding: '2px 6px' }}
+                                title="Reintentar obtener CAE para esta nota de crédito"
+                              >
+                                <RefreshCw className={`w-3 h-3 ${retryingAfipNc === nc.id ? 'animate-spin' : ''}`} />
+                              </button>
+                            )}
+                          </div>
+                          {nc.afip_error && (
+                            <span className="text-xs text-red-500 max-w-[160px] text-center leading-tight" title={nc.afip_error}>
+                              {nc.afip_error.length > 60 ? nc.afip_error.slice(0, 60) + '…' : nc.afip_error}
+                            </span>
+                          )}
+                        </div>
+                      ) : nc.afip_estado === 'no_aplica' ? (
+                        <span className="text-gray-300 text-xs">—</span>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
 
       {/* Reprint Ticket Modal */}
       <TicketModal

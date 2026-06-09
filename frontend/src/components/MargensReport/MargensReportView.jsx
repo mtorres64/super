@@ -2,10 +2,8 @@ import React from 'react';
 import { X, TrendingUp, ChevronDown, ChevronRight, RefreshCw, Calendar, Building2, ShoppingCart, CalendarDays, Info } from 'lucide-react';
 
 const PERIOD_OPTIONS = [
-  { key: 'month', label: 'Este mes' },
-  { key: 'week', label: 'Esta semana' },
-  { key: 'last30', label: 'Últimos 30 días' },
-  { key: 'year', label: 'Este año' },
+  { key: 'month',  label: 'Este mes' },
+  { key: 'year',   label: 'Este año' },
   { key: 'custom', label: 'Personalizado' },
 ];
 
@@ -84,17 +82,25 @@ const MargensReportView = ({
           {/* Período */}
           <div>
             <label className="form-label mb-1">Período</label>
-            <div className="flex gap-1 flex-wrap">
+            <div className="flex gap-1 flex-wrap items-center">
               {PERIOD_OPTIONS.map(opt => (
                 <button
                   key={opt.key}
                   type="button"
                   onClick={() => setDateFilter(opt.key)}
-                  className={`px-3 py-1.5 rounded text-sm font-medium transition-colors border ${
+                  className={`px-3 rounded font-medium transition-colors border ${
                     dateFilter === opt.key
-                      ? 'bg-primary text-white border-primary'
-                      : 'bg-white text-gray-600 border-gray-300 hover:border-primary hover:text-primary'
+                      ? 'text-white'
+                      : 'bg-white text-gray-600 border-gray-300'
                   }`}
+                  style={{
+                    padding: '0.625rem 0.75rem',
+                    fontSize: '0.9375rem',
+                    lineHeight: '1.5',
+                    ...(dateFilter === opt.key
+                      ? { background: 'var(--primary)', borderColor: 'var(--primary)' }
+                      : {})
+                  }}
                 >
                   {opt.label}
                 </button>
@@ -107,14 +113,14 @@ const MargensReportView = ({
             <div className="flex items-center gap-2">
               <input
                 type="date"
-                className="form-input h-9 text-sm"
+                className="form-input"
                 value={customDateFrom}
                 onChange={e => setCustomDateFrom(e.target.value)}
               />
               <span className="text-gray-400">—</span>
               <input
                 type="date"
-                className="form-input h-9 text-sm"
+                className="form-input"
                 value={customDateTo}
                 onChange={e => setCustomDateTo(e.target.value)}
               />
@@ -125,7 +131,7 @@ const MargensReportView = ({
           {branches.length > 0 && (
             <div>
               <label className="form-label mb-1">Sucursal</label>
-              <select className="form-input h-9 text-sm" value={branchFilter} onChange={e => setBranchFilter(e.target.value)}>
+              <select className="form-select" style={{ width: 'auto', minWidth: '140px' }} value={branchFilter} onChange={e => setBranchFilter(e.target.value)}>
                 <option value="all">Todas</option>
                 {branches.filter(b => b.activo).map(b => (
                   <option key={b.id} value={b.id}>{b.nombre}</option>

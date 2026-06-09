@@ -42,7 +42,7 @@ const CashManager = () => {
 
   useEffect(() => {
     fetchCurrentSession();
-  }, []);
+  }, [activeBranch?.id]);
 
   useEffect(() => {
     if (user?.rol === 'admin') {
@@ -59,7 +59,7 @@ const CashManager = () => {
       const perPage = configRes.data?.items_per_page || 10;
       setHistoryPerPage(perPage);
       setBranches(branchesRes.data || []);
-      const defaultBranch = activeBranch?.id || '';
+      const defaultBranch = user?.rol === 'admin' ? '' : (activeBranch?.id || '');
       setHistoryBranchFilter(defaultBranch);
       fetchHistory(1, perPage, defaultBranch);
     } catch {
@@ -197,6 +197,7 @@ const CashManager = () => {
   return (
     <CashManagerView
       user={user}
+      activeBranch={activeBranch}
       loading={loading}
       currentSession={currentSession}
       openingCash={openingCash}

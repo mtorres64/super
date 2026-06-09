@@ -18,6 +18,7 @@ import {
 
 const CashManagerView = ({
   user,
+  activeBranch,
   loading,
   currentSession,
   openingCash,
@@ -97,6 +98,9 @@ const CashManagerView = ({
                   <p className="text-green-700">
                     Monto inicial: ${formatAmount(currentSession.monto_inicial)}
                   </p>
+                  <p className="text-green-700">
+                    Sucursal: {branches.find(b => b.id === currentSession.branch_id)?.nombre || 'Sin sucursal'}
+                  </p>
                 </div>
               </div>
 
@@ -151,6 +155,20 @@ const CashManagerView = ({
               </div>
             </div>
           </div>
+        ) : !activeBranch ? (
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-6 rounded-lg">
+            <div className="flex items-center">
+              <Building2 className="w-8 h-8 text-yellow-600 mr-4" />
+              <div>
+                <h2 className="text-xl font-semibold text-yellow-900">
+                  Sin sucursal seleccionada
+                </h2>
+                <p className="text-yellow-700">
+                  Seleccioná una sucursal para poder abrir una caja
+                </p>
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="bg-red-50 border-l-4 border-red-400 p-6 rounded-lg">
             <div className="flex items-center justify-between">
@@ -185,8 +203,8 @@ const CashManagerView = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Link
           to="/pos"
-          className={`group block p-6 bg-white rounded-lg shadow hover:shadow-md transition-shadow border-2 ${
-            currentSession ? 'border-green-200 hover:border-green-300' : 'border-gray-200 opacity-50 pointer-events-none'
+          className={`group block p-6 bg-white rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200 ${
+            !currentSession ? 'opacity-50 pointer-events-none' : ''
           }`}
         >
           <div className="flex items-center">
@@ -206,8 +224,8 @@ const CashManagerView = ({
 
         <Link
           to={currentSession ? `/cash-report/${currentSession.id}` : '#'}
-          className={`group block p-6 bg-white rounded-lg shadow hover:shadow-md transition-shadow border-2 ${
-            currentSession ? 'border-blue-200 hover:border-blue-300' : 'border-gray-200 opacity-50 pointer-events-none'
+          className={`group block p-6 bg-white rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200 ${
+            !currentSession ? 'opacity-50 pointer-events-none' : ''
           }`}
         >
           <div className="flex items-center">
@@ -227,7 +245,7 @@ const CashManagerView = ({
 
         <Link
           to="/sales?from=caja"
-          className="group block p-6 bg-white rounded-lg shadow hover:shadow-md transition-shadow border-2 border-purple-200 hover:border-purple-300"
+          className="group block p-6 bg-white rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200"
         >
           <div className="flex items-center">
             <div className="bg-purple-500 p-3 rounded-lg text-white group-hover:scale-110 transition-transform">
@@ -246,7 +264,7 @@ const CashManagerView = ({
 
         <Link
           to="/manual"
-          className="group block p-6 bg-white rounded-lg shadow hover:shadow-md transition-shadow border-2 border-orange-200 hover:border-orange-300"
+          className="group block p-6 bg-white rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200"
         >
           <div className="flex items-center">
             <div className="bg-orange-500 p-3 rounded-lg text-white group-hover:scale-110 transition-transform">

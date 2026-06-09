@@ -10,14 +10,10 @@ import {
 } from 'lucide-react';
 
 const TIPOS_COMPROBANTE = [
-  { value: 'ticket',        label: 'Ticket (sin CAE)' },
-  { value: 'factura_b',     label: 'Factura B' },
-  { value: 'factura_a',     label: 'Factura A' },
-  { value: 'factura_c',     label: 'Factura C' },
-  { value: 'nota_credito_a', label: 'Nota de Crédito A' },
-  { value: 'nota_credito_b', label: 'Nota de Crédito B' },
-  { value: 'nota_debito_a', label: 'Nota de Débito A' },
-  { value: 'nota_debito_b', label: 'Nota de Débito B' },
+  { value: 'ticket',    label: 'Ticket (sin CAE)' },
+  { value: 'factura_b', label: 'Factura B' },
+  { value: 'factura_a', label: 'Factura A' },
+  { value: 'factura_c', label: 'Factura C' },
 ];
 
 const CONDICIONES_IVA = [

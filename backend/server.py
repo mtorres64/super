@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, UploadFile, File, Query, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, UploadFile, File, Query, Request, Body
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
@@ -841,7 +841,7 @@ class Sale(BaseModel):
     cae_vencimiento: Optional[str] = None       # formato "AAAAMMDD"
     afip_estado: str = "no_configurado"          # no_configurado | autorizado | contingencia | error
     afip_error: Optional[str] = None
-    tipo_comprobante: int = 6                    # 1=Factura A, 6=Factura B, 11=Factura C
+    tipo_comprobante: Optional[int] = None       # None=Ticket, 1=Factura A, 6=Factura B, 11=Factura C
     nro_comprobante_afip: Optional[int] = None
     cuit_receptor: Optional[str] = None
     cliente_id: Optional[str] = None
@@ -916,6 +916,9 @@ class ReturnCreate(BaseModel):
     items: List[ReturnItemCreate]
     motivo: Optional[str] = None
 
+class RetryNcRequest(BaseModel):
+    cuit_receptor: Optional[str] = None
+
 class SaleReturn(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     empresa_id: str
@@ -926,6 +929,27 @@ class SaleReturn(BaseModel):
     motivo: Optional[str] = None
     fecha: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     numero_devolucion: str
+
+class CreditNote(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    empresa_id: str
+    sale_id: str
+    return_id: str
+    cajero_id: str
+    numero_nota_credito: str
+    numero_factura_original: str
+    items: List[SaleItem]
+    total: float
+    motivo: Optional[str] = None
+    fecha: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    tipo: str  # "parcial" | "total"
+    # Campos AFIP (3=NC-A, 8=NC-B, 13=NC-C)
+    cae: Optional[str] = None
+    cae_vencimiento: Optional[str] = None
+    afip_estado: str = "no_aplica"
+    tipo_comprobante_nc: Optional[int] = None
+    nro_comprobante_afip: Optional[int] = None
+    afip_error: Optional[str] = None
 
 # --- Proveedor models ---
 class Proveedor(BaseModel):
@@ -1313,14 +1337,15 @@ async def open_cash_session(session_data: CashSessionCreate, user: User = Depend
     elif session_branch_id not in user.branch_ids:
         raise HTTPException(status_code=403, detail="No tiene acceso a esa sucursal")
 
-    # Check if there's already an open session for this user
+    # Check if there's already an open session for this user in this branch
     existing_session = await db.cash_sessions.find_one({
         "user_id": user.id,
         "empresa_id": user.empresa_id,
+        "branch_id": session_branch_id,
         "status": CashSessionStatus.ABIERTA
     })
     if existing_session:
-        raise HTTPException(status_code=400, detail="Ya tienes una sesión de caja abierta")
+        raise HTTPException(status_code=400, detail="Ya hay una caja abierta en esta sucursal")
 
     # Create new session
     session = CashSession(
@@ -1388,9 +1413,12 @@ async def close_cash_session(session_id: str, close_data: CashSessionClose, user
 
 @api_router.get("/cash-sessions/current", response_model=Optional[CashSession])
 async def get_current_cash_session(user: User = Depends(get_current_user)):
+    if not user.branch_id:
+        return None
     session = await db.cash_sessions.find_one({
         "user_id": user.id,
         "empresa_id": user.empresa_id,
+        "branch_id": user.branch_id,
         "status": CashSessionStatus.ABIERTA
     })
     return CashSession(**session) if session else None
@@ -1413,6 +1441,7 @@ async def get_cash_sessions_history(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     branch_id: Optional[str] = Query(None),
+    user_id: Optional[str] = Query(None),
 ):
     if user.rol == UserRole.CAJERO:
         raise HTTPException(status_code=403, detail="No tiene permisos para ver el historial")
@@ -1422,6 +1451,8 @@ async def get_cash_sessions_history(
         query["branch_id"] = {"$in": user.branch_ids}
     if branch_id:
         query["branch_id"] = branch_id
+    if user_id:
+        query["user_id"] = user_id
 
     total = await db.cash_sessions.count_documents(query)
     skip = (page - 1) * per_page
@@ -2779,14 +2810,17 @@ def prepare_invoice_payload(
 # Sales routes
 @api_router.post("/sales", response_model=Sale)
 async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_user)):
-    # Check if user has an open cash session
+    # Check if user has an open cash session for the active branch
+    if not user.branch_id:
+        raise HTTPException(status_code=400, detail="Debe seleccionar una sucursal antes de realizar ventas")
     current_session = await db.cash_sessions.find_one({
         "user_id": user.id,
         "empresa_id": user.empresa_id,
+        "branch_id": user.branch_id,
         "status": CashSessionStatus.ABIERTA
     })
     if not current_session:
-        raise HTTPException(status_code=400, detail="Debe abrir una caja antes de realizar ventas")
+        raise HTTPException(status_code=400, detail="Debe abrir una caja en esta sucursal antes de realizar ventas")
 
     # Get current configuration for tax rate
     config = await db.configuration.find_one({"empresa_id": user.empresa_id})
@@ -2903,7 +2937,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
         total_amount += subtotal
 
     # Generate invoice number
-    branch_id_for_sale = user.branch_id or "global"
+    branch_id_for_sale = current_session.get('branch_id') or user.branch_id
     last_sale = await db.sales.find_one(
         {"branch_id": branch_id_for_sale, "empresa_id": user.empresa_id},
         sort=[("fecha", -1)]
@@ -2943,6 +2977,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
         impuestos_extra_total=impuestos_extra_total,
         condicion_iva_receptor=sale_data.condicion_iva_receptor,
         observaciones_comprobante=sale_data.observaciones_comprobante,
+        tipo_comprobante=sale_data.tipo_comprobante,
     )
 
     await db.sales.insert_one(sale.dict())
@@ -3047,6 +3082,289 @@ async def get_sale_returns(sale_id: str, user: User = Depends(get_current_user))
     returns = await db.sale_returns.find({"sale_id": sale_id, "empresa_id": user.empresa_id}).sort("fecha", -1).to_list(100)
     return [SaleReturn(**r) for r in returns]
 
+@api_router.get("/credit-notes", response_model=List[CreditNote])
+async def get_all_credit_notes(user: User = Depends(get_current_user)):
+    notes = await db.credit_notes.find({"empresa_id": user.empresa_id}).sort("fecha", -1).to_list(10000)
+    return [CreditNote(**n) for n in notes]
+
+@api_router.get("/sales/{sale_id}/credit-notes", response_model=List[CreditNote])
+async def get_sale_credit_notes(sale_id: str, user: User = Depends(get_current_user)):
+    notes = await db.credit_notes.find({"sale_id": sale_id, "empresa_id": user.empresa_id}).sort("fecha", -1).to_list(100)
+    return [CreditNote(**n) for n in notes]
+
+@api_router.get("/reportes/margenes")
+async def get_reporte_margenes(
+    fecha_desde: str = Query(...),
+    fecha_hasta: str = Query(...),
+    branch_id: Optional[str] = Query(None),
+    user: User = Depends(get_current_user)
+):
+    AR_TZ = timezone(timedelta(hours=-3))
+
+    # Convertir fechas a rango UTC
+    desde_local = datetime.strptime(fecha_desde, "%Y-%m-%d").replace(
+        hour=0, minute=0, second=0, tzinfo=AR_TZ
+    )
+    hasta_local = datetime.strptime(fecha_hasta, "%Y-%m-%d").replace(
+        hour=23, minute=59, second=59, tzinfo=AR_TZ
+    )
+    desde_utc = desde_local.astimezone(timezone.utc)
+    hasta_utc = hasta_local.astimezone(timezone.utc)
+
+    filtro = {
+        "empresa_id": user.empresa_id,
+        "fecha": {"$gte": desde_utc, "$lte": hasta_utc},
+        "estado": {"$ne": "cancelado"},
+    }
+    if branch_id and branch_id != "all":
+        filtro["branch_id"] = branch_id
+
+    sales = await db.sales.find(filtro).sort("fecha", 1).to_list(100000)
+
+    # Cargar costos de branch_products en batch: {(product_id, branch_id): costo}
+    product_ids = list({item["producto_id"] for s in sales for item in s.get("items", [])})
+    branch_ids_needed = list({s.get("branch_id") for s in sales if s.get("branch_id")})
+    bp_cursor = await db.branch_products.find(
+        {"product_id": {"$in": product_ids}, "branch_id": {"$in": branch_ids_needed}, "empresa_id": user.empresa_id},
+        {"product_id": 1, "branch_id": 1, "costo": 1}
+    ).to_list(100000)
+    costo_map = {(bp["product_id"], bp["branch_id"]): bp.get("costo") for bp in bp_cursor}
+
+    # Cargar nombres de sucursales
+    branches_list = await db.branches.find({"empresa_id": user.empresa_id}, {"id": 1, "nombre": 1}).to_list(1000)
+    branch_name_map = {b["id"]: b["nombre"] for b in branches_list}
+
+    DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+
+    por_fecha: dict = {}
+    por_dia_semana: dict = {}
+    por_sucursal_agg: dict = {}
+    por_venta_list = []
+    total_ventas = 0.0
+    total_costo = 0.0
+    total_margen = 0.0
+    num_ventas = 0
+
+    for s in sales:
+        fecha_dt = s.get("fecha")
+        if isinstance(fecha_dt, str):
+            fecha_dt = datetime.fromisoformat(fecha_dt.replace("Z", "+00:00"))
+        if fecha_dt.tzinfo is None:
+            fecha_dt = fecha_dt.replace(tzinfo=timezone.utc)
+        fecha_local = fecha_dt.astimezone(AR_TZ)
+        fecha_dia = fecha_local.strftime("%Y-%m-%d")
+        dia_numero = fecha_local.weekday()  # 0=lunes
+
+        sale_ventas = 0.0
+        sale_costo = 0.0
+        items_detalle = []
+
+        for item in s.get("items", []):
+            pid = item.get("producto_id")
+            bid = s.get("branch_id")
+            qty = float(item.get("cantidad", 0))
+            precio = float(item.get("precio_unitario", 0))
+            subtotal_venta = float(item.get("subtotal") or item.get("total") or (qty * precio))
+            costo_unit = costo_map.get((pid, bid))
+            subtotal_costo = qty * costo_unit if costo_unit is not None else None
+            margen_item = (subtotal_venta - subtotal_costo) if subtotal_costo is not None else None
+            margen_pct_item = (margen_item / subtotal_costo * 100) if (subtotal_costo and subtotal_costo > 0) else None
+
+            sale_ventas += subtotal_venta
+            if subtotal_costo is not None:
+                sale_costo += subtotal_costo
+
+            items_detalle.append({
+                "nombre": item.get("nombre", ""),
+                "cantidad": qty,
+                "subtotal_venta": round(subtotal_venta, 2),
+                "subtotal_costo": round(subtotal_costo, 2) if subtotal_costo is not None else None,
+                "margen": round(margen_item, 2) if margen_item is not None else None,
+                "margen_pct": round(margen_pct_item, 2) if margen_pct_item is not None else None,
+            })
+
+        sale_margen = sale_ventas - sale_costo
+        sale_margen_pct = (sale_margen / sale_costo * 100) if sale_costo > 0 else None
+
+        # Acumulado global
+        total_ventas += sale_ventas
+        total_costo += sale_costo
+        total_margen += sale_margen
+        num_ventas += 1
+
+        # Por fecha
+        if fecha_dia not in por_fecha:
+            por_fecha[fecha_dia] = {"ventas_total": 0.0, "costo_total": 0.0, "margen_total": 0.0, "num_ventas": 0}
+        por_fecha[fecha_dia]["ventas_total"] += sale_ventas
+        por_fecha[fecha_dia]["costo_total"] += sale_costo
+        por_fecha[fecha_dia]["margen_total"] += sale_margen
+        por_fecha[fecha_dia]["num_ventas"] += 1
+
+        # Por día de semana
+        if dia_numero not in por_dia_semana:
+            por_dia_semana[dia_numero] = {"dia_nombre": DIAS[dia_numero], "ventas_total": 0.0, "costo_total": 0.0, "margen_total": 0.0, "num_ventas": 0}
+        por_dia_semana[dia_numero]["ventas_total"] += sale_ventas
+        por_dia_semana[dia_numero]["costo_total"] += sale_costo
+        por_dia_semana[dia_numero]["margen_total"] += sale_margen
+        por_dia_semana[dia_numero]["num_ventas"] += 1
+
+        # Por sucursal
+        bid = s.get("branch_id") or "global"
+        if bid not in por_sucursal_agg:
+            por_sucursal_agg[bid] = {
+                "branch_id": bid,
+                "branch_nombre": branch_name_map.get(bid, "Sin sucursal"),
+                "ventas_total": 0.0, "costo_total": 0.0, "margen_total": 0.0, "num_ventas": 0
+            }
+        por_sucursal_agg[bid]["ventas_total"] += sale_ventas
+        por_sucursal_agg[bid]["costo_total"] += sale_costo
+        por_sucursal_agg[bid]["margen_total"] += sale_margen
+        por_sucursal_agg[bid]["num_ventas"] += 1
+
+        # Por venta
+        por_venta_list.append({
+            "sale_id": s.get("id"),
+            "fecha": s.get("fecha").isoformat() if hasattr(s.get("fecha"), "isoformat") else str(s.get("fecha")),
+            "fecha_dia": fecha_dia,
+            "dia_semana": dia_numero,
+            "branch_id": s.get("branch_id"),
+            "branch_nombre": branch_name_map.get(s.get("branch_id", ""), "Sin sucursal"),
+            "numero_factura": s.get("numero_factura"),
+            "ventas_total": round(sale_ventas, 2),
+            "costo_total": round(sale_costo, 2),
+            "margen_total": round(sale_margen, 2),
+            "margen_pct": round(sale_margen_pct, 2) if sale_margen_pct is not None else None,
+            "items": items_detalle,
+        })
+
+    def _pct(margen, costo):
+        return round(margen / costo * 100, 2) if costo and costo > 0 else None
+
+    margen_total_global = round(total_margen, 2)
+    margen_pct_global = _pct(total_margen, total_costo)
+
+    por_fecha_list = sorted([
+        {
+            "fecha": k,
+            "ventas_total": round(v["ventas_total"], 2),
+            "costo_total": round(v["costo_total"], 2),
+            "margen_total": round(v["margen_total"], 2),
+            "margen_pct": _pct(v["margen_total"], v["costo_total"]),
+            "num_ventas": v["num_ventas"],
+        }
+        for k, v in por_fecha.items()
+    ], key=lambda x: x["fecha"])
+
+    por_dia_list = sorted([
+        {
+            "dia_numero": k,
+            "dia_nombre": v["dia_nombre"],
+            "ventas_total": round(v["ventas_total"], 2),
+            "costo_total": round(v["costo_total"], 2),
+            "margen_total": round(v["margen_total"], 2),
+            "margen_pct": _pct(v["margen_total"], v["costo_total"]),
+            "num_ventas": v["num_ventas"],
+        }
+        for k, v in por_dia_semana.items()
+    ], key=lambda x: x["dia_numero"])
+
+    por_sucursal_list = sorted([
+        {
+            **v,
+            "ventas_total": round(v["ventas_total"], 2),
+            "costo_total": round(v["costo_total"], 2),
+            "margen_total": round(v["margen_total"], 2),
+            "margen_pct": _pct(v["margen_total"], v["costo_total"]),
+        }
+        for v in por_sucursal_agg.values()
+    ], key=lambda x: x["ventas_total"], reverse=True)
+
+    return {
+        "resumen": {
+            "ventas_total": round(total_ventas, 2),
+            "costo_total": round(total_costo, 2),
+            "margen_total": margen_total_global,
+            "margen_pct": margen_pct_global,
+            "num_ventas": num_ventas,
+        },
+        "por_fecha": por_fecha_list,
+        "por_dia_semana": por_dia_list,
+        "por_sucursal": por_sucursal_list,
+        "por_venta": por_venta_list,
+    }
+
+@api_router.get("/reportes/ingresos-egresos")
+async def get_reporte_ingresos_egresos(
+    fecha_desde: str = Query(...),
+    fecha_hasta: str = Query(...),
+    user: User = Depends(get_current_user)
+):
+    AR_TZ = timezone(timedelta(hours=-3))
+    MESES_ES = {1:'Ene',2:'Feb',3:'Mar',4:'Abr',5:'May',6:'Jun',7:'Jul',8:'Ago',9:'Sep',10:'Oct',11:'Nov',12:'Dic'}
+
+    desde_local = datetime.strptime(fecha_desde, "%Y-%m-%d").replace(hour=0, minute=0, second=0, tzinfo=AR_TZ)
+    hasta_local = datetime.strptime(fecha_hasta, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=AR_TZ)
+    desde_utc = desde_local.astimezone(timezone.utc)
+    hasta_utc = hasta_local.astimezone(timezone.utc)
+
+    sales = await db.sales.find(
+        {"empresa_id": user.empresa_id, "fecha": {"$gte": desde_utc, "$lte": hasta_utc}, "estado": {"$ne": "cancelado"}},
+        {"fecha": 1, "total": 1}
+    ).to_list(100000)
+
+    compras = await db.compras.find(
+        {"empresa_id": user.empresa_id, "fecha": {"$gte": desde_utc, "$lte": hasta_utc}},
+        {"fecha": 1, "total": 1}
+    ).to_list(100000)
+
+    monthly: dict = {}
+
+    def _get_key(fecha_raw):
+        if isinstance(fecha_raw, str):
+            fecha_raw = datetime.fromisoformat(fecha_raw.replace("Z", "+00:00"))
+        if fecha_raw and fecha_raw.tzinfo is None:
+            fecha_raw = fecha_raw.replace(tzinfo=timezone.utc)
+        return fecha_raw.astimezone(AR_TZ).strftime("%Y-%m") if fecha_raw else None
+
+    for s in sales:
+        key = _get_key(s.get("fecha"))
+        if not key:
+            continue
+        if key not in monthly:
+            monthly[key] = {"ingresos": 0.0, "egresos": 0.0}
+        monthly[key]["ingresos"] += s.get("total", 0)
+
+    for c in compras:
+        key = _get_key(c.get("fecha"))
+        if not key:
+            continue
+        if key not in monthly:
+            monthly[key] = {"ingresos": 0.0, "egresos": 0.0}
+        monthly[key]["egresos"] += c.get("total", 0)
+
+    # Rellenar todos los meses del rango aunque no tengan datos
+    meses = []
+    cur = desde_local.replace(day=1)
+    end = hasta_local.replace(day=1)
+    while cur <= end:
+        key = cur.strftime("%Y-%m")
+        label = f"{MESES_ES[cur.month]} {cur.year}"
+        d = monthly.get(key, {"ingresos": 0.0, "egresos": 0.0})
+        ingresos = round(d["ingresos"], 2)
+        egresos = round(d["egresos"], 2)
+        meses.append({"mes": key, "mes_label": label, "ingresos": ingresos, "egresos": egresos, "balance": round(ingresos - egresos, 2)})
+        cur = cur.replace(month=cur.month % 12 + 1, year=cur.year + (1 if cur.month == 12 else 0))
+
+    total_ingresos = round(sum(m["ingresos"] for m in meses), 2)
+    total_egresos = round(sum(m["egresos"] for m in meses), 2)
+
+    return {
+        "meses": meses,
+        "total_ingresos": total_ingresos,
+        "total_egresos": total_egresos,
+        "balance_total": round(total_ingresos - total_egresos, 2),
+    }
+
 @api_router.post("/sales/{sale_id}/return")
 async def create_sale_return(sale_id: str, return_data: ReturnCreate, user: User = Depends(get_current_user)):
     sale = await db.sales.find_one({"id": sale_id, "empresa_id": user.empresa_id})
@@ -3131,6 +3449,81 @@ async def create_sale_return(sale_id: str, return_data: ReturnCreate, user: User
     new_estado = "cancelado" if fully_returned else "devolucion_parcial"
     await db.sales.update_one({"id": sale_id}, {"$set": {"estado": new_estado}})
 
+    # Create credit note
+    cn_count = await db.credit_notes.count_documents({"empresa_id": user.empresa_id})
+    numero_nota_credito = f"NC-{str(cn_count + 1).zfill(6)}"
+    credit_note = CreditNote(
+        empresa_id=user.empresa_id,
+        sale_id=sale_id,
+        return_id=sale_return.id,
+        cajero_id=user.id,
+        numero_nota_credito=numero_nota_credito,
+        numero_factura_original=sale_obj.numero_factura,
+        items=return_items,
+        total=total_return,
+        motivo=return_data.motivo,
+        tipo="total" if fully_returned else "parcial"
+    )
+    await db.credit_notes.insert_one(credit_note.dict())
+
+    # Request CAE for credit note if original sale was authorized by AFIP
+    # Factura A(1)→NC-A(3)  Factura B(6)→NC-B(8)  Factura C(11)→NC-C(13)
+    NC_TIPO_MAP = {1: 3, 6: 8, 11: 13}
+    nc_tipo = NC_TIPO_MAP.get(sale_obj.tipo_comprobante) if sale_obj.tipo_comprobante else None
+    if sale_obj.afip_estado == "autorizado" and nc_tipo and sale_obj.nro_comprobante_afip:
+        afip_cfg = await db.afip_config.find_one({"empresa_id": user.empresa_id, "activo": True})
+        if afip_cfg and afip_cfg.get("cert_pem") and afip_cfg.get("key_pem_encrypted"):
+            try:
+                token_a, sign_a = await _afip_service.get_token_sign(afip_cfg, db, SECRET_KEY)
+                tax_rate = afip_cfg.get("tax_rate", 0.21) if nc_tipo != 13 else 0.0
+                if tax_rate > 0:
+                    nc_subtotal = round(total_return / (1 + tax_rate), 2)
+                    nc_impuestos = round(total_return - nc_subtotal, 2)
+                else:
+                    nc_subtotal = round(total_return, 2)
+                    nc_impuestos = 0.0
+                nc_sale_dict = {
+                    "total": round(total_return, 2),
+                    "subtotal": nc_subtotal,
+                    "impuestos": nc_impuestos,
+                    "impuestos_extra_total": 0.0,
+                }
+                cbtes_asoc = [{
+                    "Tipo": sale_obj.tipo_comprobante,
+                    "PtoVta": afip_cfg["punto_venta"],
+                    "Nro": sale_obj.nro_comprobante_afip,
+                }]
+                nc_result = await _afip_service.solicitar_cae(
+                    nc_sale_dict, afip_cfg, token_a, sign_a, nc_tipo,
+                    cuit_receptor=sale_obj.cuit_receptor,
+                    cbtes_asoc=cbtes_asoc,
+                )
+                await db.credit_notes.update_one(
+                    {"id": credit_note.id},
+                    {"$set": {
+                        "cae": nc_result["cae"],
+                        "cae_vencimiento": nc_result["cae_vencimiento"],
+                        "afip_estado": "autorizado",
+                        "tipo_comprobante_nc": nc_tipo,
+                        "nro_comprobante_afip": nc_result["nro_comprobante"],
+                    }}
+                )
+                credit_note.cae = nc_result["cae"]
+                credit_note.cae_vencimiento = nc_result["cae_vencimiento"]
+                credit_note.afip_estado = "autorizado"
+                credit_note.tipo_comprobante_nc = nc_tipo
+                credit_note.nro_comprobante_afip = nc_result["nro_comprobante"]
+            except Exception as e:
+                logger.warning(f"Error al obtener CAE para nota de crédito {numero_nota_credito}: {e}")
+                await db.credit_notes.update_one(
+                    {"id": credit_note.id},
+                    {"$set": {
+                        "afip_estado": "contingencia",
+                        "afip_error": str(e),
+                        "tipo_comprobante_nc": nc_tipo,
+                    }}
+                )
+
     # Reduce cash session monto_ventas
     await db.cash_sessions.update_one(
         {"id": sale_obj.session_id},
@@ -3143,12 +3536,19 @@ async def create_sale_return(sale_id: str, return_data: ReturnCreate, user: User
         session_id=sale_obj.session_id,
         tipo=MovementType.DEVOLUCION,
         monto=-total_return,
-        descripcion=f"Devolución {numero_devolucion} - Factura {sale_obj.numero_factura}",
+        descripcion=f"Nota de crédito {numero_nota_credito} - {numero_devolucion} - Factura {sale_obj.numero_factura}",
         venta_id=sale_id
     )
     await db.cash_movements.insert_one(movement.dict())
 
-    return {"message": "Devolución procesada exitosamente", "numero_devolucion": numero_devolucion, "total": total_return}
+    return {
+        "message": "Devolución procesada exitosamente",
+        "numero_devolucion": numero_devolucion,
+        "numero_nota_credito": numero_nota_credito,
+        "cae_nc": credit_note.cae,
+        "afip_estado_nc": credit_note.afip_estado,
+        "total": total_return
+    }
 
 # Cash Reports routes
 @api_router.get("/cash-sessions/{session_id}/movements", response_model=List[CashMovement])
@@ -3224,6 +3624,24 @@ async def get_dashboard_stats(user: User = Depends(get_current_user)):
     total_ventas_hoy = sum(sale['total'] - returned_by_sale_today.get(sale['id'], 0) for sale in today_sales)
     numero_ventas_hoy = len(today_sales)
 
+    # Per-branch breakdown for admin
+    ventas_por_sucursal = []
+    if user.rol == UserRole.ADMIN:
+        branches_list = await db.branches.find({"empresa_id": user.empresa_id, "activo": True}).to_list(1000)
+        branch_map = {b["id"]: b["nombre"] for b in branches_list}
+        branch_totals = {}
+        for sale in today_sales:
+            bid = sale.get("branch_id") or "global"
+            net = sale["total"] - returned_by_sale_today.get(sale["id"], 0)
+            if bid not in branch_totals:
+                branch_totals[bid] = {"total": 0, "cantidad": 0}
+            branch_totals[bid]["total"] += net
+            branch_totals[bid]["cantidad"] += 1
+        for bid, data in branch_totals.items():
+            nombre = branch_map.get(bid, "Sin sucursal") if bid != "global" else "Sin sucursal"
+            ventas_por_sucursal.append({"branch_id": bid, "nombre": nombre, "total": data["total"], "cantidad": data["cantidad"]})
+        ventas_por_sucursal.sort(key=lambda x: x["total"], reverse=True)
+
     # Total products
     total_productos = await db.products.count_documents({"empresa_id": user.empresa_id, "activo": True})
 
@@ -3278,7 +3696,8 @@ async def get_dashboard_stats(user: User = Depends(get_current_user)):
     return {
         "ventas_hoy": {
             "total": total_ventas_hoy,
-            "cantidad": numero_ventas_hoy
+            "cantidad": numero_ventas_hoy,
+            "por_sucursal": ventas_por_sucursal
         },
         "productos": {
             "total": total_productos,
@@ -5288,6 +5707,85 @@ async def get_ventas_pendientes(user: User = Depends(require_role([UserRole.ADMI
         "afip_estado": {"$in": ["contingencia", "error"]}
     }).to_list(200)
     return [Sale(**v) for v in ventas]
+
+@afip_router.post("/reintentar-nc/{credit_note_id}")
+async def reintentar_cae_nc(
+    credit_note_id: str,
+    body: RetryNcRequest = Body(default=RetryNcRequest()),
+    user: User = Depends(require_role([UserRole.ADMIN]))
+):
+    """Reintenta obtener el CAE para una nota de crédito en contingencia."""
+    nc_doc = await db.credit_notes.find_one({"id": credit_note_id, "empresa_id": user.empresa_id})
+    if not nc_doc:
+        raise HTTPException(status_code=404, detail="Nota de crédito no encontrada.")
+    if nc_doc.get("afip_estado") == "autorizado":
+        return {"ok": True, "mensaje": "La nota de crédito ya tiene CAE.", "cae": nc_doc.get("cae")}
+
+    # Recuperar la venta original para obtener tipo_comprobante y nro_comprobante_afip
+    sale_doc = await db.sales.find_one({"id": nc_doc["sale_id"], "empresa_id": user.empresa_id})
+    if not sale_doc:
+        raise HTTPException(status_code=404, detail="Venta original no encontrada.")
+    if sale_doc.get("afip_estado") != "autorizado":
+        raise HTTPException(status_code=400, detail="La venta original no tiene CAE autorizado.")
+
+    NC_TIPO_MAP = {1: 3, 6: 8, 11: 13}
+    nc_tipo = NC_TIPO_MAP.get(sale_doc.get("tipo_comprobante"))
+    if not nc_tipo:
+        raise HTTPException(status_code=400, detail="La venta original no es una factura electrónica.")
+
+    cfg = await db.afip_config.find_one({"empresa_id": user.empresa_id, "activo": True})
+    if not cfg or not cfg.get("cert_pem") or not cfg.get("key_pem_encrypted"):
+        raise HTTPException(status_code=400, detail="AFIP no está configurado o falta el certificado.")
+
+    try:
+        token_a, sign_a = await _afip_service.get_token_sign(cfg, db, SECRET_KEY)
+        total_return = nc_doc["total"]
+        tax_rate = cfg.get("tax_rate", 0.21) if nc_tipo != 13 else 0.0
+        if tax_rate > 0:
+            nc_subtotal = round(total_return / (1 + tax_rate), 2)
+            nc_impuestos = round(total_return - nc_subtotal, 2)
+        else:
+            nc_subtotal = round(total_return, 2)
+            nc_impuestos = 0.0
+        nc_sale_dict = {
+            "total": round(total_return, 2),
+            "subtotal": nc_subtotal,
+            "impuestos": nc_impuestos,
+            "impuestos_extra_total": 0.0,
+        }
+        cbtes_asoc = [{
+            "Tipo": sale_doc["tipo_comprobante"],
+            "PtoVta": cfg["punto_venta"],
+            "Nro": sale_doc["nro_comprobante_afip"],
+        }]
+        effective_cuit = body.cuit_receptor or sale_doc.get("cuit_receptor")
+        result = await _afip_service.solicitar_cae(
+            nc_sale_dict, cfg, token_a, sign_a, nc_tipo,
+            cuit_receptor=effective_cuit,
+            cbtes_asoc=cbtes_asoc,
+        )
+        await db.credit_notes.update_one(
+            {"id": credit_note_id},
+            {"$set": {
+                "cae": result["cae"],
+                "cae_vencimiento": result["cae_vencimiento"],
+                "afip_estado": "autorizado",
+                "tipo_comprobante_nc": nc_tipo,
+                "nro_comprobante_afip": result["nro_comprobante"],
+                "afip_error": None,
+            }}
+        )
+        return {"ok": True, "cae": result["cae"], "cae_vencimiento": result["cae_vencimiento"]}
+    except Exception as e:
+        await db.credit_notes.update_one(
+            {"id": credit_note_id},
+            {"$set": {
+                "afip_estado": "contingencia",
+                "afip_error": str(e),
+                "tipo_comprobante_nc": nc_tipo,
+            }}
+        )
+        raise HTTPException(status_code=503, detail=f"Error al obtener CAE para NC: {e}")
 
 # Include the router in the main app
 app.include_router(api_router)
