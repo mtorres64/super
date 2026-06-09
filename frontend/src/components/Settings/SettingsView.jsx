@@ -988,6 +988,39 @@ const SettingsView = ({
                   <input type="text" className="form-input" placeholder="Mi Empresa S.A."
                     value={afipConfig.razon_social} onChange={e => setAfipConfig(p => ({ ...p, razon_social: e.target.value }))} />
                 </div>
+                <div className="form-group md:col-span-2">
+                  <label className="form-label">Domicilio Fiscal</label>
+                  <input type="text" className="form-input" placeholder="Av. Corrientes 1234, CABA"
+                    value={afipConfig.domicilio_fiscal} onChange={e => setAfipConfig(p => ({ ...p, domicilio_fiscal: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Condición frente al IVA</label>
+                  <select className="form-select" value={afipConfig.condicion_iva_emisor}
+                    onChange={e => setAfipConfig(p => ({ ...p, condicion_iva_emisor: e.target.value }))}>
+                    <option value="RI">Responsable Inscripto</option>
+                    <option value="MO">Monotributista</option>
+                    <option value="EX">Exento</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Inicio de Actividades</label>
+                  <input type="text" className="form-input" placeholder="01/01/2020"
+                    value={afipConfig.inicio_actividades} onChange={e => setAfipConfig(p => ({ ...p, inicio_actividades: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Ingresos Brutos</label>
+                  <input type="text" className="form-input" placeholder="Nro. o CM (Conv. Multilateral)"
+                    value={afipConfig.iibb} onChange={e => setAfipConfig(p => ({ ...p, iibb: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Concepto por defecto</label>
+                  <select className="form-select" value={afipConfig.concepto_default}
+                    onChange={e => setAfipConfig(p => ({ ...p, concepto_default: parseInt(e.target.value) }))}>
+                    <option value={1}>Productos</option>
+                    <option value={2}>Servicios</option>
+                    <option value={3}>Productos y Servicios</option>
+                  </select>
+                </div>
                 <div className="form-group">
                   <label className="form-label">Ambiente</label>
                   <select className="form-select" value={afipConfig.ambiente}
@@ -1000,9 +1033,9 @@ const SettingsView = ({
                   <label className="form-label">Tipo de comprobante por defecto</label>
                   <select className="form-select" value={afipConfig.tipo_comprobante_default}
                     onChange={e => setAfipConfig(p => ({ ...p, tipo_comprobante_default: parseInt(e.target.value) }))}>
-                    <option value={6}>Factura B — Responsable Inscripto a Consumidor Final</option>
+                    <option value={6}>Factura B — Resp. Inscripto a Consumidor Final</option>
                     <option value={11}>Factura C — Monotributista</option>
-                    <option value={1}>Factura A — Entre Responsables Inscriptos (requiere CUIT comprador)</option>
+                    <option value={1}>Factura A — Entre Responsables Inscriptos</option>
                   </select>
                 </div>
               </div>

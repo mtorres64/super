@@ -102,7 +102,12 @@ const Settings = () => {
   const [darkMode, setDarkMode] = useState(localStorage.getItem('dark_mode') === 'true');
 
   // Estado AFIP
-  const [afipConfig, setAfipConfig] = useState({ cuit: '', punto_venta: 1, ambiente: 'homologacion', tipo_comprobante_default: 6, razon_social: '' });
+  const [afipConfig, setAfipConfig] = useState({
+    cuit: '', punto_venta: 1, ambiente: 'homologacion',
+    tipo_comprobante_default: 6, razon_social: '',
+    domicilio_fiscal: '', condicion_iva_emisor: 'RI',
+    inicio_actividades: '', iibb: '', concepto_default: 1,
+  });
   const [afipStatus, setAfipStatus] = useState(null);
   const [afipSaving, setAfipSaving] = useState(false);
   const [afipTesting, setAfipTesting] = useState(false);
@@ -242,6 +247,11 @@ const Settings = () => {
           ambiente: res.data.ambiente || 'homologacion',
           tipo_comprobante_default: res.data.tipo_comprobante_default || 6,
           razon_social: res.data.razon_social || '',
+          domicilio_fiscal: res.data.domicilio_fiscal || '',
+          condicion_iva_emisor: res.data.condicion_iva_emisor || 'RI',
+          inicio_actividades: res.data.inicio_actividades || '',
+          iibb: res.data.iibb || '',
+          concepto_default: res.data.concepto_default || 1,
         });
       }
     } catch {

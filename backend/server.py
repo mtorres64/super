@@ -372,6 +372,7 @@ MODULES: dict[str, str] = {
     "pos":           "POS / Ventas",
     "caja":          "Caja",
     "inventario":    "Inventario",
+    "clientes":      "Clientes",
     "reportes":      "Reportes de Ventas",
     "compras":       "Compras y Proveedores",
     "alertas_stock": "Alertas de Stock",
@@ -386,11 +387,11 @@ PLAN_MODULES: dict[str, list[str]] = {
         "pos", "caja", "inventario", "notificaciones",
     ],
     "profesional": [
-        "pos", "caja", "inventario", "reportes", "compras",
+        "pos", "caja", "inventario", "clientes", "reportes", "compras",
         "alertas_stock", "usuarios", "configuracion", "notificaciones",
     ],
     "empresarial": [
-        "pos", "caja", "inventario", "reportes", "compras",
+        "pos", "caja", "inventario", "clientes", "reportes", "compras",
         "alertas_stock", "usuarios", "multi_sucursal", "configuracion", "notificaciones",
     ],
 }
@@ -843,12 +844,23 @@ class Sale(BaseModel):
     tipo_comprobante: int = 6                    # 1=Factura A, 6=Factura B, 11=Factura C
     nro_comprobante_afip: Optional[int] = None
     cuit_receptor: Optional[str] = None
+    cliente_id: Optional[str] = None
+    descuento: float = 0.0
+    impuestos_extra_total: float = 0.0
+    condicion_iva_receptor: Optional[str] = None
+    observaciones_comprobante: Optional[str] = None
+    factura_payload: Optional[dict] = None      # Datos mínimos AFIP/ARCA para generación de comprobante
 
 class SaleCreate(BaseModel):
     items: List[SaleItem]
     metodo_pago: PaymentMethod
     tipo_comprobante: Optional[int] = None      # si None → usa default de AfipConfig
     cuit_receptor: Optional[str] = None         # requerido si tipo_comprobante = 1
+    cliente_id: Optional[str] = None
+    descuento: Optional[float] = 0.0
+    impuestos_extra_total: Optional[float] = 0.0
+    condicion_iva_receptor: Optional[str] = None
+    observaciones_comprobante: Optional[str] = None
 
 # ─── Modelos AFIP/ARCA ────────────────────────────────────────────────────────
 
@@ -860,6 +872,12 @@ class AfipConfig(BaseModel):
     ambiente: str = "homologacion"              # "homologacion" | "produccion"
     tipo_comprobante_default: int = 6           # 1=A, 6=B, 11=C
     razon_social: str = ""
+    # Datos fiscales del emisor (requeridos para generar comprobante)
+    domicilio_fiscal: Optional[str] = None      # Dirección fiscal del comercio
+    condicion_iva_emisor: str = "RI"            # RI=Resp.Inscripto, MO=Monotributista, EX=Exento
+    inicio_actividades: Optional[str] = None    # Formato dd/mm/yyyy
+    iibb: Optional[str] = None                  # Nro. Ingresos Brutos o "CM" (Conv. Multilateral)
+    concepto_default: int = 1                   # 1=Productos, 2=Servicios, 3=Productos y Servicios
     cert_pem: Optional[str] = None              # Certificado X.509 en PEM codificado en base64
     key_pem_encrypted: Optional[str] = None     # Private key cifrada con Fernet
     activo: bool = True
@@ -872,6 +890,11 @@ class AfipConfigCreate(BaseModel):
     ambiente: str = "homologacion"
     tipo_comprobante_default: int = 6
     razon_social: Optional[str] = ""
+    domicilio_fiscal: Optional[str] = None
+    condicion_iva_emisor: Optional[str] = "RI"
+    inicio_actividades: Optional[str] = None
+    iibb: Optional[str] = None
+    concepto_default: Optional[int] = 1
 
 class AfipConfigUpdate(BaseModel):
     cuit: Optional[str] = None
@@ -879,6 +902,11 @@ class AfipConfigUpdate(BaseModel):
     ambiente: Optional[str] = None
     tipo_comprobante_default: Optional[int] = None
     razon_social: Optional[str] = None
+    domicilio_fiscal: Optional[str] = None
+    condicion_iva_emisor: Optional[str] = None
+    inicio_actividades: Optional[str] = None
+    iibb: Optional[str] = None
+    concepto_default: Optional[int] = None
 
 class ReturnItemCreate(BaseModel):
     producto_id: str
@@ -2427,6 +2455,149 @@ async def delete_product(product_id: str, user: User = Depends(require_role([Use
     await db.branch_products.delete_many({"product_id": product_id, "empresa_id": user.empresa_id})
     return {"ok": True}
 
+# ===== CUSTOMERS =====
+
+class Customer(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    empresa_id: str
+    nombre: str
+    tipo_documento: Optional[str] = "dni"
+    documento: Optional[str] = None
+    telefono: Optional[str] = None
+    email: Optional[str] = None
+    direccion: Optional[str] = None
+    fecha_nacimiento: Optional[str] = None
+    observaciones: Optional[str] = None
+    activo: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class CustomerCreate(BaseModel):
+    nombre: str
+    tipo_documento: Optional[str] = "dni"
+    documento: Optional[str] = None
+    telefono: Optional[str] = None
+    email: Optional[str] = None
+    direccion: Optional[str] = None
+    fecha_nacimiento: Optional[str] = None
+    observaciones: Optional[str] = None
+    activo: bool = True
+
+class CustomerUpdate(BaseModel):
+    nombre: Optional[str] = None
+    tipo_documento: Optional[str] = None
+    documento: Optional[str] = None
+    telefono: Optional[str] = None
+    email: Optional[str] = None
+    direccion: Optional[str] = None
+    fecha_nacimiento: Optional[str] = None
+    observaciones: Optional[str] = None
+    activo: Optional[bool] = None
+
+class CustomerBulkDeleteRequest(BaseModel):
+    ids: Optional[List[str]] = None
+    delete_all: bool = False
+    search: Optional[str] = None
+
+class CustomerBulkUpdateRequest(BaseModel):
+    ids: Optional[List[str]] = None
+    delete_all: bool = False
+    search: Optional[str] = None
+    activo: bool
+
+@api_router.post("/customers", response_model=Customer)
+async def create_customer(customer_data: CustomerCreate, user: User = Depends(require_role([UserRole.ADMIN]))):
+    customer = Customer(**customer_data.dict(), empresa_id=user.empresa_id)
+    await db.customers.insert_one(customer.model_dump())
+    return customer
+
+@api_router.get("/customers")
+async def get_customers(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=10000),
+    search: Optional[str] = Query(None),
+    activo: Optional[bool] = Query(None),
+    user: User = Depends(get_current_user)
+):
+    query = {"empresa_id": user.empresa_id}
+    if activo is not None:
+        query["activo"] = activo
+    if search:
+        regex = {"$regex": re.escape(search), "$options": "i"}
+        query["$or"] = [
+            {"nombre": regex},
+            {"documento": regex},
+            {"email": regex},
+            {"telefono": regex},
+        ]
+    total = await db.customers.count_documents(query)
+    skip = (page - 1) * per_page
+    raw = await db.customers.find(query).sort("nombre", 1).skip(skip).limit(per_page).to_list(per_page)
+    result = []
+    for c in raw:
+        try:
+            result.append(Customer(**c))
+        except Exception as e:
+            logger.warning(f"Skipping invalid customer {c.get('id')}: {e}")
+    return {
+        "items": [c.dict() for c in result],
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, -(-total // per_page))
+    }
+
+@api_router.get("/customers/{customer_id}", response_model=Customer)
+async def get_customer(customer_id: str, user: User = Depends(get_current_user)):
+    c = await db.customers.find_one({"id": customer_id, "empresa_id": user.empresa_id})
+    if not c:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    return Customer(**c)
+
+@api_router.put("/customers/{customer_id}", response_model=Customer)
+async def update_customer(customer_id: str, customer_data: CustomerUpdate, user: User = Depends(require_role([UserRole.ADMIN]))):
+    c = await db.customers.find_one({"id": customer_id, "empresa_id": user.empresa_id})
+    if not c:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    update_data = {k: v for k, v in customer_data.dict().items() if v is not None}
+    if update_data:
+        await db.customers.update_one({"id": customer_id, "empresa_id": user.empresa_id}, {"$set": update_data})
+    updated = await db.customers.find_one({"id": customer_id, "empresa_id": user.empresa_id})
+    return Customer(**updated)
+
+@api_router.put("/customers/bulk-status")
+async def bulk_update_customer_status(data: CustomerBulkUpdateRequest, user: User = Depends(require_role([UserRole.ADMIN]))):
+    query = {"empresa_id": user.empresa_id}
+    if not data.delete_all:
+        if not data.ids:
+            raise HTTPException(status_code=400, detail="No se especificaron IDs")
+        query["id"] = {"$in": data.ids}
+    elif data.search:
+        regex = {"$regex": re.escape(data.search), "$options": "i"}
+        query["$or"] = [{"nombre": regex}, {"documento": regex}, {"email": regex}, {"telefono": regex}]
+    result = await db.customers.update_many(query, {"$set": {"activo": data.activo}})
+    return {"updated": result.modified_count}
+
+@api_router.delete("/customers/bulk")
+async def bulk_delete_customers(data: CustomerBulkDeleteRequest, user: User = Depends(require_role([UserRole.ADMIN]))):
+    query = {"empresa_id": user.empresa_id}
+    if not data.delete_all:
+        if not data.ids:
+            raise HTTPException(status_code=400, detail="No se especificaron IDs")
+        query["id"] = {"$in": data.ids}
+    elif data.search:
+        regex = {"$regex": re.escape(data.search), "$options": "i"}
+        query["$or"] = [{"nombre": regex}, {"documento": regex}, {"email": regex}, {"telefono": regex}]
+    result = await db.customers.delete_many(query)
+    return {"deleted": result.deleted_count}
+
+@api_router.delete("/customers/{customer_id}")
+async def delete_customer(customer_id: str, user: User = Depends(require_role([UserRole.ADMIN]))):
+    c = await db.customers.find_one({"id": customer_id, "empresa_id": user.empresa_id})
+    if not c:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    await db.customers.delete_one({"id": customer_id, "empresa_id": user.empresa_id})
+    return {"ok": True}
+
 # User management routes
 @api_router.get("/users", response_model=List[User])
 async def get_users(user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR]))):
@@ -2501,6 +2672,109 @@ async def upload_logo(file: UploadFile = File(...), user: User = Depends(require
     }})
 
     return {"message": "Logo uploaded successfully", "logo_url": logo_data_url}
+
+# ─── Helpers de facturación ───────────────────────────────────────────────────
+
+# Tipos de comprobante soportados (sin notas de crédito)
+TIPOS_COMPROBANTE_FACTURA = {1, 6, 11, 2, 7}   # A, B, C, NDebA, NDebB
+
+# Alícuotas IVA AFIP: tax_rate (decimal) → id interno WSFE
+_IVA_ALICUOTA = [(0.27, 6), (0.21, 5), (0.105, 4), (0.05, 8), (0.025, 9), (0.0, 3)]
+
+def prepare_invoice_payload(
+    sale_dict: dict,
+    afip_cfg: dict,
+    tipo_cbte: int,
+    tax_rate: float = 0.0,
+) -> dict:
+    """
+    Arma la estructura mínima de datos que necesita cualquier
+    librería AFIP/ARCA (ej. pyafipws, zeep, ARCA REST) para
+    autorizar un comprobante electrónico (FECAESolicitar / fe_comp_consultar).
+
+    No llama al WS — sólo prepara y devuelve el payload estructurado
+    para su uso posterior o para almacenamiento en contingencia.
+    """
+    from datetime import datetime as _dt
+
+    # Alícuota IVA más cercana al tax_rate configurado
+    alicuota_id = min(_IVA_ALICUOTA, key=lambda x: abs(x[0] - tax_rate))[1]
+
+    # Condición IVA receptor → DocTipo AFIP
+    condicion_raw = (sale_dict.get("condicion_iva_receptor") or "consumidor_final").lower()
+    if any(k in condicion_raw for k in ("responsable_inscripto", " ri", "monotributista", " mo", "exento", " ex")):
+        doc_tipo = 80   # CUIT
+        cuit_raw = str(sale_dict.get("cuit_receptor") or "").replace("-", "").replace(" ", "")
+        try:
+            doc_nro = int(cuit_raw) if cuit_raw.isdigit() else 0
+        except (ValueError, TypeError):
+            doc_nro = 0
+    else:
+        doc_tipo = 99   # Consumidor Final
+        doc_nro = 0
+
+    subtotal       = float(sale_dict.get("subtotal", 0))
+    descuento      = float(sale_dict.get("descuento", 0))
+    imp_trib       = float(sale_dict.get("impuestos_extra_total", 0))
+    imp_total      = float(sale_dict.get("total", 0))
+
+    # Neto gravado (base IVA) = subtotal menos descuento proporcional
+    imp_neto = max(0.0, round(subtotal - descuento, 2))
+    imp_iva  = round(imp_neto * tax_rate, 2)
+
+    iva_detalle = []
+    if alicuota_id != 3 and imp_iva > 0:
+        iva_detalle = [{"id": alicuota_id, "base_imp": imp_neto, "importe": imp_iva}]
+
+    items_payload = []
+    for it in sale_dict.get("items", []):
+        qty   = float(it.get("cantidad", 1))
+        price = float(it.get("precio_unitario", 0))
+        sub   = float(it.get("subtotal") or price * qty)
+        items_payload.append({
+            "descripcion":      it.get("nombre") or it.get("producto_id", ""),
+            "cantidad":         qty,
+            "precio_unitario":  round(price, 2),
+            "subtotal_neto":    round(sub, 2),
+            "imp_iva":          round(sub * tax_rate, 2),
+            "alicuota_iva_id":  alicuota_id,
+        })
+
+    return {
+        # ── Emisor ──────────────────────────────────────────────
+        "cuit_emisor":            afip_cfg.get("cuit", ""),
+        "razon_social":           afip_cfg.get("razon_social", ""),
+        "domicilio_fiscal":       afip_cfg.get("domicilio_fiscal", ""),
+        "condicion_iva_emisor":   afip_cfg.get("condicion_iva_emisor", "RI"),
+        "iibb":                   afip_cfg.get("iibb", ""),
+        "inicio_actividades":     afip_cfg.get("inicio_actividades", ""),
+        "punto_venta":            afip_cfg.get("punto_venta", 1),
+        # ── Comprobante ─────────────────────────────────────────
+        "tipo_cbte":  tipo_cbte,         # 1=FactA 6=FactB 11=FactC 2=NDebA 7=NDebB
+        "fecha_cbte": _dt.now().strftime("%Y%m%d"),
+        "concepto":   afip_cfg.get("concepto_default", 1),  # 1=Productos 2=Servicios 3=Ambos
+        # ── Receptor ────────────────────────────────────────────
+        "tipo_doc":              doc_tipo,     # 80=CUIT 99=ConsumidorFinal
+        "nro_doc":               doc_nro,
+        "condicion_iva_receptor": condicion_raw,
+        "cuit_receptor":          sale_dict.get("cuit_receptor"),
+        # ── Moneda ──────────────────────────────────────────────
+        "mon_id":    "PES",
+        "mon_cotiz": 1.0,
+        # ── Importes ────────────────────────────────────────────
+        "imp_neto":      imp_neto,      # neto gravado (base IVA)
+        "imp_iva":       imp_iva,       # total IVA calculado sobre neto
+        "imp_trib":      round(imp_trib, 2),   # otros tributos / percepciones
+        "imp_tot_conc":  0.0,           # no gravado
+        "imp_op_ex":     0.0,           # operaciones exentas
+        "imp_total":     round(imp_total, 2),
+        "descuento":     round(descuento, 2),
+        # ── IVA detalle (requerido por WSFE) ────────────────────
+        "iva": iva_detalle,
+        # ── Items (para PDF / display) ──────────────────────────
+        "items": items_payload,
+    }
+
 
 # Sales routes
 @api_router.post("/sales", response_model=Sale)
@@ -2648,7 +2922,9 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
     adjustments = (config.get('payment_method_adjustments') or {}) if config else {}
     adjustment_pct = adjustments.get(sale_data.metodo_pago.value, 0.0)
     adjustment_amount = base_total * (adjustment_pct / 100.0)
-    total = base_total + adjustment_amount
+    descuento = sale_data.descuento or 0.0
+    impuestos_extra_total = sale_data.impuestos_extra_total or 0.0
+    total = base_total + adjustment_amount - descuento + impuestos_extra_total
 
     # Create sale
     sale = Sale(
@@ -2661,7 +2937,12 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
         impuestos=impuestos,
         total=total,
         metodo_pago=sale_data.metodo_pago,
-        numero_factura=numero_factura
+        numero_factura=numero_factura,
+        cliente_id=sale_data.cliente_id,
+        descuento=descuento,
+        impuestos_extra_total=impuestos_extra_total,
+        condicion_iva_receptor=sale_data.condicion_iva_receptor,
+        observaciones_comprobante=sale_data.observaciones_comprobante,
     )
 
     await db.sales.insert_one(sale.dict())
@@ -2683,37 +2964,61 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
     )
     await db.cash_movements.insert_one(movement.dict())
 
-    # ── Solicitar CAE a ARCA/AFIP (modo contingencia si falla) ────────────────
-    afip_cfg = await db.afip_config.find_one({"empresa_id": user.empresa_id, "activo": True})
-    if afip_cfg and afip_cfg.get("cert_pem") and afip_cfg.get("key_pem_encrypted"):
-        try:
-            tipo_cbte = sale_data.tipo_comprobante or afip_cfg.get("tipo_comprobante_default", 6)
-            token, sign = await _afip_service.get_token_sign(afip_cfg, db, SECRET_KEY)
-            cae_result = await _afip_service.solicitar_cae(
-                sale.dict(), afip_cfg, token, sign, tipo_cbte,
-                cuit_receptor=sale_data.cuit_receptor
-            )
-            afip_update = {
-                "cae": cae_result["cae"],
-                "cae_vencimiento": cae_result["cae_vencimiento"],
-                "afip_estado": "autorizado",
-                "tipo_comprobante": tipo_cbte,
-                "nro_comprobante_afip": cae_result["nro_comprobante"],
+    # ── Facturación electrónica ARCA/AFIP ─────────────────────────────────────
+    # Solo se procesa cuando el panel de Factura seleccionó un tipo de comprobante
+    # explícito (distinto de "ticket"). tipo_cbte=None significa venta sin comprobante.
+    tipo_cbte = sale_data.tipo_comprobante  # None → ticket, no genera comprobante
+
+    if tipo_cbte is not None and tipo_cbte in TIPOS_COMPROBANTE_FACTURA:
+        afip_cfg = await db.afip_config.find_one({"empresa_id": user.empresa_id, "activo": True})
+        if afip_cfg:
+            # Armar payload mínimo (estructura para librería AFIP/ARCA)
+            sale_dict_for_invoice = {
+                **sale.dict(),
+                "condicion_iva_receptor": sale_data.condicion_iva_receptor,
+                "cuit_receptor": sale_data.cuit_receptor,
             }
-            await db.sales.update_one({"id": sale.id}, {"$set": afip_update})
-            sale.cae = cae_result["cae"]
-            sale.cae_vencimiento = cae_result["cae_vencimiento"]
-            sale.afip_estado = "autorizado"
-            sale.tipo_comprobante = tipo_cbte
-            sale.nro_comprobante_afip = cae_result["nro_comprobante"]
-        except Exception as afip_err:
-            logger.warning(f"AFIP contingencia para venta {sale.id}: {afip_err}")
-            await db.sales.update_one(
-                {"id": sale.id},
-                {"$set": {"afip_estado": "contingencia", "afip_error": str(afip_err)}}
+            factura_payload = prepare_invoice_payload(
+                sale_dict_for_invoice, afip_cfg, tipo_cbte, tax_rate
             )
-            sale.afip_estado = "contingencia"
-            sale.afip_error = str(afip_err)
+
+            # Persistir payload y marcar tipo de comprobante
+            await db.sales.update_one({"id": sale.id}, {"$set": {
+                "factura_payload":   factura_payload,
+                "tipo_comprobante":  tipo_cbte,
+                "afip_estado":       "sin_cae",
+            }})
+            sale.factura_payload  = factura_payload
+            sale.tipo_comprobante = tipo_cbte
+            sale.afip_estado      = "sin_cae"
+
+            # Si hay certificado disponible → solicitar CAE (contingencia si falla)
+            if afip_cfg.get("cert_pem") and afip_cfg.get("key_pem_encrypted"):
+                try:
+                    token, sign = await _afip_service.get_token_sign(afip_cfg, db, SECRET_KEY)
+                    cae_result = await _afip_service.solicitar_cae(
+                        sale.dict(), afip_cfg, token, sign, tipo_cbte,
+                        cuit_receptor=sale_data.cuit_receptor
+                    )
+                    afip_update = {
+                        "cae":                 cae_result["cae"],
+                        "cae_vencimiento":     cae_result["cae_vencimiento"],
+                        "afip_estado":         "autorizado",
+                        "nro_comprobante_afip": cae_result["nro_comprobante"],
+                    }
+                    await db.sales.update_one({"id": sale.id}, {"$set": afip_update})
+                    sale.cae                 = cae_result["cae"]
+                    sale.cae_vencimiento     = cae_result["cae_vencimiento"]
+                    sale.afip_estado         = "autorizado"
+                    sale.nro_comprobante_afip = cae_result["nro_comprobante"]
+                except Exception as afip_err:
+                    logger.warning(f"AFIP contingencia para venta {sale.id}: {afip_err}")
+                    await db.sales.update_one(
+                        {"id": sale.id},
+                        {"$set": {"afip_estado": "contingencia", "afip_error": str(afip_err)}}
+                    )
+                    sale.afip_estado = "contingencia"
+                    sale.afip_error  = str(afip_err)
 
     return sale
 
@@ -4871,6 +5176,11 @@ async def save_afip_config(data: AfipConfigCreate, user: User = Depends(require_
                 "ambiente": data.ambiente,
                 "tipo_comprobante_default": data.tipo_comprobante_default,
                 "razon_social": data.razon_social or "",
+                "domicilio_fiscal": data.domicilio_fiscal,
+                "condicion_iva_emisor": data.condicion_iva_emisor or "RI",
+                "inicio_actividades": data.inicio_actividades,
+                "iibb": data.iibb,
+                "concepto_default": data.concepto_default or 1,
                 "activo": True,
                 "updated_at": now,
             }}

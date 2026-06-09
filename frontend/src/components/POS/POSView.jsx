@@ -6,6 +6,7 @@ import ReturnModal from '../ReturnModal';
 import { getCategoryIcon } from '../../utils/categoryIcons';
 import TicketModal from '../TicketModal';
 import Pagination from '../Pagination';
+import InvoicePanel from './InvoicePanel';
 import {
   Search,
   Plus,
@@ -28,7 +29,8 @@ import {
   FileText,
   LayoutDashboard,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Receipt,
 } from 'lucide-react';
 
 const POSView = ({
@@ -111,6 +113,14 @@ const POSView = ({
   branchCount,
   infoPanelVisible,
   toggleInfoPanel,
+  selectedCustomer,
+  setSelectedCustomer,
+  invoiceConfig,
+  setInvoiceConfig,
+  showInvoicePanel,
+  setShowInvoicePanel,
+  calculateDiscount,
+  calculateImpuestosExtra,
 }) => {
   const [weightInputDraft, setWeightInputDraft] = React.useState({});
   const [focusedIdx, setFocusedIdx] = React.useState(-1);
@@ -478,6 +488,22 @@ const POSView = ({
         </div>
       </div>
 
+      {/* Invoice Panel */}
+      <InvoicePanel
+        open={showInvoicePanel}
+        currencySymbol={config?.currency_symbol || '$'}
+        invoiceConfig={invoiceConfig}
+        setInvoiceConfig={setInvoiceConfig}
+        selectedCustomer={selectedCustomer}
+        setSelectedCustomer={setSelectedCustomer}
+        subtotal={calculateSubtotal()}
+        tax={calculateTax()}
+        paymentAdjustment={calculatePaymentAdjustment()}
+        discount={calculateDiscount()}
+        impuestosExtraTotal={calculateImpuestosExtra()}
+        onClose={() => setShowInvoicePanel(false)}
+      />
+
       {/* Right Section - Cart */}
       <div className={`pos-cart ${mobileTab === 'cart' ? 'pos-tab-active' : ''}${!sessionLoading && !currentSession ? ' hidden md:flex' : ''}`} style={sessionDisabledStyle}>
           {/* Sales Tabs Bar */}
@@ -517,6 +543,19 @@ const POSView = ({
                 Carrito ({cart.length})
               </h2>
               <div className="flex gap-2">
+                <button
+                  onClick={() => setShowInvoicePanel(v => !v)}
+                  className="btn btn-secondary btn-sm"
+                  title="Factura"
+                  style={showInvoicePanel
+                    ? { background: 'var(--primary)', borderColor: 'var(--primary)', color: '#fff' }
+                    : (selectedCustomer || (invoiceConfig?.tipo_comprobante !== 'ticket') || (invoiceConfig?.descuento_valor > 0))
+                      ? { background: 'var(--primary-bg)', borderColor: 'var(--primary)', color: 'var(--primary)' }
+                      : {}
+                  }
+                >
+                  <Receipt className="w-4 h-4" />
+                </button>
                 <button
                   onClick={openLastTicket}
                   className="btn btn-secondary btn-sm"
@@ -641,7 +680,7 @@ const POSView = ({
                   return (
                     <div className="total-row" style={{ color: pct < 0 ? '#16a34a' : '#dc2626' }}>
                       <span className="total-label">
-                        {pct < 0 ? `Descuento ${paymentMethod} (${Math.abs(pct)}%):` : `Recargo ${paymentMethod} (${pct}%):`}
+                        {pct < 0 ? `Desc. ${paymentMethod} (${Math.abs(pct)}%):` : `Recargo ${paymentMethod} (${pct}%):`}
                       </span>
                       <span className="total-value">
                         {pct < 0 ? '-' : '+'}{config?.currency_symbol || '$'}{formatAmount(Math.abs(adj))}
@@ -649,6 +688,20 @@ const POSView = ({
                     </div>
                   );
                 })()}
+                {calculateDiscount() > 0 && (
+                  <div className="total-row" style={{ color: '#16a34a' }}>
+                    <span className="total-label">
+                      Descuento{invoiceConfig?.descuento_tipo === 'porcentaje' ? ` (${invoiceConfig.descuento_valor}%)` : ''}:
+                    </span>
+                    <span className="total-value">-{config?.currency_symbol || '$'}{formatAmount(calculateDiscount())}</span>
+                  </div>
+                )}
+                {calculateImpuestosExtra() > 0 && (
+                  <div className="total-row" style={{ color: 'var(--primary)' }}>
+                    <span className="total-label">Imp. adicionales:</span>
+                    <span className="total-value">+{config?.currency_symbol || '$'}{formatAmount(calculateImpuestosExtra())}</span>
+                  </div>
+                )}
                 <div className="total-row total-final">
                   <span>Total:</span>
                   <span>{config?.currency_symbol || '$'}{formatAmount(calculateTotal())}</span>
@@ -833,6 +886,7 @@ const POSView = ({
           onClose={() => setShowBarcodeScanner(false)}
         />
       )}
+
     </div>
   );
 };

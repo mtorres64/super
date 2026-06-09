@@ -19,6 +19,26 @@ const TAB_COLORS = [
   { bg: '#f0fdf4', border: '#86efac', text: '#14532d', activeBg: '#22c55e' },
 ];
 
+const TIPO_COMPROBANTE_AFIP = {
+  factura_a: 1,
+  factura_b: 6,
+  factura_c: 11,
+  nota_debito_a: 2,
+  nota_debito_b: 7,
+  nota_credito_a: 3,
+  nota_credito_b: 8,
+};
+
+const defaultInvoiceConfig = {
+  tipo_comprobante: 'ticket',
+  condicion_iva_receptor: 'consumidor_final',
+  cuit_receptor: '',
+  descuento_tipo: 'porcentaje',
+  descuento_valor: 0,
+  impuestos_extra: [],
+  observaciones: '',
+};
+
 const POS = () => {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -26,7 +46,8 @@ const POS = () => {
   const [configLoaded, setConfigLoaded] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [barcode, setBarcode] = useState('');
-  const [tabs, setTabs] = useState([{ id: 1, cart: [], paymentMethod: 'efectivo', colorIndex: 0 }]);
+  const [tabs, setTabs] = useState([{ id: 1, cart: [], paymentMethod: 'efectivo', colorIndex: 0, customer: null, invoiceConfig: { ...defaultInvoiceConfig } }]);
+  const [showInvoicePanel, setShowInvoicePanel] = useState(false);
   const [activeTabId, setActiveTabId] = useState(1);
   const [nextTabId, setNextTabId] = useState(2);
   const [loading, setLoading] = useState(false);
@@ -72,10 +93,20 @@ const POS = () => {
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
   const cart = activeTab.cart;
   const paymentMethod = activeTab.paymentMethod;
+  const selectedCustomer = activeTab.customer || null;
   const setCart = (newCart) =>
     setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, cart: newCart } : t));
   const setPaymentMethod = (pm) =>
     setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, paymentMethod: pm } : t));
+  const setSelectedCustomer = (c) =>
+    setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, customer: c } : t));
+
+  const invoiceConfig = activeTab.invoiceConfig || defaultInvoiceConfig;
+  const setInvoiceConfig = (updater) =>
+    setTabs(prev => prev.map(t => t.id === activeTabId
+      ? { ...t, invoiceConfig: typeof updater === 'function' ? updater(t.invoiceConfig || defaultInvoiceConfig) : updater }
+      : t
+    ));
 
   const barcodeInputRef = useRef(null);
   const isMobile = () => window.innerWidth < 768;
@@ -428,8 +459,24 @@ const POS = () => {
     return (calculateSubtotal() + calculateTax()) * (pct / 100);
   };
 
+  const calculateDiscount = () => {
+    const { descuento_tipo, descuento_valor } = invoiceConfig;
+    if (!descuento_valor) return 0;
+    if (descuento_tipo === 'porcentaje') return calculateSubtotal() * (descuento_valor / 100);
+    return parseFloat(descuento_valor) || 0;
+  };
+
+  const calculateImpuestosExtra = () => {
+    const sub = calculateSubtotal();
+    return (invoiceConfig.impuestos_extra || []).reduce((sum, t) => {
+      const v = parseFloat(t.valor) || 0;
+      return sum + (t.tipo === 'porcentaje' ? sub * v / 100 : v);
+    }, 0);
+  };
+
   const calculateTotal = () => {
-    return calculateSubtotal() + calculateTax() + calculatePaymentAdjustment();
+    return calculateSubtotal() + calculateTax() + calculatePaymentAdjustment()
+      - calculateDiscount() + calculateImpuestosExtra();
   };
 
   const processSale = async () => {
@@ -440,6 +487,9 @@ const POS = () => {
 
     setLoading(true);
     try {
+      const descuento = calculateDiscount();
+      const impuestosExtraTotal = calculateImpuestosExtra();
+      const tipoAfip = TIPO_COMPROBANTE_AFIP[invoiceConfig.tipo_comprobante];
       const saleData = {
         items: cart.map(item => ({
           producto_id: item.product_id || item.id,
@@ -447,7 +497,14 @@ const POS = () => {
           precio_unitario: getEffectivePrice(item),
           subtotal: getEffectivePrice(item) * item.quantity
         })),
-        metodo_pago: paymentMethod
+        metodo_pago: paymentMethod,
+        ...(selectedCustomer && selectedCustomer.id && { cliente_id: selectedCustomer.id }),
+        ...(tipoAfip && { tipo_comprobante: tipoAfip }),
+        ...(invoiceConfig.cuit_receptor && { cuit_receptor: invoiceConfig.cuit_receptor }),
+        ...(descuento > 0 && { descuento }),
+        ...(impuestosExtraTotal > 0 && { impuestos_extra_total: impuestosExtraTotal }),
+        ...(invoiceConfig.condicion_iva_receptor !== 'consumidor_final' && { condicion_iva_receptor: invoiceConfig.condicion_iva_receptor }),
+        ...(invoiceConfig.observaciones && { observaciones_comprobante: invoiceConfig.observaciones }),
       };
 
       const response = await axios.post(`${API}/sales`, saleData);
@@ -462,6 +519,8 @@ const POS = () => {
         closeSaleTab(activeTabId);
       } else {
         clearCart();
+        setSelectedCustomer(null);
+        setInvoiceConfig({ ...defaultInvoiceConfig });
       }
       if (config?.print_receipt_auto) {
         setSaleReceipt(receiptData);
@@ -518,7 +577,7 @@ const POS = () => {
 
   const addSaleTab = () => {
     const newId = nextTabId;
-    setTabs(prev => [...prev, { id: newId, cart: [], paymentMethod: 'efectivo', colorIndex: prev.length % TAB_COLORS.length }]);
+    setTabs(prev => [...prev, { id: newId, cart: [], paymentMethod: 'efectivo', colorIndex: prev.length % TAB_COLORS.length, customer: null, invoiceConfig: { ...defaultInvoiceConfig } }]);
     setActiveTabId(newId);
     setNextTabId(prev => prev + 1);
     if (barcodeInputRef.current && !isMobile()) barcodeInputRef.current.focus();
@@ -694,6 +753,14 @@ const POS = () => {
       branchCount={branchCount}
       infoPanelVisible={infoPanelVisible}
       toggleInfoPanel={toggleInfoPanel}
+      selectedCustomer={selectedCustomer}
+      setSelectedCustomer={setSelectedCustomer}
+      invoiceConfig={invoiceConfig}
+      setInvoiceConfig={setInvoiceConfig}
+      showInvoicePanel={showInvoicePanel}
+      setShowInvoicePanel={setShowInvoicePanel}
+      calculateDiscount={calculateDiscount}
+      calculateImpuestosExtra={calculateImpuestosExtra}
     />
   );
 };

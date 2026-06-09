@@ -71,20 +71,42 @@ const SidebarView = ({
 
       <div className="sidebar-footer">
         <div className="user-info">
-          <Link to="/cuenta" onClick={onClose} className="flex items-center gap-3 flex-1 min-w-0 hover:opacity-75 transition-opacity">
-            <div className="user-avatar">
-              {user?.nombre?.charAt(0).toUpperCase()}
+          {user?.rol === 'admin' ? (
+            <Link
+              to="/cuenta"
+              onClick={onClose}
+              title="Gestionar cuenta"
+              className="flex items-center gap-3 flex-1 min-w-0 rounded-lg px-1 py-0.5 -mx-1 hover:bg-black/5 transition-colors"
+            >
+              <div className="user-avatar shrink-0">
+                {user?.nombre?.charAt(0).toUpperCase()}
+              </div>
+              <div className="user-details flex-1 min-w-0">
+                <h4 className="truncate">{user?.nombre}</h4>
+                <p className="capitalize">{user?.rol}</p>
+                {activeBranch && (
+                  <p className="text-xs font-medium truncate" style={{ color: 'var(--primary, #10b981)' }}>
+                    {activeBranch.nombre}
+                  </p>
+                )}
+              </div>
+            </Link>
+          ) : (
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <div className="user-avatar shrink-0">
+                {user?.nombre?.charAt(0).toUpperCase()}
+              </div>
+              <div className="user-details flex-1 min-w-0">
+                <h4 className="truncate">{user?.nombre}</h4>
+                <p className="capitalize">{user?.rol}</p>
+                {activeBranch && (
+                  <p className="text-xs font-medium truncate" style={{ color: 'var(--primary, #10b981)' }}>
+                    {activeBranch.nombre}
+                  </p>
+                )}
+              </div>
             </div>
-            <div className="user-details flex-1 min-w-0">
-              <h4 className="truncate">{user?.nombre}</h4>
-              <p className="capitalize">{user?.rol}</p>
-              {activeBranch && (
-                <p className="text-xs font-medium truncate" style={{ color: 'var(--primary, #10b981)' }}>
-                  {activeBranch.nombre}
-                </p>
-              )}
-            </div>
-          </Link>
+          )}
           <div className="shrink-0 flex flex-col gap-0.5">
             {canSwitchBranch && (
               <button

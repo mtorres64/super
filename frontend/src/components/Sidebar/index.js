@@ -10,6 +10,7 @@ import {
   CreditCard,
   Building2,
   ShoppingBag,
+  Users,
 } from 'lucide-react';
 import SidebarView from './SidebarView';
 
@@ -43,11 +44,11 @@ const menuItems = [
     modulo: 'inventario',
   },
   {
-    path: '/branches',
-    label: 'Sucursales',
-    icon: Building2,
-    roles: ['admin'],
-    modulo: 'multi_sucursal',
+    path: '/compras',
+    label: 'Compras',
+    icon: ShoppingBag,
+    roles: ['admin', 'supervisor'],
+    modulo: 'compras',
   },
   {
     path: '/reports',
@@ -57,11 +58,18 @@ const menuItems = [
     modulo: 'reportes',
   },
   {
-    path: '/compras',
-    label: 'Compras',
-    icon: ShoppingBag,
-    roles: ['admin', 'supervisor'],
-    modulo: 'compras',
+    path: '/customers',
+    label: 'Clientes',
+    icon: Users,
+    roles: ['admin'],
+    modulo: 'clientes',
+  },
+  {
+    path: '/branches',
+    label: 'Sucursales',
+    icon: Building2,
+    roles: ['admin'],
+    modulo: 'multi_sucursal',
   },
 ];
 

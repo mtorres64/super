@@ -24,6 +24,7 @@ import SalesReports from './components/SalesReports';
 import StockAlerts from './components/StockAlerts';
 import Notificaciones from './components/Notificaciones';
 import Manual from './components/Manual';
+import CustomerManagement from './components/CustomerManagement';
 import { Toaster } from './components/ui/sonner';
 import BranchSelectionModal from './components/BranchSelectionModal';
 
@@ -586,6 +587,14 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['admin']} modulo="configuracion">
                   <Settings />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/customers"
+              element={
+                <ProtectedRoute allowedRoles={['admin']} modulo="clientes">
+                  <CustomerManagement />
                 </ProtectedRoute>
               }
             />
