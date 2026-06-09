@@ -69,7 +69,7 @@ const menuItems = [
     label: 'Sucursales',
     icon: Building2,
     roles: ['admin'],
-    modulo: 'multi_sucursal',
+    modulo: 'inventario',
   },
 ];
 
@@ -105,11 +105,18 @@ const Sidebar = ({ isOpen, onClose, stockAlertCount = 0, notifCount = 0 }) => {
     logout();
   };
 
-  const allowedItems = menuItems.filter(item => {
-    if (!item.roles.includes(user?.rol)) return false;
-    if (item.modulo && modulosActivos.length > 0 && !modulosActivos.includes(item.modulo)) return false;
-    return true;
-  });
+  const tieneMultiSucursal = modulosActivos.includes('multi_sucursal');
+  const allowedItems = menuItems
+    .filter(item => {
+      if (!item.roles.includes(user?.rol)) return false;
+      if (item.modulo && modulosActivos.length > 0 && !modulosActivos.includes(item.modulo)) return false;
+      return true;
+    })
+    .map(item =>
+      item.path === '/branches'
+        ? { ...item, label: tieneMultiSucursal ? 'Sucursales' : 'Mi Sucursal' }
+        : item
+    );
 
   return (
     <SidebarView
@@ -123,7 +130,7 @@ const Sidebar = ({ isOpen, onClose, stockAlertCount = 0, notifCount = 0 }) => {
       onClose={onClose}
       onLogout={handleLogout}
       activeBranch={activeBranch}
-      canSwitchBranch={userBranches.length > 1}
+      canSwitchBranch={tieneMultiSucursal && userBranches.length > 1}
       onSwitchBranch={openBranchSelector}
     />
   );

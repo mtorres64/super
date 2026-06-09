@@ -79,7 +79,9 @@ const POS = () => {
   const [priceCheckResult, setPriceCheckResult] = useState(null);
   const [branchCount, setBranchCount] = useState(0);
   const [receiptClosing, setReceiptClosing] = useState(false);
-  const { user, activeBranch } = useContext(AuthContext);
+  const { user, activeBranch, modulosActivos } = useContext(AuthContext);
+  const tieneFacturacion = modulosActivos.includes('facturacion');
+  const tieneClientes = modulosActivos.includes('clientes');
 
   const closeReceipt = () => {
     setReceiptClosing(true);
@@ -786,6 +788,8 @@ const POS = () => {
       setShowInvoicePanel={setShowInvoicePanel}
       calculateDiscount={calculateDiscount}
       calculateImpuestosExtra={calculateImpuestosExtra}
+      tieneFacturacion={tieneFacturacion}
+      tieneClientes={tieneClientes}
     />
   );
 };

@@ -134,6 +134,7 @@ const BranchManagementView = ({
   onCloseBranchBulkEditModal,
   onUpdateBranchBulkEditItem,
   onHandleBranchBulkEditSave,
+  tieneMultiSucursal = true,
 }) => {
   const [focusedIdx, setFocusedIdx] = React.useState(-1);
   const [showCategoryFilter, setShowCategoryFilter] = React.useState(false);
@@ -176,7 +177,7 @@ const BranchManagementView = ({
     }
   };
 
-  if (loading) {
+  if (loading || (!tieneMultiSucursal && !selectedBranch)) {
     return (
       <div className="p-6 flex items-center justify-center h-64">
         <div className="spinner w-8 h-8"></div>
@@ -192,12 +193,14 @@ const BranchManagementView = ({
           {/* Fila título */}
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="hidden md:block">
-                <button onClick={onGoBack} className="btn btn-secondary">
-                  <ArrowLeft className="w-4 h-4" />
-                  Volver
-                </button>
-              </div>
+              {tieneMultiSucursal && (
+                <div className="hidden md:block">
+                  <button onClick={onGoBack} className="btn btn-secondary">
+                    <ArrowLeft className="w-4 h-4" />
+                    Sucursales
+                  </button>
+                </div>
+              )}
               <div className="min-w-0">
                 <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2 min-w-0">
                   <Building2 className="w-6 h-6 text-green-600 flex-shrink-0" />
@@ -980,6 +983,64 @@ const BranchManagementView = ({
           saving={branchBulkEditSaving}
         />
       )}
+
+      {/* Modal editar sucursal — disponible también en la vista de detalle */}
+      {showModal && (
+        <div className={`modal-overlay${branchModalClosing ? ' closing' : ''}`}>
+          <div className={`modal-content modal-content-bounce${branchModalClosing ? ' closing' : ''}`}>
+            <div className="modal-header">
+              <h3 className="modal-title">Editar Sucursal</h3>
+              <button onClick={onCloseBranchModal} className="modal-close">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={onSubmit}>
+              <div className="space-y-4">
+                <div className="form-group">
+                  <label className="form-label">Nombre de la Sucursal *</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={formData.nombre}
+                    onChange={(e) => onSetFormData(prev => ({ ...prev, nombre: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Dirección *</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={formData.direccion}
+                    onChange={(e) => onSetFormData(prev => ({ ...prev, direccion: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Teléfono</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={formData.telefono}
+                    onChange={(e) => onSetFormData(prev => ({ ...prev, telefono: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end space-x-3 mt-6">
+                <button type="button" onClick={onCloseBranchModal} disabled={savingBranch} className="btn btn-secondary">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={savingBranch} className="btn btn-primary">
+                  {savingBranch
+                    ? <><div className="spinner w-4 h-4" />Actualizando...</>
+                    : <><Save className="w-4 h-4" />Actualizar Sucursal</>
+                  }
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       </div>
     );
   }
@@ -990,24 +1051,32 @@ const BranchManagementView = ({
       <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 gap-3">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-1">
-            Gestión de Sucursales
+            {tieneMultiSucursal ? 'Gestión de Sucursales' : 'Mi Sucursal'}
           </h1>
-          <p className="text-gray-600">{branches.length} sucursal(es) registrada(s)</p>
+          {tieneMultiSucursal && (
+            <p className="text-gray-600">{branches.length} sucursal(es) registrada(s)</p>
+          )}
         </div>
-        <button onClick={() => onOpenModal()} className="btn btn-primary">
-          <Plus className="w-4 h-4" />
-          Nueva Sucursal
-        </button>
+        {tieneMultiSucursal && (
+          <button onClick={() => onOpenModal()} className="btn btn-primary">
+            <Plus className="w-4 h-4" />
+            Nueva Sucursal
+          </button>
+        )}
       </div>
 
       {branches.length === 0 ? (
         <div className="text-center py-16 text-gray-500">
           <Building2 className="w-16 h-16 mx-auto mb-4 text-gray-300" />
           <h3 className="text-lg font-medium text-gray-700 mb-2">Sin sucursales</h3>
-          <p className="text-sm mb-4">Crea tu primera sucursal para gestionar inventario y precios diferenciales</p>
-          <button onClick={() => onOpenModal()} className="btn btn-primary">
-            <Plus className="w-4 h-4" /> Crear Primera Sucursal
-          </button>
+          {tieneMultiSucursal && (
+            <>
+              <p className="text-sm mb-4">Crea tu primera sucursal para gestionar inventario y precios diferenciales</p>
+              <button onClick={() => onOpenModal()} className="btn btn-primary">
+                <Plus className="w-4 h-4" /> Crear Primera Sucursal
+              </button>
+            </>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1058,13 +1127,15 @@ const BranchManagementView = ({
                 >
                   <Edit className="w-4 h-4" />
                 </button>
-                <button
-                  onClick={() => onOpenDeleteBranchModal(branch)}
-                  className="btn-icon text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg p-1.5 transition-colors"
-                  title="Eliminar sucursal"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                {tieneMultiSucursal && (
+                  <button
+                    onClick={() => onOpenDeleteBranchModal(branch)}
+                    className="btn-icon text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg p-1.5 transition-colors"
+                    title="Eliminar sucursal"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => onToggleBranchActive(branch)}

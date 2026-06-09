@@ -533,6 +533,8 @@ const ALL_MODULES = [
   { id: 'pos',           label: 'POS / Ventas' },
   { id: 'caja',          label: 'Caja' },
   { id: 'inventario',    label: 'Inventario' },
+  { id: 'clientes',      label: 'Clientes' },
+  { id: 'facturacion',   label: 'Facturación Electrónica' },
   { id: 'reportes',      label: 'Reportes de Ventas' },
   { id: 'compras',       label: 'Compras y Proveedores' },
   { id: 'alertas_stock', label: 'Alertas de Stock' },
@@ -544,8 +546,8 @@ const ALL_MODULES = [
 
 const PLAN_MODULES_DEF = {
   emprendedor: ['pos', 'caja', 'inventario', 'notificaciones'],
-  profesional: ['pos', 'caja', 'inventario', 'reportes', 'compras', 'alertas_stock', 'usuarios', 'configuracion', 'notificaciones'],
-  empresarial: ['pos', 'caja', 'inventario', 'reportes', 'compras', 'alertas_stock', 'usuarios', 'multi_sucursal', 'configuracion', 'notificaciones'],
+  profesional: ['pos', 'caja', 'inventario', 'clientes', 'facturacion', 'reportes', 'compras', 'alertas_stock', 'usuarios', 'configuracion', 'notificaciones'],
+  empresarial: ['pos', 'caja', 'inventario', 'clientes', 'facturacion', 'reportes', 'compras', 'alertas_stock', 'usuarios', 'multi_sucursal', 'configuracion', 'notificaciones'],
 };
 
 const PLAN_TIERS = [
@@ -803,8 +805,8 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
     const planTier = cliente.plan_tier || 'profesional';
     const PLAN_MODULES = {
       emprendedor: ['pos', 'caja', 'inventario', 'notificaciones'],
-      profesional: ['pos', 'caja', 'inventario', 'reportes', 'compras', 'alertas_stock', 'usuarios', 'configuracion', 'notificaciones'],
-      empresarial: ['pos', 'caja', 'inventario', 'reportes', 'compras', 'alertas_stock', 'usuarios', 'multi_sucursal', 'configuracion', 'notificaciones'],
+      profesional: ['pos', 'caja', 'inventario', 'clientes', 'facturacion', 'reportes', 'compras', 'alertas_stock', 'usuarios', 'configuracion', 'notificaciones'],
+      empresarial: ['pos', 'caja', 'inventario', 'clientes', 'facturacion', 'reportes', 'compras', 'alertas_stock', 'usuarios', 'multi_sucursal', 'configuracion', 'notificaciones'],
     };
     const enPlanBase = (PLAN_MODULES[planTier] || []).includes(moduloId);
     const esExtra = extra.includes(moduloId);

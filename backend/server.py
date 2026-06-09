@@ -373,6 +373,7 @@ MODULES: dict[str, str] = {
     "caja":          "Caja",
     "inventario":    "Inventario",
     "clientes":      "Clientes",
+    "facturacion":   "Facturación Electrónica",
     "reportes":      "Reportes de Ventas",
     "compras":       "Compras y Proveedores",
     "alertas_stock": "Alertas de Stock",
@@ -387,11 +388,11 @@ PLAN_MODULES: dict[str, list[str]] = {
         "pos", "caja", "inventario", "notificaciones",
     ],
     "profesional": [
-        "pos", "caja", "inventario", "clientes", "reportes", "compras",
+        "pos", "caja", "inventario", "clientes", "facturacion", "reportes", "compras",
         "alertas_stock", "usuarios", "configuracion", "notificaciones",
     ],
     "empresarial": [
-        "pos", "caja", "inventario", "clientes", "reportes", "compras",
+        "pos", "caja", "inventario", "clientes", "facturacion", "reportes", "compras",
         "alertas_stock", "usuarios", "multi_sucursal", "configuracion", "notificaciones",
     ],
 }
@@ -1138,7 +1139,7 @@ async def create_branch(branch_data: BranchCreate, user: User = Depends(require_
 
 @api_router.get("/branches", response_model=List[Branch])
 async def get_branches(user: User = Depends(get_current_user)):
-    branches = await db.branches.find({"empresa_id": user.empresa_id}).to_list(1000)
+    branches = await db.branches.find({"empresa_id": user.empresa_id, "activo": True}).to_list(1000)
     return [Branch(**branch) for branch in branches]
 
 @api_router.get("/branches/{branch_id}/products/export")
@@ -5124,6 +5125,10 @@ async def owner_get_cliente(empresa_id: str, _=Depends(verify_owner_token)):
     plan_tier = suscripcion.get("plan_tier", "profesional") if suscripcion else "profesional"
     modules_extra = suscripcion.get("modules_extra", []) if suscripcion else []
     modules_removidos = suscripcion.get("modules_removidos", []) if suscripcion else []
+    sucursales_docs = await db.branches.find(
+        {"empresa_id": empresa_id, "activo": True}
+    ).sort("created_at", 1).to_list(100)
+    sucursales = [{"id": s["id"], "nombre": s["nombre"]} for s in sucursales_docs]
     return {
         "id": emp["id"],
         "nombre": emp["nombre"],
@@ -5138,6 +5143,8 @@ async def owner_get_cliente(empresa_id: str, _=Depends(verify_owner_token)):
         "modules_extra": modules_extra,
         "modules_removidos": modules_removidos,
         "modules_activos": calcular_modules_activos(plan_tier, modules_extra, modules_removidos),
+        "sucursales_activas": len(sucursales),
+        "sucursales": sucursales,
     }
 
 @owner_router.put("/clientes/{empresa_id}/suscripcion")
@@ -5149,6 +5156,7 @@ async def owner_update_suscripcion(
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
     suscripcion = await db.suscripciones.find_one({"empresa_id": empresa_id})
     update = {}
+
     if data.status is not None:
         update["status"] = data.status
     if data.plan_nombre is not None:

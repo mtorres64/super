@@ -224,25 +224,40 @@ export const AuthProvider = ({ children }) => {
       axios.get(`${API}/auth/me`)
         .then(async res => {
           setUser(res.data);
-          fetchSuscripcion(token);
           const branchIds = res.data.branch_ids || [];
           const activeBranchId = res.data.active_branch_id;
           const isAdmin = res.data.rol === 'admin';
           const isFreshLogin = freshLoginRef.current;
           freshLoginRef.current = false;
           try {
-            const brRes = await axios.get(`${API}/branches`);
+            // Traer sucursales y suscripción en paralelo para tener módulos activos disponibles
+            const [brRes, susRes] = await Promise.all([
+              axios.get(`${API}/branches`),
+              axios.get(`${API}/auth/suscripcion`),
+            ]);
+            setSuscripcion(susRes.data);
+            const modulos = susRes.data?.modules_activos || [];
+            setModulosActivos(modulos);
+            const tieneMultiSucursal = modulos.includes('multi_sucursal');
+
             const allBranches = brRes.data;
             const available = isAdmin ? allBranches : allBranches.filter(b => branchIds.includes(b.id));
             setUserBranches(available);
-            if (available.length > 1 && (isFreshLogin || !activeBranchId)) {
-              // Login fresco con múltiples sucursales, o token sin sucursal activa: pedir selección
+
+            if (tieneMultiSucursal && available.length > 1 && (isFreshLogin || !activeBranchId)) {
+              // Solo pedir selección si el módulo multi_sucursal está activo
               setShowBranchModal(true);
             } else if (activeBranchId) {
               const branch = available.find(b => b.id === activeBranchId);
-              if (branch) setActiveBranch(branch);
-            } else if (available.length === 1) {
-              setActiveBranch(available[0]);
+              if (branch) {
+                setActiveBranch(branch);
+              } else if (available.length >= 1) {
+                // La sucursal activa ya no existe en las disponibles, reasignar la primera
+                selectBranch(available[0].id);
+              }
+            } else if (available.length >= 1) {
+              // Sin sucursal activa en el token, asignar la primera disponible
+              selectBranch(available[0].id);
             }
           } catch (_) {}
         })
@@ -602,7 +617,7 @@ function App() {
             <Route
               path="/branches"
               element={
-                <ProtectedRoute allowedRoles={['admin']} modulo="multi_sucursal">
+                <ProtectedRoute allowedRoles={['admin']} modulo="inventario">
                   <BranchManagement />
                 </ProtectedRoute>
               }

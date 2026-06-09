@@ -20,6 +20,7 @@ import {
   RefreshCw,
   FileDown,
   Store,
+  FileText,
 } from 'lucide-react';
 
 // ─── Fotos de Unsplash ───────────────────────────────────────────
@@ -39,6 +40,8 @@ const FEATURES = [
   { icon: BarChart3,    title: 'Reportes y Estadísticas', desc: 'Informes de ventas por período, cajero o sucursal. Cierre de caja con arqueo detallado y exportación a Excel.' },
   { icon: Building2,    title: 'Multi-Sucursal',           desc: 'Gestioná múltiples locales desde un solo sistema. Precios, stock e inventario independientes por sucursal.' },
   { icon: ShoppingBag,  title: 'Gestión de Compras',       desc: 'Registrá facturas de proveedores con detalle de ítems, costos y márgenes. Actualizá el stock automáticamente.' },
+  { icon: Users,        title: 'Gestión de Clientes',      desc: 'Registrá y administrá tus clientes con historial de compras, datos de contacto y segmentación.' },
+  { icon: FileText,     title: 'Facturación Electrónica',  desc: 'Emití comprobantes electrónicos (Facturas A, B y C) integrados con AFIP/ARCA directamente desde el POS.' },
   { icon: RotateCcw,    title: 'Devoluciones',             desc: 'Procesá devoluciones parciales o totales con número propio. El stock y la caja se actualizan al instante.' },
   { icon: Users,        title: 'Multi-Usuario',            desc: 'Roles diferenciados: Administrador, Supervisor y Cajero. Cada uno ve y opera solo lo que necesita.' },
   { icon: CreditCard,   title: 'Gestión de Caja',          desc: 'Apertura y cierre con arqueo detallado. Retiros, devoluciones y movimientos registrados en tiempo real.' },
@@ -77,7 +80,7 @@ const TIER_CONFIG = [
     key: 'profesional',
     label: 'Profesional',
     badgeStyle: { background: '#dbeafe', color: '#1e40af' },
-    features: ['Todo Emprendedor', 'Reportes de Ventas', 'Compras y Proveedores', 'Alertas de Stock', 'Usuarios y Roles', 'Configuración'],
+    features: ['Todo Emprendedor', 'Clientes', 'Facturación Electrónica (AFIP/ARCA)', 'Reportes de Ventas', 'Compras y Proveedores', 'Alertas de Stock', 'Usuarios y Roles', 'Configuración'],
     limits: { usuarios: 'Hasta 5 usuarios', sucursales: '1 sucursal' },
     popular: true,
   },

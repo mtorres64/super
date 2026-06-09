@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
 import axios from 'axios';
 import { useLocation } from 'react-router-dom';
-import { API } from '../../App';
+import { API, AuthContext } from '../../App';
 import { useSortableData } from '../../hooks/useSortableData';
 import useModalClose from '../../useModalClose';
 import { toast } from 'sonner';
@@ -9,6 +9,8 @@ import BranchManagementView from './BranchManagementView';
 
 const BranchManagement = () => {
   const location = useLocation();
+  const { modulosActivos } = useContext(AuthContext);
+  const tieneMultiSucursal = modulosActivos.includes('multi_sucursal');
   const [branches, setBranches] = useState([]);
   const [users, setUsers] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -64,6 +66,14 @@ const BranchManagement = () => {
       .catch(() => {})
       .finally(() => setConfigLoaded(true));
   }, []);
+
+  // Cuando no hay multi_sucursal, auto-seleccionar la primera sucursal disponible
+  // (useEffect reactivo para manejar el caso de módulos que llegan después de las sucursales)
+  useEffect(() => {
+    if (!loading && !tieneMultiSucursal && branches.length >= 1 && !selectedBranch) {
+      selectBranch(branches[0]);
+    }
+  }, [tieneMultiSucursal, branches.length, loading]); // eslint-disable-line
 
   // Auto-search while typing (from 2nd character), with debounce
   useEffect(() => {
@@ -150,10 +160,11 @@ const BranchManagement = () => {
   const fetchBranches = async () => {
     try {
       const response = await axios.get(`${API}/branches`);
-      setBranches(response.data);
+      const data = response.data;
+      setBranches(data);
       const targetId = location.state?.branchId;
       if (targetId) {
-        const branch = response.data.find(b => b.id === targetId);
+        const branch = data.find(b => b.id === targetId);
         if (branch) selectBranch(branch);
       }
     } catch (error) {
@@ -671,7 +682,10 @@ const BranchManagement = () => {
   };
 
   const getUsersInBranch = (branchId) => {
-    return users.filter(u => u.branch_id === branchId).length;
+    return users.filter(u =>
+      (u.branch_ids && u.branch_ids.includes(branchId)) ||
+      u.branch_id === branchId
+    ).length;
   };
 
   // Sort current page client-side; filtering and pagination handled by the server
@@ -820,6 +834,7 @@ const BranchManagement = () => {
       onCloseBranchBulkEditModal={closeBranchBulkEditModal}
       onUpdateBranchBulkEditItem={updateBranchBulkEditItem}
       onHandleBranchBulkEditSave={handleBranchBulkEditSave}
+      tieneMultiSucursal={tieneMultiSucursal}
     />
   );
 };

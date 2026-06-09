@@ -40,7 +40,7 @@ const TIER_CONFIG = [
     key: 'profesional',
     label: 'Profesional',
     badgeCls: 'bg-blue-100 text-blue-700',
-    features: ['Todo Emprendedor', 'Reportes de Ventas', 'Compras y Proveedores', 'Alertas de Stock', 'Usuarios y Roles', 'Configuración'],
+    features: ['Todo Emprendedor', 'Clientes', 'Facturación Electrónica (AFIP/ARCA)', 'Reportes de Ventas', 'Compras y Proveedores', 'Alertas de Stock', 'Usuarios y Roles', 'Configuración'],
     limits: { usuarios: 'Hasta 5 usuarios', sucursales: '1 sucursal' },
   },
   {

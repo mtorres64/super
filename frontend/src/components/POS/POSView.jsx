@@ -121,6 +121,8 @@ const POSView = ({
   setShowInvoicePanel,
   calculateDiscount,
   calculateImpuestosExtra,
+  tieneFacturacion = true,
+  tieneClientes = true,
 }) => {
   const [weightInputDraft, setWeightInputDraft] = React.useState({});
   const [focusedIdx, setFocusedIdx] = React.useState(-1);
@@ -488,21 +490,24 @@ const POSView = ({
         </div>
       </div>
 
-      {/* Invoice Panel */}
-      <InvoicePanel
-        open={showInvoicePanel}
-        currencySymbol={config?.currency_symbol || '$'}
-        invoiceConfig={invoiceConfig}
-        setInvoiceConfig={setInvoiceConfig}
-        selectedCustomer={selectedCustomer}
-        setSelectedCustomer={setSelectedCustomer}
-        subtotal={calculateSubtotal()}
-        tax={calculateTax()}
-        paymentAdjustment={calculatePaymentAdjustment()}
-        discount={calculateDiscount()}
-        impuestosExtraTotal={calculateImpuestosExtra()}
-        onClose={() => setShowInvoicePanel(false)}
-      />
+      {/* Invoice Panel — solo visible con módulo facturacion activo */}
+      {tieneFacturacion && (
+        <InvoicePanel
+          open={showInvoicePanel}
+          currencySymbol={config?.currency_symbol || '$'}
+          invoiceConfig={invoiceConfig}
+          setInvoiceConfig={setInvoiceConfig}
+          selectedCustomer={tieneClientes ? selectedCustomer : null}
+          setSelectedCustomer={tieneClientes ? setSelectedCustomer : () => {}}
+          subtotal={calculateSubtotal()}
+          tax={calculateTax()}
+          paymentAdjustment={calculatePaymentAdjustment()}
+          discount={calculateDiscount()}
+          impuestosExtraTotal={calculateImpuestosExtra()}
+          onClose={() => setShowInvoicePanel(false)}
+          tieneClientes={tieneClientes}
+        />
+      )}
 
       {/* Right Section - Cart */}
       <div className={`pos-cart ${mobileTab === 'cart' ? 'pos-tab-active' : ''}${!sessionLoading && !currentSession ? ' hidden md:flex' : ''}`} style={sessionDisabledStyle}>
@@ -543,19 +548,21 @@ const POSView = ({
                 Carrito ({cart.length})
               </h2>
               <div className="flex gap-2">
-                <button
-                  onClick={() => setShowInvoicePanel(v => !v)}
-                  className="btn btn-secondary btn-sm"
-                  title="Factura"
-                  style={showInvoicePanel
-                    ? { background: 'var(--primary)', borderColor: 'var(--primary)', color: '#fff' }
-                    : (selectedCustomer || (invoiceConfig?.tipo_comprobante !== 'ticket') || (invoiceConfig?.descuento_valor > 0))
-                      ? { background: 'var(--primary-bg)', borderColor: 'var(--primary)', color: 'var(--primary)' }
-                      : {}
-                  }
-                >
-                  <Receipt className="w-4 h-4" />
-                </button>
+                {tieneFacturacion && (
+                  <button
+                    onClick={() => setShowInvoicePanel(v => !v)}
+                    className="btn btn-secondary btn-sm"
+                    title="Factura"
+                    style={showInvoicePanel
+                      ? { background: 'var(--primary)', borderColor: 'var(--primary)', color: '#fff' }
+                      : (selectedCustomer || (invoiceConfig?.tipo_comprobante !== 'ticket') || (invoiceConfig?.descuento_valor > 0))
+                        ? { background: 'var(--primary-bg)', borderColor: 'var(--primary)', color: 'var(--primary)' }
+                        : {}
+                    }
+                  >
+                    <Receipt className="w-4 h-4" />
+                  </button>
+                )}
                 <button
                   onClick={openLastTicket}
                   className="btn btn-secondary btn-sm"
