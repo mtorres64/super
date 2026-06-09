@@ -1,10 +1,12 @@
 import React from 'react';
 import { formatAmount } from '../../lib/utils';
 import LogoUploader from '../LogoUploader';
+import UserManagement from '../UserManagement';
 import {
   Settings as SettingsIcon,
   Save,
   Building2,
+  Users,
   Calculator,
   ShoppingCart,
   Archive,
@@ -61,6 +63,7 @@ const SettingsView = ({
 }) => {
   const tabs = [
     { id: 'company', label: 'Empresa', icon: Building2 },
+    { id: 'users', label: 'Usuarios', icon: Users },
     { id: 'financial', label: 'Finanzas', icon: Calculator },
     { id: 'pos', label: 'Punto de Venta', icon: ShoppingCart },
     { id: 'inventory', label: 'Inventario', icon: Archive },
@@ -186,6 +189,13 @@ const SettingsView = ({
                   />
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Usuarios */}
+          {activeTab === 'users' && (
+            <div className="-m-4 sm:-m-6">
+              <UserManagement />
             </div>
           )}
 

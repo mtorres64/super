@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import PulsLogo from '../PulsLogo';
-import { LogOut, X, ArrowLeftRight } from 'lucide-react';
+import { LogOut, X, ArrowLeftRight, Settings } from 'lucide-react';
 
 const SidebarView = ({
   isOpen,
@@ -71,27 +71,39 @@ const SidebarView = ({
 
       <div className="sidebar-footer">
         <div className="user-info">
-          <div className="user-avatar">
-            {user?.nombre?.charAt(0).toUpperCase()}
-          </div>
-          <div className="user-details flex-1 min-w-0">
-            <h4 className="truncate">{user?.nombre}</h4>
-            <p className="capitalize">{user?.rol}</p>
-            {activeBranch && (
-              <p className="text-xs font-medium truncate" style={{ color: 'var(--primary, #10b981)' }}>
-                {activeBranch.nombre}
-              </p>
+          <Link to="/cuenta" onClick={onClose} className="flex items-center gap-3 flex-1 min-w-0 hover:opacity-75 transition-opacity">
+            <div className="user-avatar">
+              {user?.nombre?.charAt(0).toUpperCase()}
+            </div>
+            <div className="user-details flex-1 min-w-0">
+              <h4 className="truncate">{user?.nombre}</h4>
+              <p className="capitalize">{user?.rol}</p>
+              {activeBranch && (
+                <p className="text-xs font-medium truncate" style={{ color: 'var(--primary, #10b981)' }}>
+                  {activeBranch.nombre}
+                </p>
+              )}
+            </div>
+          </Link>
+          <div className="shrink-0 flex flex-col gap-0.5">
+            {canSwitchBranch && (
+              <button
+                onClick={onSwitchBranch}
+                title="Cambiar sucursal"
+                className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-700"
+              >
+                <ArrowLeftRight className="w-4 h-4" />
+              </button>
             )}
-          </div>
-          {canSwitchBranch && (
-            <button
-              onClick={onSwitchBranch}
-              title="Cambiar sucursal"
-              className="shrink-0 p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-700"
+            <Link
+              to="/settings"
+              onClick={onClose}
+              title="Configuración"
+              className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-700"
             >
-              <ArrowLeftRight className="w-4 h-4" />
-            </button>
-          )}
+              <Settings className="w-4 h-4" />
+            </Link>
+          </div>
         </div>
         <button
           onClick={onLogout}

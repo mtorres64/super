@@ -579,11 +579,7 @@ function App() {
             />
             <Route
               path="/users"
-              element={
-                <ProtectedRoute allowedRoles={['admin']} modulo="usuarios">
-                  <UserManagement />
-                </ProtectedRoute>
-              }
+              element={<Navigate to="/settings" replace />}
             />
             <Route
               path="/settings"

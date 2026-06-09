@@ -7,12 +7,9 @@ import {
   ShoppingCart,
   Package,
   BarChart3,
-  Users,
-  Settings,
   CreditCard,
   Building2,
   ShoppingBag,
-  Wallet,
 } from 'lucide-react';
 import SidebarView from './SidebarView';
 
@@ -65,27 +62,6 @@ const menuItems = [
     icon: ShoppingBag,
     roles: ['admin', 'supervisor'],
     modulo: 'compras',
-  },
-  {
-    path: '/users',
-    label: 'Usuarios',
-    icon: Users,
-    roles: ['admin'],
-    modulo: 'usuarios',
-  },
-  {
-    path: '/settings',
-    label: 'Configuración',
-    icon: Settings,
-    roles: ['admin'],
-    modulo: 'configuracion',
-  },
-  {
-    path: '/cuenta',
-    label: 'Cuenta',
-    icon: Wallet,
-    roles: ['admin'],
-    modulo: null,
   },
 ];
 
