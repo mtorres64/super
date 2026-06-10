@@ -956,7 +956,10 @@ const ProductManagementView = ({
                 )}
               </div>
 
-              <div className="flex justify-end space-x-3 mt-6">
+              <p className="text-xs text-gray-500 mt-6 text-center">
+                Las cantidades y precios son solo de referencia. La lista de precios se define en cada sucursal.
+              </p>
+              <div className="flex justify-end space-x-3 mt-3">
                 <button
                   type="button"
                   onClick={closeProductModal}

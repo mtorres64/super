@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { BarChart3, ShoppingBag, TrendingUp, Scale, Archive } from 'lucide-react';
 import SalesReports from './SalesReports';
 import PurchasesReport from './PurchasesReport';
@@ -15,7 +16,8 @@ const TABS = [
 ];
 
 const Reports = () => {
-  const [activeTab, setActiveTab] = useState('ventas');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(location.state?.tab ?? 'ventas');
 
   return (
     <div>

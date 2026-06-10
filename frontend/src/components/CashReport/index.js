@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { API } from '../../App';
 import { formatAmount, parseApiDate } from '../../lib/utils';
@@ -9,9 +9,21 @@ import CashReportView from './CashReportView';
 
 const CashReport = () => {
   const { sessionId } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+
+  const handleBack = () => {
+    navigate('/reports', {
+      state: {
+        tab: 'caja',
+        branchFilter: location.state?.branchFilter ?? '',
+        userFilter: location.state?.userFilter ?? '',
+      },
+    });
+  };
 
   useEffect(() => {
     if (sessionId) {
@@ -197,6 +209,7 @@ const CashReport = () => {
       report={report}
       generatingPdf={generatingPdf}
       handlePrint={handlePrint}
+      handleBack={handleBack}
       formatDate={formatDate}
       formatCurrency={formatCurrency}
     />

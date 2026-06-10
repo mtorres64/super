@@ -10,7 +10,8 @@ import {
   Calculator,
   AlertCircle,
   CheckCircle,
-  Printer
+  Printer,
+  ArrowLeft
 } from 'lucide-react';
 import SortIcon from '../ui/SortIcon';
 import { useSortableData } from '../../hooks/useSortableData';
@@ -20,6 +21,7 @@ const CashReportView = ({
   report,
   generatingPdf,
   handlePrint,
+  handleBack,
   formatDate,
   formatCurrency,
 }) => {
@@ -50,6 +52,15 @@ const CashReportView = ({
   return (
     <div className="p-6">
       <div className="max-w-4xl mx-auto">
+        {handleBack && (
+          <button
+            onClick={handleBack}
+            className="btn btn-secondary flex items-center gap-2 mb-4 print:hidden"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Volver a Reportes de Caja
+          </button>
+        )}
         {/* Header */}
         <div className="bg-white rounded-lg shadow-lg mb-6 print:shadow-none overflow-hidden">
           <div className="p-6 border-b border-gray-100">

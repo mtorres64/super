@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { API } from '../../App';
 import { formatAmount, parseApiDate } from '../../lib/utils';
@@ -8,15 +8,16 @@ import Pagination from '../Pagination';
 
 const CashReportsTab = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [branches, setBranches] = useState([]);
-  const [branchFilter, setBranchFilter] = useState('');
+  const [branchFilter, setBranchFilter] = useState(location.state?.branchFilter ?? '');
   const [users, setUsers] = useState([]);
-  const [userFilter, setUserFilter] = useState('');
+  const [userFilter, setUserFilter] = useState(location.state?.userFilter ?? '');
   const PER_PAGE = 15;
 
   useEffect(() => {
@@ -172,7 +173,7 @@ const CashReportsTab = () => {
                     </td>
                     <td data-mobile="actions">
                       <button
-                        onClick={() => navigate(`/cash-report/${s.id}`)}
+                        onClick={() => navigate(`/cash-report/${s.id}`, { state: { branchFilter, userFilter } })}
                         className="btn btn-sm flex items-center gap-1"
                         style={{ background: 'var(--secondary)', color: 'var(--secondary-text)' }}
                         title="Ver reporte"
