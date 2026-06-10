@@ -811,7 +811,7 @@ body.no-animations .product-card:hover {
   background: #ffffff;
   border-radius: var(--radius-xl);
   padding: 1.5rem;
-  width: 340px;
+  width: 580px;
   max-width: 92vw;
   box-shadow: var(--shadow-xl);
   animation: ticket-modal-bounce 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
@@ -855,7 +855,7 @@ body.no-animations .product-card:hover {
 }
 
 .price-check-list {
-  max-height: 260px;
+  max-height: 360px;
   overflow-y: auto;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -868,9 +868,30 @@ body.no-animations .product-card:hover {
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--border-light);
   gap: 0.5rem;
+  cursor: pointer;
+  transition: background 0.1s;
 }
 .price-check-list-item:last-child { border-bottom: none; }
 .price-check-list-item:nth-child(even) { background: var(--gray-50); }
+.price-check-list-item.focused,
+.price-check-list-item:hover { background: #eff6ff !important; }
+
+.price-check-add-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: var(--primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+.price-check-add-btn:hover { background: var(--primary-dark, #1d4ed8); transform: scale(1.1); }
+.price-check-add-btn:disabled { background: var(--gray-300); cursor: not-allowed; transform: none; }
 
 .price-check-list-info {
   display: flex;

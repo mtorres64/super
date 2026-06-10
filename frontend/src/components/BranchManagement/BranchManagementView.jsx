@@ -241,7 +241,7 @@ const BranchManagementView = ({
           </div>
           {/* Cambios pendientes */}
           {hasPendingChanges && (
-            <div className="flex flex-wrap items-center gap-2 mt-3">
+            <div className="flex flex-wrap items-center justify-end gap-2 mt-3">
               <span className="text-sm text-amber-600 font-medium">
                 {Object.keys(pendingChanges).length} cambio(s) sin guardar
               </span>

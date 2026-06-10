@@ -126,8 +126,16 @@ const POSView = ({
 }) => {
   const [weightInputDraft, setWeightInputDraft] = React.useState({});
   const [focusedIdx, setFocusedIdx] = React.useState(-1);
+  const [priceCheckFocusedIdx, setPriceCheckFocusedIdx] = React.useState(-1);
+  const priceCheckListRef = React.useRef(null);
 
   React.useEffect(() => { setFocusedIdx(-1); }, [paginatedProducts]);
+  React.useEffect(() => { setPriceCheckFocusedIdx(-1); }, [priceCheckResult]);
+  React.useEffect(() => {
+    if (priceCheckFocusedIdx >= 0 && priceCheckListRef.current) {
+      priceCheckListRef.current.children[priceCheckFocusedIdx]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [priceCheckFocusedIdx]);
   React.useEffect(() => {
     if (focusedIdx >= 0) {
       document.querySelector('[data-pos-focused="true"]')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -830,10 +838,26 @@ const POSView = ({
                 placeholder="Código de barras o nombre..."
                 className="form-input flex-1"
                 value={priceCheckQuery}
-                onChange={e => { setPriceCheckQuery(e.target.value); setPriceCheckResult(null); }}
+                onChange={e => { setPriceCheckQuery(e.target.value); setPriceCheckResult(null); setPriceCheckFocusedIdx(-1); }}
                 onKeyDown={e => {
-                  if (e.key === 'Enter') searchPriceCheck();
-                  if (e.key === 'Escape') closePriceCheckAnim();
+                  const list = Array.isArray(priceCheckResult) ? priceCheckResult : [];
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (list.length > 0) setPriceCheckFocusedIdx(i => Math.min(i + 1, list.length - 1));
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setPriceCheckFocusedIdx(i => Math.max(i - 1, -1));
+                  } else if (e.key === 'Enter') {
+                    if (priceCheckFocusedIdx >= 0 && list.length > 0) {
+                      const p = list[priceCheckFocusedIdx];
+                      const blocked = config?.auto_update_inventory !== false && p.control_stock !== false && (p.stock ?? 0) <= 0;
+                      if (!blocked) { addToCart(p); if (isMobile()) playSuccessSound(); closePriceCheckAnim(); }
+                    } else {
+                      searchPriceCheck();
+                    }
+                  } else if (e.key === 'Escape') {
+                    closePriceCheckAnim();
+                  }
                 }}
                 autoFocus
               />
@@ -848,7 +872,7 @@ const POSView = ({
             )}
             {priceCheckResult && priceCheckResult !== 'not_found' && (
               priceCheckResult.length === 1 ? (
-                <div className="price-check-result">
+                <div className={`price-check-result${priceCheckFocusedIdx === 0 ? ' focused' : ''}`} style={priceCheckFocusedIdx === 0 ? { outline: '2px solid var(--primary)', outlineOffset: '2px' } : {}}>
                   <div className="price-check-name">{priceCheckResult[0].nombre}</div>
                   <div className="price-check-price">
                     {config?.currency_symbol || '$'}{formatAmount(priceCheckResult[0].tipo === 'por_peso' && priceCheckResult[0].precio_por_peso ? priceCheckResult[0].precio_por_peso : priceCheckResult[0].precio)}
@@ -861,24 +885,58 @@ const POSView = ({
                   {priceCheckResult[0].codigo_barras && (
                     <div className="text-xs text-gray-400 mt-2">Cód: {priceCheckResult[0].codigo_barras}</div>
                   )}
+                  {(() => {
+                    const p = priceCheckResult[0];
+                    const blocked = config?.auto_update_inventory !== false && p.control_stock !== false && (p.stock ?? 0) <= 0;
+                    return (
+                      <button
+                        className="price-check-add-btn mx-auto mt-3"
+                        style={{ width: 'auto', borderRadius: '999px', padding: '0.375rem 1rem', gap: '0.375rem', display: 'flex' }}
+                        disabled={blocked}
+                        title={blocked ? 'Sin stock' : 'Agregar al carrito'}
+                        onClick={() => { addToCart(p); if (isMobile()) playSuccessSound(); closePriceCheckAnim(); }}
+                      >
+                        <Plus className="w-4 h-4" /> Agregar al carrito
+                      </button>
+                    );
+                  })()}
                 </div>
               ) : (
                 <div className="price-check-list">
                   <div className="text-xs text-gray-500 mb-2">{priceCheckResult.length} productos encontrados</div>
-                  {priceCheckResult.map(product => (
-                    <div key={product.id} className="price-check-list-item">
-                      <div className="price-check-list-info">
-                        <span className="price-check-list-name">{product.nombre}</span>
-                        <span className="price-check-list-meta">
-                          {getCategoryName(product.categoria_id)} · Stock: {product.stock}
-                        </span>
-                      </div>
-                      <span className="price-check-list-price">
-                        {config?.currency_symbol || '$'}{formatAmount(product.tipo === 'por_peso' && product.precio_por_peso ? product.precio_por_peso : product.precio)}
-                        {product.tipo === 'por_peso' && '/kg'}
-                      </span>
-                    </div>
-                  ))}
+                  <div ref={priceCheckListRef}>
+                    {priceCheckResult.map((product, idx) => {
+                      const blocked = config?.auto_update_inventory !== false && product.control_stock !== false && (product.stock ?? 0) <= 0;
+                      return (
+                        <div
+                          key={product.id}
+                          className={`price-check-list-item${priceCheckFocusedIdx === idx ? ' focused' : ''}`}
+                          onClick={() => { if (!blocked) { addToCart(product); if (isMobile()) playSuccessSound(); closePriceCheckAnim(); } }}
+                        >
+                          <div className="price-check-list-info">
+                            <span className="price-check-list-name">{product.nombre}</span>
+                            <span className="price-check-list-meta">
+                              {getCategoryName(product.categoria_id)} · Stock: {product.stock}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
+                            <span className="price-check-list-price">
+                              {config?.currency_symbol || '$'}{formatAmount(product.tipo === 'por_peso' && product.precio_por_peso ? product.precio_por_peso : product.precio)}
+                              {product.tipo === 'por_peso' && '/kg'}
+                            </span>
+                            <button
+                              className="price-check-add-btn"
+                              disabled={blocked}
+                              title={blocked ? 'Sin stock' : 'Agregar al carrito'}
+                              onClick={e => { e.stopPropagation(); if (!blocked) { addToCart(product); if (isMobile()) playSuccessSound(); closePriceCheckAnim(); } }}
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )
             )}
