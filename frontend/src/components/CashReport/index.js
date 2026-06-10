@@ -15,15 +15,15 @@ const CashReport = () => {
   const [loading, setLoading] = useState(true);
   const [generatingPdf, setGeneratingPdf] = useState(false);
 
-  const handleBack = () => {
-    navigate('/reports', {
-      state: {
-        tab: 'caja',
-        branchFilter: location.state?.branchFilter ?? '',
-        userFilter: location.state?.userFilter ?? '',
-      },
-    });
-  };
+  const handleBack = location.state !== null
+    ? () => navigate('/reports', {
+        state: {
+          tab: 'caja',
+          branchFilter: location.state?.branchFilter ?? '',
+          userFilter: location.state?.userFilter ?? '',
+        },
+      })
+    : null;
 
   useEffect(() => {
     if (sessionId) {

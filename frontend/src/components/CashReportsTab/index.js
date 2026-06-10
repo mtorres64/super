@@ -174,8 +174,7 @@ const CashReportsTab = () => {
                     <td data-mobile="actions">
                       <button
                         onClick={() => navigate(`/cash-report/${s.id}`, { state: { branchFilter, userFilter } })}
-                        className="btn btn-sm flex items-center gap-1"
-                        style={{ background: 'var(--secondary)', color: 'var(--secondary-text)' }}
+                        className="btn btn-primary btn-sm flex items-center gap-1"
                         title="Ver reporte"
                       >
                         <Eye className="w-3.5 h-3.5" />
