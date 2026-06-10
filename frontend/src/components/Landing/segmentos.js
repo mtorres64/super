@@ -1,0 +1,525 @@
+import {
+  ShoppingCart, Package, BarChart3, Building2, ShoppingBag, Users,
+  FileText, RotateCcw, CreditCard, Bell, FileDown, RefreshCw,
+  Shield, Smartphone, Wrench, Heart, Truck, Scissors,
+} from 'lucide-react';
+
+const BASE_FEATURES = [
+  { icon: ShoppingCart, title: 'Punto de Venta',           desc: 'Interfaz ágil con código de barras, cámara y múltiples métodos de pago. Cerrá cada venta en segundos.' },
+  { icon: Package,      title: 'Gestión de Inventario',    desc: 'Control de stock en tiempo real. Alertas de mínimo, importación masiva y exportación a CSV.' },
+  { icon: BarChart3,    title: 'Reportes y Estadísticas',  desc: 'Informes de ventas por período, cajero o sucursal. Cierre de caja con arqueo detallado y exportación a Excel.' },
+  { icon: Building2,    title: 'Multi-Sucursal',           desc: 'Gestioná múltiples locales desde un solo sistema. Precios, stock e inventario independientes por local.' },
+  { icon: ShoppingBag,  title: 'Gestión de Compras',       desc: 'Registrá facturas de proveedores con ítems, costos y márgenes. Stock actualizado automáticamente.' },
+  { icon: Users,        title: 'Gestión de Clientes',      desc: 'Base de clientes con historial de compras, datos de contacto y segmentación por categoría.' },
+  { icon: FileText,     title: 'Facturación Electrónica',  desc: 'Emití facturas A, B y C integradas con AFIP/ARCA directamente desde el punto de venta.' },
+  { icon: RotateCcw,    title: 'Devoluciones',             desc: 'Procesá devoluciones parciales o totales. El stock y la caja se actualizan al instante.' },
+  { icon: Users,        title: 'Multi-Usuario',            desc: 'Roles diferenciados: Administrador, Supervisor y Cajero. Cada uno opera solo lo que necesita.' },
+  { icon: CreditCard,   title: 'Gestión de Caja',          desc: 'Apertura y cierre con arqueo detallado. Retiros y movimientos registrados en tiempo real.' },
+  { icon: Bell,         title: 'Notificaciones',           desc: 'Alertas de stock bajo, vencimientos y eventos importantes del sistema.' },
+  { icon: FileDown,     title: 'Importación / Exportación', desc: 'Importá tu catálogo desde Excel o CSV de forma masiva. Exportá ventas e inventario.' },
+  { icon: RefreshCw,    title: 'Suscripción Flexible',     desc: 'Planes mensuales y anuales con pago seguro a través de MercadoPago.' },
+  { icon: Shield,       title: 'Seguro y Confiable',       desc: 'JWT, contraseñas cifradas y aislamiento total de datos entre empresas.' },
+  { icon: Smartphone,   title: 'Diseño Responsive',        desc: 'Operá desde computadora, tablet o celular sin instalar nada.' },
+];
+
+const FERRETERIA_FEATURES = [
+  { icon: ShoppingCart, title: 'Punto de Venta',           desc: 'Vendé tornillos, pinturas y herramientas por unidad, metro o kilo. Código de barras o búsqueda rápida por nombre.' },
+  { icon: Package,      title: 'Inventario por Unidad',    desc: 'Control de stock de miles de SKUs. Mínimos por producto, alertas automáticas y reposición fácil.' },
+  { icon: BarChart3,    title: 'Reportes y Márgenes',      desc: 'Analizá qué productos dan más margen y cuáles rotan más. Exportá reportes detallados a Excel.' },
+  { icon: Building2,    title: 'Multi-Sucursal',           desc: 'Gestioná varios locales o depósitos desde un panel central con stock independiente.' },
+  { icon: ShoppingBag,  title: 'Compras a Proveedores',    desc: 'Registrá facturas de importadores y distribuidores. El stock sube automáticamente.' },
+  { icon: Users,        title: 'Clientes y Cuenta Cte.',   desc: 'Base de clientes con historial. Identificá tus compradores frecuentes de obra o construcción.' },
+  { icon: FileText,     title: 'Facturación Electrónica',  desc: 'Emití facturas A, B y C con AFIP/ARCA. Ideal para clientes constructoras y contratistas.' },
+  { icon: RotateCcw,    title: 'Devoluciones',             desc: 'Devolvé mercadería sin problemas. Stock y caja actualizados de forma automática.' },
+  { icon: Users,        title: 'Multi-Usuario',            desc: 'Roles diferenciados para encargados, vendedores y cajeros.' },
+  { icon: CreditCard,   title: 'Gestión de Caja',          desc: 'Arqueo diario, retiros y movimientos. Todo registrado en tiempo real.' },
+  { icon: Bell,         title: 'Alertas de Ruptura',       desc: 'Alertas automáticas cuando un artículo queda bajo el mínimo definido.' },
+  { icon: FileDown,     title: 'Importación Masiva',       desc: 'Importá miles de productos desde Excel. Actualizá precios en bloque.' },
+  { icon: RefreshCw,    title: 'Suscripción Flexible',     desc: 'Planes mensuales y anuales. Pagá con MercadoPago.' },
+  { icon: Shield,       title: 'Seguro y Confiable',       desc: 'Tus datos siempre protegidos. Sin acceso cruzado entre empresas.' },
+  { icon: Smartphone,   title: 'Acceso desde Cualquier Dispositivo', desc: 'Administrá tu ferretería desde la computadora del mostrador, tablet o tu celular.' },
+];
+
+const PET_FEATURES = [
+  { icon: ShoppingCart, title: 'Punto de Venta',           desc: 'Vendé alimentos, accesorios y medicamentos con lector de barras o cámara. Rápido y sin errores.' },
+  { icon: Package,      title: 'Control de Vencimientos',  desc: 'Administrá stock con fecha de vencimiento para alimentos y medicamentos. Alertas automáticas antes de que venzan.' },
+  { icon: BarChart3,    title: 'Reportes de Ventas',       desc: 'Analizá qué marcas de alimento y accesorios venden más. Exportá reportes a Excel.' },
+  { icon: Building2,    title: 'Multi-Sucursal',           desc: 'Gestioná varias sucursales o pet shops con stock independiente por local.' },
+  { icon: ShoppingBag,  title: 'Compras a Distribuidoras', desc: 'Registrá facturas de tus proveedores de alimentos y accesorios. Stock actualizado solo.' },
+  { icon: Heart,        title: 'Clientes y sus Mascotas',  desc: 'Base de clientes con historial de compras. Identificá qué mascotas tiene cada cliente.' },
+  { icon: FileText,     title: 'Facturación Electrónica',  desc: 'Facturas A, B y C con AFIP/ARCA. Para clientes veterinarios y empresas.' },
+  { icon: RotateCcw,    title: 'Devoluciones',             desc: 'Procesá cambios de productos defectuosos o no conformes fácilmente.' },
+  { icon: Users,        title: 'Multi-Usuario',            desc: 'Roles para dueños, veterinarios y vendedores.' },
+  { icon: CreditCard,   title: 'Gestión de Caja',          desc: 'Apertura, cierre y arqueo detallado por turno.' },
+  { icon: Bell,         title: 'Alertas de Stock Bajo',    desc: 'Recibí alertas antes de quedarte sin el alimento favorito de tus clientes.' },
+  { icon: FileDown,     title: 'Importación de Catálogo',  desc: 'Cargá cientos de productos desde Excel. Actualizá precios en bloque.' },
+  { icon: RefreshCw,    title: 'Suscripción Flexible',     desc: 'Planes accesibles con pago por MercadoPago.' },
+  { icon: Shield,       title: 'Seguro y Confiable',       desc: 'Datos protegidos y respaldo automático en la nube.' },
+  { icon: Smartphone,   title: 'Responsive',               desc: 'Administrá tu pet shop desde cualquier dispositivo.' },
+];
+
+const CORRALON_FEATURES = [
+  { icon: ShoppingCart, title: 'Punto de Venta',           desc: 'Vendé bolsas de cemento, perfiles y sanitarios por unidad, bolsa o metro. Rápido y sin errores.' },
+  { icon: Package,      title: 'Inventario por Bulto',     desc: 'Control de stock de materiales a granel, por unidad o por pallet. Mínimos y alertas automáticas.' },
+  { icon: BarChart3,    title: 'Reportes de Ventas',       desc: 'Analizá ventas por temporada de construcción. Cierre de caja y exportación a Excel.' },
+  { icon: Building2,    title: 'Multi-Depósito',           desc: 'Gestioná depósitos y locales de exposición con stock independiente por espacio.' },
+  { icon: Truck,        title: 'Compras y Fletes',         desc: 'Registrá facturas de fábricas y distribuidoras. Controlá costos de flete y márgenes.' },
+  { icon: Users,        title: 'Clientes de Obra',         desc: 'Base de clientes con historial. Identificá constructoras, albañiles y clientes frecuentes.' },
+  { icon: FileText,     title: 'Facturación Electrónica',  desc: 'Facturas A, B y C con AFIP/ARCA para constructoras y empresas constructoras.' },
+  { icon: RotateCcw,    title: 'Devoluciones y Cambios',   desc: 'Procesá devoluciones de materiales defectuosos. Stock y caja actualizados.' },
+  { icon: Users,        title: 'Multi-Usuario',            desc: 'Roles para encargados de depósito, vendedores y administración.' },
+  { icon: CreditCard,   title: 'Gestión de Caja',          desc: 'Arqueo diario, retiros y movimientos. Todo en tiempo real.' },
+  { icon: Bell,         title: 'Alertas de Ruptura',       desc: 'Alertas cuando se agota un material clave para tus clientes de obra.' },
+  { icon: FileDown,     title: 'Importación Masiva',       desc: 'Importá listas de precios de fábrica desde Excel. Actualizá todos los precios en bloque.' },
+  { icon: RefreshCw,    title: 'Suscripción Flexible',     desc: 'Planes mensuales y anuales. Pagá con MercadoPago.' },
+  { icon: Shield,       title: 'Seguro y Confiable',       desc: 'Datos protegidos y aislamiento total entre empresas.' },
+  { icon: Smartphone,   title: 'Desde Cualquier Dispositivo', desc: 'Chequeá stock desde el celular sin salir del depósito.' },
+];
+
+const DISTRIBUIDORA_FEATURES = [
+  { icon: ShoppingCart, title: 'Toma de Pedidos',          desc: 'Registrá pedidos de tus clientes con rapidez. Buscá productos por código o nombre con stock en tiempo real.' },
+  { icon: Package,      title: 'Inventario de Depósito',   desc: 'Control de stock en grandes volúmenes. Alertas de reposición y gestión por lote.' },
+  { icon: BarChart3,    title: 'Reportes por Zona',        desc: 'Analizá ventas por zona, cliente o vendedor. Exportá reportes a Excel para tu equipo comercial.' },
+  { icon: Building2,    title: 'Multi-Depósito',           desc: 'Gestioná varios depósitos o centros de distribución con stock y precios independientes.' },
+  { icon: Truck,        title: 'Compras al Fabricante',    desc: 'Registrá compras a fábricas con detalle de ítems y costos. Stock actualizado automáticamente.' },
+  { icon: Users,        title: 'Cartera de Clientes',      desc: 'Base de clientes completa con historial de pedidos, condiciones de pago y segmentación por zona.' },
+  { icon: FileText,     title: 'Facturación Electrónica',  desc: 'Facturas A, B y C con AFIP/ARCA. Integradas directamente al despacho.' },
+  { icon: RotateCcw,    title: 'Notas de Crédito',         desc: 'Procesá devoluciones y notas de crédito. Stock y cuenta corriente actualizados.' },
+  { icon: Users,        title: 'Equipo de Ventas',         desc: 'Roles diferenciados para vendedores, supervisores y administración.' },
+  { icon: CreditCard,   title: 'Gestión de Caja',          desc: 'Apertura, cierre y arqueo. Cobranzas registradas en tiempo real.' },
+  { icon: Bell,         title: 'Alertas de Stock',         desc: 'Notificaciones antes de quedarte sin stock de productos de alta rotación.' },
+  { icon: FileDown,     title: 'Listas de Precios',        desc: 'Importá listas de precios desde Excel. Actualizá cientos de productos en segundos.' },
+  { icon: RefreshCw,    title: 'Suscripción Flexible',     desc: 'Planes escalables según el tamaño de tu operación.' },
+  { icon: Shield,       title: 'Seguro y Confiable',       desc: 'Datos encriptados y separación total entre empresas en la nube.' },
+  { icon: Smartphone,   title: 'Acceso Remoto',            desc: 'Tu equipo de ventas accede desde tablet o celular en el campo.' },
+];
+
+const ROPA_FEATURES = [
+  { icon: ShoppingCart, title: 'Punto de Venta',           desc: 'Vendé por talla y color con código de barras o búsqueda por nombre. Cobros en efectivo, tarjeta o transferencia.' },
+  { icon: Package,      title: 'Variantes de Producto',    desc: 'Controlá stock por talla, color y temporada. Sabé qué talles te quedan y cuáles reponer.' },
+  { icon: BarChart3,    title: 'Reportes de Colección',    desc: 'Analizá qué prendas y talles venden más por temporada. Exportá a Excel para planificar tu próxima compra.' },
+  { icon: Building2,    title: 'Multi-Local',              desc: 'Gestioná varios locales o outlets con stock e independiente por sucursal.' },
+  { icon: ShoppingBag,  title: 'Compras a Talleristas',    desc: 'Registrá facturas de talleristas, importadores y distribuidoras. Stock actualizado automáticamente.' },
+  { icon: Scissors,     title: 'Clientes Frecuentes',      desc: 'Fidelizá a tus clientas con historial de compras, talles favoritos y datos de contacto.' },
+  { icon: FileText,     title: 'Facturación Electrónica',  desc: 'Facturas A, B y C con AFIP/ARCA. Para ventas a mayoristas o empresas.' },
+  { icon: RotateCcw,    title: 'Cambios y Devoluciones',   desc: 'Procesá cambios de talla y devoluciones en segundos. Stock y caja actualizados.' },
+  { icon: Users,        title: 'Multi-Vendedor',           desc: 'Roles para dueñas, encargadas y vendedoras. Cada una ve su rendimiento.' },
+  { icon: CreditCard,   title: 'Gestión de Caja',          desc: 'Arqueo por turno o por día. Retiros y movimientos registrados.' },
+  { icon: Bell,         title: 'Alertas de Stock',         desc: 'Notificaciones cuando te queda pocas unidades de una prenda o talle.' },
+  { icon: FileDown,     title: 'Importación de Catálogo',  desc: 'Cargá toda tu colección desde Excel. Actualizá precios de temporada en bloque.' },
+  { icon: RefreshCw,    title: 'Suscripción Flexible',     desc: 'Planes accesibles según el tamaño de tu negocio.' },
+  { icon: Shield,       title: 'Seguro y Confiable',       desc: 'Datos protegidos y respaldo en la nube.' },
+  { icon: Smartphone,   title: 'Desde Cualquier Dispositivo', desc: 'Chequeá stock o ventas desde tu celular en cualquier momento.' },
+];
+
+// Tema verde idéntico al de la landing principal
+const GREEN_THEME = {
+  primary:  '#10b981',
+  dark:     '#059669',
+  darker:   '#047857',
+  light:    'rgba(16,185,129,0.1)',
+  bg:       '#ecfdf5',
+  heroGrad: 'linear-gradient(135deg, rgba(5,150,105,0.93) 0%, rgba(4,120,87,0.90) 100%)',
+  s1Bg:     '#f0fdf4',  s1Border: '#d1fae5',
+  s1Check:  '#10b981',  s1BadgeBg: '#ecfdf5', s1BadgeColor: '#047857',
+  s3Bg:     '#faf5ff',  s3Border: '#ede9fe',
+  s3Check:  '#7c3aed',  s3BadgeBg: '#faf5ff', s3BadgeColor: '#7c3aed',
+};
+
+export const CONFIGS = {
+  kioscos: {
+    slug: 'kioscos',
+    nombre: 'Kioscos',
+    theme: GREEN_THEME,
+    photos: {
+      // Hero: interior de almacén/kiosco con estantes coloridos de golosinas
+      hero:    'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1800&q=80',
+      // POS: mostrador de kiosco/negocio de barrio
+      pos:     'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?auto=format&fit=crop&w=900&q=80',
+      analytics: '/showcase_reportes.png',
+      // Compras: exhibidor de golosinas/distribuidora de snacks
+      compras: 'https://images.unsplash.com/photo-1559181567-c3190ca9959b?auto=format&fit=crop&w=900&q=80',
+      step1:   'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=400&q=80',
+      step2:   'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=400&q=80',
+      step3:   'https://images.unsplash.com/photo-1556742031-c6961e8560b0?auto=format&fit=crop&w=400&q=80',
+    },
+    features: BASE_FEATURES,
+    badge:     'Sistema POS · Kioscos · Almacenes · Negocios de barrio',
+    heroTitle: 'El sistema que tu kiosco necesita',
+    heroDesc:  'Gestioná ventas, stock de golosinas, cigarrillos y bebidas desde una sola pantalla. Rápido, simple y pensado para el ritmo del kiosco.',
+    stats: [
+      { value: 'Ventas rápidas', label: 'Cobrá sin demoras'             },
+      { value: 'Stock al día',   label: 'Golosinas, bebidas, cigarr.'   },
+      { value: 'Sin límites',    label: 'Productos y usuarios'          },
+      { value: 'Caja diaria',    label: 'Arqueo en segundos'            },
+    ],
+    showcase1: {
+      badge: 'Punto de venta', badgeIcon: ShoppingCart,
+      title: 'Atendé más clientes en menos tiempo',
+      desc:  'El POS fue diseñado para la velocidad del kiosco: escaneá con lector USB o cámara, cobrá en efectivo o transferencia y cerrá la venta en segundos. Sin esperas, sin errores.',
+      bullets: [
+        'Búsqueda por código de barras o nombre del producto',
+        'Cobros en efectivo, tarjeta y transferencia',
+        'Reapertura de ventas y devoluciones rápidas',
+        'Interfaz limpia pensada para velocidad',
+        'Sonidos de confirmación configurables',
+      ],
+    },
+    showcase2: {
+      title: 'Sabé qué vendés y cuánto ganás cada día',
+      desc:  'Cerrá tu caja con arqueo detallado. Revisá qué productos rotan más. Exportá todo a Excel para tu control.',
+      bullets: [
+        'Ventas por día, semana o mes',
+        'Desglose por método de pago',
+        'Cierre de caja con arqueo automático',
+        'Productos más vendidos del período',
+        'Exportación a Excel o CSV',
+      ],
+    },
+    showcase3: {
+      badge: 'Compras a distribuidoras', badgeIcon: ShoppingBag,
+      title: 'Controlá tus compras y márgenes de ganancia',
+      desc:  'Registrá cada factura de tus distribuidores con detalle de productos y costos. El sistema actualiza el stock automáticamente y te muestra el margen actual.',
+      bullets: [
+        'Registro de facturas de distribuidoras',
+        'Vinculación directa con tu catálogo de productos',
+        'Visualización de precio de venta y margen',
+        'Actualización automática de stock',
+        'Historial completo por proveedor',
+      ],
+    },
+    ctaTitle: '¿Listo para ordenar tu kiosco?',
+    ctaDesc:  'Registrate hoy y probá el sistema {trialDias} días sin costo. Sin tarjeta, sin compromiso.',
+    footerDesc: 'Sistema de gestión para kioscos y almacenes',
+  },
+
+  ferreterias: {
+    slug: 'ferreterias',
+    nombre: 'Ferreterías',
+    theme: GREEN_THEME,
+    photos: {
+      // Hero: pasillo de ferretería con herramientas en estantes
+      hero:    'https://images.unsplash.com/photo-1572981779307-38b8cabb2407?auto=format&fit=crop&w=1800&q=80',
+      // POS: panel pegboard con herramientas colgadas
+      pos:     'https://images.unsplash.com/photo-1581244277943-fe4a9c777189?auto=format&fit=crop&w=900&q=80',
+      analytics: '/showcase_reportes.png',
+      // Compras: herramientas eléctricas / productos de ferretería
+      compras: 'https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?auto=format&fit=crop&w=900&q=80',
+      step1:   'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=400&q=80',
+      step2:   'https://images.unsplash.com/photo-1572981779307-38b8cabb2407?auto=format&fit=crop&w=400&q=80',
+      step3:   'https://images.unsplash.com/photo-1556742031-c6961e8560b0?auto=format&fit=crop&w=400&q=80',
+    },
+    features: FERRETERIA_FEATURES,
+    badge:     'Sistema POS · Ferreterías · Pinturerías · Depósitos',
+    heroTitle: 'El sistema que tu ferretería necesita',
+    heroDesc:  'Control total de stock de herramientas, materiales y accesorios. Gestioná proveedores, precios y múltiples locales desde un solo lugar.',
+    stats: [
+      { value: 'Miles de SKUs',   label: 'Sin límite de productos'       },
+      { value: 'Precios al día',  label: 'Actualizá en bloque con Excel' },
+      { value: 'Multi-local',     label: 'Depósitos y locales unidos'    },
+      { value: 'Márgenes reales', label: 'Por producto y proveedor'      },
+    ],
+    showcase1: {
+      badge: 'Punto de venta', badgeIcon: Wrench,
+      title: 'Vendé más rápido con menos errores',
+      desc:  'Buscá tornillos, pinturas o herramientas por código o nombre. Cobrá en efectivo, tarjeta o transferencia y procesá devoluciones en segundos.',
+      bullets: [
+        'Búsqueda por código de barras o nombre',
+        'Venta por unidad, metro o kilo',
+        'Efectivo, tarjeta y transferencia',
+        'Devoluciones parciales o totales',
+        'Facturación A, B y C integrada',
+      ],
+    },
+    showcase2: {
+      title: 'Tomá decisiones basadas en datos reales',
+      desc:  'Revisá qué artículos dan más margen y cuáles están parados. Cerrá caja con arqueo detallado y exportá todo a Excel.',
+      bullets: [
+        'Ventas por período, cajero o sucursal',
+        'Desglose por método de pago',
+        'Arqueo de caja automático',
+        'Alertas de stock bajo por artículo',
+        'Exportación de inventario a CSV',
+      ],
+    },
+    showcase3: {
+      badge: 'Compras a proveedores', badgeIcon: Truck,
+      title: 'Controlá tus costos de importadores y fábricas',
+      desc:  'Registrá cada factura de proveedores con ítem, costo y margen. El stock del depósito se actualiza solo y podés ver el margen en tiempo real.',
+      bullets: [
+        'CRUD completo de proveedores con CUIT',
+        'Registro de facturas con detalle de ítems',
+        'Precio actual y margen visible al comprar',
+        'Actualización automática de stock en depósito',
+        'Importación de listas de precios en Excel',
+      ],
+    },
+    ctaTitle: '¿Listo para modernizar tu ferretería?',
+    ctaDesc:  'Probá el sistema {trialDias} días gratis con todas las funciones. Sin tarjeta, sin compromiso.',
+    footerDesc: 'Sistema de gestión para ferreterías y pinturerías',
+  },
+
+  petshops: {
+    slug: 'petshops',
+    nombre: 'Pet Shops',
+    theme: GREEN_THEME,
+    photos: {
+      // Hero: perros corriendo / imagen icónica de mascotas
+      hero:    'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=1800&q=80',
+      // POS: cachorro golden retriever - identidad del negocio
+      pos:     'https://images.unsplash.com/photo-1587300003388-59208cc962cb?auto=format&fit=crop&w=900&q=80',
+      analytics: '/showcase_reportes.png',
+      // Compras: bolsas de alimento y accesorios para mascotas
+      compras: 'https://images.unsplash.com/photo-1601758174493-c4a0e9c4ab17?auto=format&fit=crop&w=900&q=80',
+      step1:   'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=400&q=80',
+      step2:   'https://images.unsplash.com/photo-1587300003388-59208cc962cb?auto=format&fit=crop&w=400&q=80',
+      step3:   'https://images.unsplash.com/photo-1556742031-c6961e8560b0?auto=format&fit=crop&w=400&q=80',
+    },
+    features: PET_FEATURES,
+    badge:     'Sistema POS · Pet Shops · Veterinarias · Tiendas de mascotas',
+    heroTitle: 'El sistema que tu pet shop necesita',
+    heroDesc:  'Gestioná alimentos, accesorios y medicamentos para mascotas. Control de stock, vencimientos y clientes fieles en una sola plataforma.',
+    stats: [
+      { value: 'Control total',    label: 'Alimentos y accesorios'     },
+      { value: 'Vencimientos',     label: 'Alertas antes de que venzan'},
+      { value: 'Clientes fieles',  label: 'Historial de compras'       },
+      { value: 'Multi-sucursal',   label: 'Varios locales unificados'  },
+    ],
+    showcase1: {
+      badge: 'Punto de venta', badgeIcon: Heart,
+      title: 'Atendé a tus clientes y sus mascotas con cariño y velocidad',
+      desc:  'Vendé alimentos, juguetes y accesorios con código de barras o cámara. Cobrá con efectivo, tarjeta o transferencia. Procesá cambios en segundos.',
+      bullets: [
+        'Búsqueda por código de barras o nombre',
+        'Cobros en efectivo, tarjeta y transferencia',
+        'Ventas de alimentos y medicamentos',
+        'Devoluciones y cambios sin complicaciones',
+        'Facturación electrónica integrada',
+      ],
+    },
+    showcase2: {
+      title: 'Sabé qué marcas venden más y cuánto ganás',
+      desc:  'Analizá qué alimentos y accesorios tienen mayor rotación. Cerrá caja con arqueo detallado. Exportá reportes a Excel.',
+      bullets: [
+        'Ventas por período o categoría de producto',
+        'Desglose por método de pago',
+        'Cierre de caja con arqueo automático',
+        'Alertas de productos próximos a vencer',
+        'Exportación a Excel o CSV',
+      ],
+    },
+    showcase3: {
+      badge: 'Compras a distribuidoras', badgeIcon: Package,
+      title: 'Controlá tu compra de alimentos y accesorios',
+      desc:  'Registrá cada factura de tus proveedores con productos y costos. El stock se actualiza automáticamente y podés ver el margen en tiempo real.',
+      bullets: [
+        'Registro de facturas de distribuidoras de alimentos',
+        'Vinculación con tu catálogo de productos',
+        'Alertas de vencimiento por lote',
+        'Actualización automática de stock',
+        'Historial de compras por proveedor',
+      ],
+    },
+    ctaTitle: '¿Listo para darle lo mejor a tu pet shop?',
+    ctaDesc:  'Probá el sistema {trialDias} días gratis. Sin tarjeta, sin compromiso.',
+    footerDesc: 'Sistema de gestión para pet shops y veterinarias',
+  },
+
+  corralones: {
+    slug: 'corralones',
+    nombre: 'Corralones',
+    theme: GREEN_THEME,
+    photos: {
+      // Hero: depósito de maderas y materiales de construcción
+      hero:    'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=1800&q=80',
+      // POS: obra en construcción / cliente de corralón en acción
+      pos:     'https://images.unsplash.com/photo-1565008447742-97f6f38c985c?auto=format&fit=crop&w=900&q=80',
+      analytics: '/showcase_reportes.png',
+      // Compras: bolsas de cemento y materiales en depósito
+      compras: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=900&q=80',
+      step1:   'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=400&q=80',
+      step2:   'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=400&q=80',
+      step3:   'https://images.unsplash.com/photo-1556742031-c6961e8560b0?auto=format&fit=crop&w=400&q=80',
+    },
+    features: CORRALON_FEATURES,
+    badge:     'Sistema POS · Corralones · Materiales · Construcción',
+    heroTitle: 'El sistema que tu corralón necesita',
+    heroDesc:  'Control de stock de materiales, áridos, maderas y sanitarios. Gestioná clientes de obra, compras a fábricas y reportes de ventas desde un solo sistema.',
+    stats: [
+      { value: 'Stock al día',     label: 'Materiales y bultos'          },
+      { value: 'Clientes de obra', label: 'Con historial de compras'     },
+      { value: 'Multi-depósito',   label: 'Locales y depósitos unidos'   },
+      { value: 'Márgenes reales',  label: 'Por producto y proveedor'     },
+    ],
+    showcase1: {
+      badge: 'Punto de venta', badgeIcon: ShoppingCart,
+      title: 'Vendé cemento, perfiles y sanitarios sin errores',
+      desc:  'Buscá productos por código o nombre. Vendé por bolsa, metro o unidad. Cobrá con efectivo, transferencia o tarjeta. Emití factura electrónica en el acto.',
+      bullets: [
+        'Venta por unidad, bolsa, metro o kilo',
+        'Búsqueda rápida por código o nombre',
+        'Cobros en efectivo, tarjeta y transferencia',
+        'Facturación A, B y C para constructoras',
+        'Devoluciones y cambios de materiales',
+      ],
+    },
+    showcase2: {
+      title: 'Tomá decisiones con datos de tu temporada',
+      desc:  'Analizá qué materiales vendés más en cada época del año. Cerrá caja, revisá márgenes y exportá reportes a Excel para tu administración.',
+      bullets: [
+        'Ventas por período o categoría de material',
+        'Desglose por método de pago',
+        'Arqueo de caja detallado',
+        'Alertas de ruptura de stock en materiales clave',
+        'Exportación de inventario a CSV',
+      ],
+    },
+    showcase3: {
+      badge: 'Compras a fábricas y distribuidoras', badgeIcon: Truck,
+      title: 'Controlá tus costos de fábrica y de flete',
+      desc:  'Registrá cada compra a fábricas de cemento, cerámicos o sanitarios. El sistema actualiza el stock del depósito y te muestra el margen en tiempo real.',
+      bullets: [
+        'CRUD de proveedores con CUIT y condición de pago',
+        'Registro de facturas con detalle de ítems',
+        'Costo de flete asignable por compra',
+        'Visualización de margen al actualizar precio',
+        'Actualización automática de stock en depósito',
+      ],
+    },
+    ctaTitle: '¿Listo para ordenar tu corralón?',
+    ctaDesc:  'Probá el sistema {trialDias} días gratis con todas las funciones. Sin tarjeta, sin compromiso.',
+    footerDesc: 'Sistema de gestión para corralones y materiales de construcción',
+  },
+
+  distribuidoras: {
+    slug: 'distribuidoras',
+    nombre: 'Distribuidoras',
+    theme: GREEN_THEME,
+    photos: {
+      // Hero: depósito con montacargas y pallets - imagen de distribuidora
+      hero:    'https://images.unsplash.com/photo-1494961104209-3c223057bd26?auto=format&fit=crop&w=1800&q=80',
+      // POS: estantes de depósito con cajas clasificadas por zona
+      pos:     'https://images.unsplash.com/photo-1553413077-190dd305871c?auto=format&fit=crop&w=900&q=80',
+      analytics: '/showcase_reportes.png',
+      // Compras: cajas y pallets llegando al depósito
+      compras: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=900&q=80',
+      step1:   'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=400&q=80',
+      step2:   'https://images.unsplash.com/photo-1494961104209-3c223057bd26?auto=format&fit=crop&w=400&q=80',
+      step3:   'https://images.unsplash.com/photo-1556742031-c6961e8560b0?auto=format&fit=crop&w=400&q=80',
+    },
+    features: DISTRIBUIDORA_FEATURES,
+    badge:     'Sistema POS · Distribuidoras · Mayoristas · Multi-depósito',
+    heroTitle: 'El sistema que tu distribuidora necesita',
+    heroDesc:  'Controlá tu cartera de clientes, pedidos, facturación y stock de depósito desde una sola plataforma. Escalable para operaciones de cualquier tamaño.',
+    stats: [
+      { value: 'Cartera completa',  label: 'Clientes y zonas'             },
+      { value: 'Stock de depósito', label: 'En tiempo real'               },
+      { value: 'Multi-depósito',    label: 'Todos tus centros unidos'     },
+      { value: 'Facturación AFIP',  label: 'A, B y C integradas'         },
+    ],
+    showcase1: {
+      badge: 'Gestión de pedidos', badgeIcon: Truck,
+      title: 'Tomá y despachá pedidos sin errores',
+      desc:  'Registrá pedidos de tus clientes con stock en tiempo real. Emití factura electrónica y actualizá el inventario del depósito al confirmar el despacho.',
+      bullets: [
+        'Toma de pedidos rápida con stock visible',
+        'Facturación A, B y C en el acto',
+        'Actualización automática de inventario',
+        'Cobros en efectivo, tarjeta y transferencia',
+        'Historial de pedidos por cliente y zona',
+      ],
+    },
+    showcase2: {
+      title: 'Analizá tus ventas por zona y por vendedor',
+      desc:  'Revisá el rendimiento de cada cliente y zona. Exportá reportes de tu equipo comercial a Excel para tomar mejores decisiones.',
+      bullets: [
+        'Ventas por zona, cliente o vendedor',
+        'Desglose por método de pago',
+        'Arqueo de caja y cobranzas',
+        'Alertas de productos de alta rotación con poco stock',
+        'Exportación a Excel o CSV',
+      ],
+    },
+    showcase3: {
+      badge: 'Compras al fabricante', badgeIcon: ShoppingBag,
+      title: 'Controlá tus costos de fábrica y márgenes de distribución',
+      desc:  'Registrá cada compra a fábricas y proveedores con detalle de ítems y costos. El depósito se actualiza automáticamente y podés ver el margen en tiempo real.',
+      bullets: [
+        'CRUD de proveedores y fabricantes',
+        'Registro de órdenes de compra con ítems',
+        'Margen de distribución visible por producto',
+        'Actualización automática de stock de depósito',
+        'Importación de listas de precios en Excel',
+      ],
+    },
+    ctaTitle: '¿Listo para escalar tu distribuidora?',
+    ctaDesc:  'Probá el sistema {trialDias} días gratis con plan completo. Sin tarjeta, sin compromiso.',
+    footerDesc: 'Sistema de gestión para distribuidoras y mayoristas',
+  },
+
+  ropa: {
+    slug: 'ropa',
+    nombre: 'Tiendas de Ropa',
+    theme: GREEN_THEME,
+    photos: {
+      // Hero: interior de tienda de ropa con racks y ropa colgada
+      hero:    'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1800&q=80',
+      // POS: boutique con percheros de indumentaria iluminada
+      pos:     'https://images.unsplash.com/photo-1567401893414-76b7b1e5a7a5?auto=format&fit=crop&w=900&q=80',
+      analytics: '/showcase_reportes.png',
+      // Compras: racks de ropa mayorista / proveedor de indumentaria
+      compras: 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?auto=format&fit=crop&w=900&q=80',
+      step1:   'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=400&q=80',
+      step2:   'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=400&q=80',
+      step3:   'https://images.unsplash.com/photo-1556742031-c6961e8560b0?auto=format&fit=crop&w=400&q=80',
+    },
+    features: ROPA_FEATURES,
+    badge:     'Sistema POS · Indumentaria · Calzado · Accesorios',
+    heroTitle: 'El sistema que tu tienda de ropa necesita',
+    heroDesc:  'Gestioná tallas, colores y temporadas en una sola pantalla. Control de stock por variante, ventas con tarjeta y clientes que vuelven siempre.',
+    stats: [
+      { value: 'Talles y colores', label: 'Stock por variante'           },
+      { value: 'Temporadas',       label: 'Colecciones organizadas'      },
+      { value: 'Clientes fieles',  label: 'Con historial de compras'     },
+      { value: 'Multi-local',      label: 'Locales y outlets unidos'     },
+    ],
+    showcase1: {
+      badge: 'Punto de venta', badgeIcon: Scissors,
+      title: 'Vendé más rápido y fidelizá a tus clientas',
+      desc:  'Buscá prendas por talla, color o código. Cobrá con efectivo, tarjeta o transferencia. Procesá cambios de talla en segundos y emití factura electrónica.',
+      bullets: [
+        'Búsqueda por talla, color o código de barras',
+        'Cobros en efectivo, tarjeta y transferencia',
+        'Cambios de talla y devoluciones rápidas',
+        'Historial de compras por cliente',
+        'Facturación A, B y C integrada',
+      ],
+    },
+    showcase2: {
+      title: 'Analizá qué prendas y talles venden más',
+      desc:  'Revisá el rendimiento de cada colección y temporada. Identificá los talles que más rotan y los que sobran. Exportá reportes a Excel para planificar tu próxima compra.',
+      bullets: [
+        'Ventas por temporada, colección o categoría',
+        'Análisis de rotación por talla y color',
+        'Cierre de caja por turno',
+        'Alertas de stock bajo por variante',
+        'Exportación a Excel o CSV',
+      ],
+    },
+    showcase3: {
+      badge: 'Compras a talleristas y marcas', badgeIcon: ShoppingBag,
+      title: 'Controlá tus compras de colección y márgenes',
+      desc:  'Registrá cada factura de talleristas, importadores y distribuidoras. El stock por talla y color se actualiza automáticamente y podés ver el margen al cargar.',
+      bullets: [
+        'Registro de compras con variantes por talla/color',
+        'Vinculación con tu catálogo de prendas',
+        'Margen visible al cargar precio de costo',
+        'Actualización automática de stock por variante',
+        'Historial de compras por proveedor y colección',
+      ],
+    },
+    ctaTitle: '¿Lista para transformar tu tienda?',
+    ctaDesc:  'Registrate hoy y probá el sistema {trialDias} días gratis. Sin tarjeta, sin compromiso.',
+    footerDesc: 'Sistema de gestión para tiendas de indumentaria y calzado',
+  },
+};

@@ -19,6 +19,7 @@ import BranchManagement from './components/BranchManagement';
 import Compras from './components/Compras';
 import Cuenta from './components/Cuenta';
 import Landing from './components/Landing';
+import LandingSegmentada from './components/Landing/LandingSegmentada';
 import OwnerPanel from './components/OwnerPanel';
 import SalesReports from './components/SalesReports';
 import StockAlerts from './components/StockAlerts';
@@ -43,7 +44,8 @@ if (localStorage.getItem('modal_animations') === 'false') {
 // Apply dark mode preference on startup (skip login/landing)
 if (localStorage.getItem('dark_mode') === 'true') {
   const path = window.location.pathname;
-  if (path !== '/login' && path !== '/') {
+  const LANDING_PATHS = ['/', '/login', '/kioscos', '/ferreterias', '/petshops', '/corralones', '/distribuidoras', '/ropa'];
+  if (!LANDING_PATHS.includes(path)) {
     document.documentElement.classList.add('dark');
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#1e1e1e');
   }
@@ -562,6 +564,12 @@ function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/" element={<Landing />} />
+            <Route path="/kioscos"        element={<LandingSegmentada segmento="kioscos" />} />
+            <Route path="/ferreterias"    element={<LandingSegmentada segmento="ferreterias" />} />
+            <Route path="/petshops"       element={<LandingSegmentada segmento="petshops" />} />
+            <Route path="/corralones"     element={<LandingSegmentada segmento="corralones" />} />
+            <Route path="/distribuidoras" element={<LandingSegmentada segmento="distribuidoras" />} />
+            <Route path="/ropa"           element={<LandingSegmentada segmento="ropa" />} />
             <Route
               path="/dashboard"
               element={
