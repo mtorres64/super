@@ -155,7 +155,7 @@ const CustomerManagementView = ({
           <button
             type="button"
             onClick={() => setShowMobileFilters(v => !v)}
-            className="md:hidden btn btn-secondary relative flex-shrink-0"
+            className="mobile-only btn btn-secondary relative flex-shrink-0"
           >
             <SlidersHorizontal className="w-4 h-4" />
             {selectedActivo && (

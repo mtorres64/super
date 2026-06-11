@@ -508,21 +508,29 @@ const POSView = ({
 
       {/* Invoice Panel — solo visible con módulo facturacion activo */}
       {tieneFacturacion && (
-        <InvoicePanel
-          open={showInvoicePanel}
-          currencySymbol={config?.currency_symbol || '$'}
-          invoiceConfig={invoiceConfig}
-          setInvoiceConfig={setInvoiceConfig}
-          selectedCustomer={tieneClientes ? selectedCustomer : null}
-          setSelectedCustomer={tieneClientes ? setSelectedCustomer : () => {}}
-          subtotal={calculateSubtotal()}
-          tax={calculateTax()}
-          paymentAdjustment={calculatePaymentAdjustment()}
-          discount={calculateDiscount()}
-          impuestosExtraTotal={calculateImpuestosExtra()}
-          onClose={() => setShowInvoicePanel(false)}
-          tieneClientes={tieneClientes}
-        />
+        <>
+          {showInvoicePanel && (
+            <div
+              className="invoice-panel-mobile-overlay"
+              onClick={() => setShowInvoicePanel(false)}
+            />
+          )}
+          <InvoicePanel
+            open={showInvoicePanel}
+            currencySymbol={config?.currency_symbol || '$'}
+            invoiceConfig={invoiceConfig}
+            setInvoiceConfig={setInvoiceConfig}
+            selectedCustomer={tieneClientes ? selectedCustomer : null}
+            setSelectedCustomer={tieneClientes ? setSelectedCustomer : () => {}}
+            subtotal={calculateSubtotal()}
+            tax={calculateTax()}
+            paymentAdjustment={calculatePaymentAdjustment()}
+            discount={calculateDiscount()}
+            impuestosExtraTotal={calculateImpuestosExtra()}
+            onClose={() => setShowInvoicePanel(false)}
+            tieneClientes={tieneClientes}
+          />
+        </>
       )}
 
       {/* Right Section - Cart */}

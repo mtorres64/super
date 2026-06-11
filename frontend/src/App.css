@@ -1121,7 +1121,77 @@ body.no-animations .invoice-panel {
 
 @media (max-width: 768px) {
   .invoice-panel {
-    display: none;
+    display: block;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100% !important;
+    max-height: 85vh;
+    z-index: 1000;
+    overflow: hidden;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.18);
+  }
+
+  .invoice-panel.open {
+    width: 100% !important;
+    transform: translateY(0);
+  }
+
+  .invoice-panel-inner {
+    width: 100% !important;
+    min-width: unset;
+    border-left: none;
+    border-radius: 16px 16px 0 0;
+    height: 85vh;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .invoice-panel-body {
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  .invoice-panel-footer {
+    flex-shrink: 0;
+    padding-bottom: max(1.75rem, env(safe-area-inset-bottom, 1.75rem));
+  }
+
+  .invoice-panel::before {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 4px;
+    background: var(--border-color);
+    border-radius: 2px;
+    margin: 10px auto 0;
+  }
+}
+
+.invoice-panel-close-chevron { display: none; }
+
+@media (max-width: 768px) {
+  .invoice-panel-close-x { display: none; }
+  .invoice-panel-close-chevron { display: block; }
+}
+
+.invoice-panel-mobile-overlay {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .invoice-panel-mobile-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 999;
   }
 }
 
@@ -1751,10 +1821,10 @@ html.dark .modal-sticky-bottom {
   .pos-cart {
     display: none;
     width: 100%;
-    height: auto;
-    min-height: 60vh;
+    height: calc(100vh - 8rem);
     border-left: none;
     box-shadow: none;
+    overflow: hidden;
   }
 
   .pos-cart.pos-tab-active {
@@ -2422,3 +2492,7 @@ html.dark .ticket-separator    { color: #5c5c5c; }
 .no-animations .btn-reveal {
   transition: none !important;
 }
+
+/* Visibility utilities */
+.mobile-only { display: none; }
+@media (max-width: 768px) { .mobile-only { display: flex; } }

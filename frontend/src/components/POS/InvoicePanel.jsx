@@ -152,8 +152,9 @@ const InvoicePanel = ({
               <Receipt className="w-4 h-4" style={{ color: 'var(--primary)' }} />
               <span className="font-semibold text-sm">Factura</span>
             </div>
-            <button type="button" onClick={onClose} className="modal-close" title="Cerrar panel">
-              <X className="w-4 h-4" />
+            <button type="button" onClick={onClose} className="modal-close invoice-panel-close" title="Cerrar panel">
+              <X className="w-4 h-4 invoice-panel-close-x" />
+              <ChevronDown className="w-5 h-5 invoice-panel-close-chevron" />
             </button>
           </div>
 

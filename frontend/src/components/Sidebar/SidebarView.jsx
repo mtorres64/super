@@ -117,14 +117,16 @@ const SidebarView = ({
                 <ArrowLeftRight className="w-4 h-4" />
               </button>
             )}
-            <Link
-              to="/settings"
-              onClick={onClose}
-              title="Configuración"
-              className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-700"
-            >
-              <Settings className="w-4 h-4" />
-            </Link>
+            {user?.rol === 'admin' && (
+              <Link
+                to="/settings"
+                onClick={onClose}
+                title="Configuración"
+                className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-700"
+              >
+                <Settings className="w-4 h-4" />
+              </Link>
+            )}
           </div>
         </div>
         <button
