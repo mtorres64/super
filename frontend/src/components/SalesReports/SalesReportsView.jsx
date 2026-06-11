@@ -457,34 +457,32 @@ const SalesReportsView = ({
                     </div>
                   </td>
                   <td data-mobile="actions">
-                    <div className="flex items-center gap-1">
+                    <div className="flex gap-2 justify-end">
                       <button
                         onClick={() => onHandleReprintSale(sale)}
-                        className="btn btn-sm flex items-center gap-1"
-                        style={{ background: 'var(--secondary)', color: 'var(--secondary-text)' }}
+                        className="btn btn-color-secondary btn-icon-sm"
                         title="Reimprimir ticket"
                       >
-                        <Printer className="w-3 h-3" />
+                        <Printer className="w-4 h-4" />
                       </button>
                       {sale.estado !== 'cancelado' && (
                         <button
                           onClick={() => onOpenReturnModal(sale)}
-                          className="btn btn-sm flex items-center gap-1"
-                          style={{ background: 'var(--tertiary)', color: 'var(--tertiary-text)' }}
+                          className="btn btn-tertiary btn-icon-sm"
                           title="Procesar devolución"
                         >
-                          <RotateCcw className="w-3 h-3" />
+                          <RotateCcw className="w-4 h-4" />
                         </button>
                       )}
                       {(sale.afip_estado === 'contingencia' || sale.afip_estado === 'error') && currentUser?.rol === 'admin' && (
                         <button
                           onClick={() => onHandleRetryAfip(sale.id)}
                           disabled={retryingAfip === sale.id}
-                          className="btn btn-sm flex items-center gap-1"
+                          className="btn btn-icon-sm"
                           style={{ background: '#d97706', color: '#fff' }}
                           title="Reintentar obtener CAE"
                         >
-                          <RefreshCw className={`w-3 h-3 ${retryingAfip === sale.id ? 'animate-spin' : ''}`} />
+                          <RefreshCw className={`w-4 h-4 ${retryingAfip === sale.id ? 'animate-spin' : ''}`} />
                         </button>
                       )}
                     </div>

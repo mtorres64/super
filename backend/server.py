@@ -2537,7 +2537,7 @@ class CustomerBulkUpdateRequest(BaseModel):
     activo: bool
 
 @api_router.post("/customers", response_model=Customer)
-async def create_customer(customer_data: CustomerCreate, user: User = Depends(require_role([UserRole.ADMIN]))):
+async def create_customer(customer_data: CustomerCreate, user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.CAJERO]))):
     customer = Customer(**customer_data.dict(), empresa_id=user.empresa_id)
     await db.customers.insert_one(customer.model_dump())
     return customer
@@ -2577,6 +2577,71 @@ async def get_customers(
         "per_page": per_page,
         "total_pages": max(1, -(-total // per_page))
     }
+
+@api_router.get("/customers/check-documento")
+async def check_documento_existente(
+    tipo_documento: str,
+    documento: str,
+    exclude_id: Optional[str] = None,
+    user: User = Depends(get_current_user),
+):
+    tipo = tipo_documento.lower()
+    clean = re.sub(r'\D', '', documento)
+    base_q = {"empresa_id": user.empresa_id}
+    if exclude_id:
+        base_q["id"] = {"$ne": exclude_id}
+
+    CUSTOMER_PROJ = {"_id": 0, "id": 1, "nombre": 1, "tipo_documento": 1, "documento": 1,
+                     "telefono": 1, "email": 1, "direccion": 1, "activo": 1,
+                     "fecha_nacimiento": 1, "observaciones": 1}
+
+    def _hit(doc): return {"existe": True, **{k: doc.get(k) for k in CUSTOMER_PROJ if k != "_id"}}
+
+    # 1. Coincidencia exacta (mismo tipo + mismo valor)
+    exact = await db.customers.find_one(
+        {**base_q, "tipo_documento": tipo, "documento": documento}, CUSTOMER_PROJ,
+    )
+    if exact:
+        return _hit(exact)
+
+    # Helper: strip guiones/espacios del documento almacenado
+    strip_expr = {
+        "$replaceAll": {
+            "input": {"$replaceAll": {"input": "$documento", "find": "-", "replacement": ""}},
+            "find": " ", "replacement": "",
+        }
+    }
+
+    # 2. DNI → busca CUIT/CUIL que contengan ese DNI en las posiciones 2-9
+    if tipo == "dni" and len(clean) >= 7:
+        dni_padded = clean.zfill(8)
+        pipeline = [
+            {"$match": {**base_q, "tipo_documento": {"$in": ["cuit", "cuil"]}}},
+            {"$addFields": {"doc_digits": strip_expr}},
+            {"$match": {"$expr": {"$eq": [{"$substr": ["$doc_digits", 2, 8]}, dni_padded]}}},
+            {"$limit": 1},
+            {"$project": CUSTOMER_PROJ},
+        ]
+        rows = await db.customers.aggregate(pipeline).to_list(1)
+        if rows:
+            return _hit(rows[0])
+
+    # 3. CUIT/CUIL → extrae el DNI de las posiciones 2-9 y busca clientes con ese DNI
+    elif tipo in ("cuit", "cuil") and len(clean) == 11:
+        dni_from_cuit = clean[2:10]
+        dni_no_pad    = str(int(dni_from_cuit))
+        pipeline = [
+            {"$match": {**base_q, "tipo_documento": "dni"}},
+            {"$addFields": {"doc_digits": strip_expr}},
+            {"$match": {"$or": [{"doc_digits": dni_from_cuit}, {"doc_digits": dni_no_pad}]}},
+            {"$limit": 1},
+            {"$project": CUSTOMER_PROJ},
+        ]
+        rows = await db.customers.aggregate(pipeline).to_list(1)
+        if rows:
+            return _hit(rows[0])
+
+    return {"existe": False}
 
 @api_router.get("/customers/{customer_id}", response_model=Customer)
 async def get_customer(customer_id: str, user: User = Depends(get_current_user)):
@@ -2629,6 +2694,45 @@ async def delete_customer(customer_id: str, user: User = Depends(require_role([U
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     await db.customers.delete_one({"id": customer_id, "empresa_id": user.empresa_id})
     return {"ok": True}
+
+async def _consultar_cuit_cuitonline(cuit_clean: str) -> dict:
+    """Scraper de cuitonline.com como fallback cuando ARCA SOAP no está disponible."""
+    async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+        resp = await client.get(
+            f"https://www.cuitonline.com/search.php?q={cuit_clean}",
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                     "Accept": "text/html,application/xhtml+xml"},
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"cuitonline.com devolvió {resp.status_code}")
+        html = resp.text
+
+    # Extraer nombre del h2.denominacion
+    m = re.search(r'<h2[^>]+class="denominacion"[^>]*>(.*?)</h2>', html, re.IGNORECASE | re.DOTALL)
+    if not m:
+        raise LookupError("CUIT no encontrado")
+    nombre = re.sub(r'<[^>]+>', '', m.group(1)).strip()
+    if not nombre:
+        raise LookupError("CUIT no encontrado")
+
+    # Tipo de persona
+    tipo = "JURIDICA" if "persona jur" in html.lower() else "FISICA"
+
+    return {"nombre": nombre, "tipo_persona": tipo, "estado_clave": "", "direccion": None}
+
+
+@api_router.get("/afip/consultar-cuit/{cuit}")
+async def consultar_cuit_afip(cuit: str, user: User = Depends(get_current_user)):
+    cuit_clean = re.sub(r'\D', '', cuit)
+    if len(cuit_clean) != 11:
+        raise HTTPException(status_code=400, detail="CUIT inválido, debe tener 11 dígitos")
+    try:
+        return await _consultar_cuit_cuitonline(cuit_clean)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="CUIT no encontrado en el padrón de AFIP")
+    except Exception as e:
+        logger.warning(f"cuitonline.com falló para CUIT {cuit_clean}: {e}")
+        raise HTTPException(status_code=503, detail="Servicio de consulta AFIP no disponible en este momento")
 
 # User management routes
 @api_router.get("/users", response_model=List[User])
@@ -3059,11 +3163,14 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
     return sale
 
 @api_router.get("/sales", response_model=List[Sale])
-async def get_sales(user: User = Depends(get_current_user)):
+async def get_sales(customer_id: Optional[str] = None, user: User = Depends(get_current_user)):
+    query: dict = {"empresa_id": user.empresa_id}
     if user.rol == UserRole.CAJERO:
-        sales = await db.sales.find({"cajero_id": user.id, "empresa_id": user.empresa_id}).sort("fecha", -1).to_list(100)
-    else:
-        sales = await db.sales.find({"empresa_id": user.empresa_id}).sort("fecha", -1).to_list(1000)
+        query["cajero_id"] = user.id
+    if customer_id:
+        query["cliente_id"] = customer_id
+    limit = 500 if customer_id else (100 if user.rol == UserRole.CAJERO else 1000)
+    sales = await db.sales.find(query).sort("fecha", -1).to_list(limit)
 
     result = []
     for sale in sales:

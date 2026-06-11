@@ -62,7 +62,7 @@ const UserManagementView = ({
               <th onClick={() => requestSort('rol')} className="cursor-pointer select-none hover:bg-gray-50">Rol <SortIcon columnKey="rol" sortConfig={sortConfig} /></th>
               <th>Sucursal</th>
               <th>Estado</th>
-              <th className="text-center">Acciones</th>
+              <th className="text-right">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -111,13 +111,15 @@ const UserManagementView = ({
                   </button>
                 </td>
                 <td data-mobile="actions">
-                  <button
-                    onClick={() => openModal(user)}
-                    className="btn-edit mx-auto"
-                    title="Editar"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => openModal(user)}
+                      className="btn-edit"
+                      title="Editar"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

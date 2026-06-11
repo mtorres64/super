@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, TrendingUp, ChevronDown, ChevronRight, RefreshCw, Calendar, Building2, ShoppingCart, CalendarDays, Info } from 'lucide-react';
+import { X, TrendingUp, ChevronDown, ChevronRight, RefreshCw, Calendar, Building2, ShoppingCart, CalendarDays, Eye } from 'lucide-react';
 
 const PERIOD_OPTIONS = [
   { key: 'month',  label: 'Este mes' },
@@ -199,15 +199,17 @@ const MargensReportView = ({
                           <td data-label="Margen $" className="px-4 py-2 text-right font-semibold text-green-700">${formatMoney(row.margen_total)}</td>
                           <td data-label="Markup %" className="px-4 py-2 text-center"><MargenBadge pct={row.margen_pct} /></td>
                           <td data-label="Ventas" className="px-4 py-2 text-right text-gray-500">{row.num_ventas}</td>
-                          <td data-mobile="actions" className="px-3 py-2 text-center">
+                          <td data-mobile="actions" className="px-3 py-2 text-right">
+                            <div className="flex justify-end">
                             <button
                               type="button"
                               onClick={() => setDetailModal({ type: 'por_fecha', row, _allVentas: data.por_venta })}
-                              className="text-gray-400 hover:text-primary"
+                              className="btn btn-color-secondary btn-icon-sm"
                               title="Ver detalle"
                             >
-                              <Info className="w-4 h-4" />
+                              <Eye className="w-4 h-4" />
                             </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -260,15 +262,17 @@ const MargensReportView = ({
                           <td data-label="Margen $" className="px-4 py-2 text-right font-semibold text-green-700">${formatMoney(row.margen_total)}</td>
                           <td data-label="Markup %" className="px-4 py-2 text-center"><MargenBadge pct={row.margen_pct} /></td>
                           <td data-label="Transacciones" className="px-4 py-2 text-right text-gray-500">{row.num_ventas}</td>
-                          <td data-mobile="actions" className="px-3 py-2 text-center">
+                          <td data-mobile="actions" className="px-3 py-2 text-right">
+                            <div className="flex justify-end">
                             <button
                               type="button"
                               onClick={() => setDetailModal({ type: 'por_dia', row, _allVentas: data.por_venta })}
-                              className="text-gray-400 hover:text-primary"
+                              className="btn btn-color-secondary btn-icon-sm"
                               title="Ver detalle"
                             >
-                              <Info className="w-4 h-4" />
+                              <Eye className="w-4 h-4" />
                             </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -321,15 +325,17 @@ const MargensReportView = ({
                           <td data-label="Margen $" className="px-4 py-2 text-right font-semibold text-green-700">${formatMoney(row.margen_total)}</td>
                           <td data-label="Markup %" className="px-4 py-2 text-center"><MargenBadge pct={row.margen_pct} /></td>
                           <td data-label="Transacciones" className="px-4 py-2 text-right text-gray-500">{row.num_ventas}</td>
-                          <td data-mobile="actions" className="px-3 py-2 text-center">
+                          <td data-mobile="actions" className="px-3 py-2 text-right">
+                            <div className="flex justify-end">
                             <button
                               type="button"
                               onClick={() => setDetailModal({ type: 'por_sucursal', row, _allVentas: data.por_venta })}
-                              className="text-gray-400 hover:text-primary"
+                              className="btn btn-color-secondary btn-icon-sm"
                               title="Ver detalle"
                             >
-                              <Info className="w-4 h-4" />
+                              <Eye className="w-4 h-4" />
                             </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -384,15 +390,17 @@ const MargensReportView = ({
                           <td data-label="Costo" className="px-4 py-2 text-right text-gray-500">${formatMoney(row.costo_total)}</td>
                           <td data-label="Margen $" className="px-4 py-2 text-right font-semibold text-green-700">${formatMoney(row.margen_total)}</td>
                           <td data-label="Markup %" className="px-4 py-2 text-center"><MargenBadge pct={row.margen_pct} /></td>
-                          <td data-mobile="actions" className="px-3 py-2 text-center">
+                          <td data-mobile="actions" className="px-3 py-2 text-right">
+                            <div className="flex justify-end">
                             <button
                               type="button"
                               onClick={() => setDetailModal({ type: 'por_venta', row })}
-                              className="text-gray-400 hover:text-primary"
+                              className="btn btn-color-secondary btn-icon-sm"
                               title="Ver detalle"
                             >
-                              <Info className="w-4 h-4" />
+                              <Eye className="w-4 h-4" />
                             </button>
+                            </div>
                           </td>
                         </tr>
                       ))}

@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import {
-  Plus, Edit, Trash2, Users, Search, Save, X,
+  Plus, Edit, Trash2, Users, Search, X,
   CircleDot, SlidersHorizontal, ChevronDown, MoreVertical,
-  Phone, Mail, MapPin, Calendar, FileText, Hash,
+  Phone, Mail, MapPin, Calendar, Hash, ShoppingBag,
 } from 'lucide-react';
 import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
 import BulkEditCustomerModal from './BulkEditCustomerModal';
+import CustomerPurchaseHistoryModal from './CustomerPurchaseHistoryModal';
+import CustomerFormModal from './CustomerFormModal';
 
 const CustomerManagementView = ({
   user,
@@ -29,8 +31,6 @@ const CustomerManagementView = ({
   showBulkDeleteModal,
   setShowBulkDeleteModal,
   bulkDeleting,
-  formData,
-  setFormData,
   paginatedCustomers,
   itemsPerPage,
   totalPages,
@@ -41,7 +41,7 @@ const CustomerManagementView = ({
   openModal,
   closeCustomerModal,
   closeBulkDeleteModal,
-  handleSubmit,
+  handleCustomerSaved,
   handleBulkDelete,
   handleBulkSetStatus,
   showBulkEditModal,
@@ -55,17 +55,20 @@ const CustomerManagementView = ({
   handlePageChange,
   toggleSelectRow,
   toggleSelectAll,
+  purchaseHistoryCustomer,
+  purchaseHistoryClosing,
+  openPurchaseHistory,
+  closePurchaseHistory,
+  customerToDelete,
+  deleteModalClosing,
+  deleting,
+  openDeleteModal,
+  closeDeleteModal,
+  handleDeleteCustomer,
 }) => {
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [expandedRows, setExpandedRows] = useState(new Set());
-
-  const formatDateInput = (value) => {
-    const digits = value.replace(/\D/g, '').slice(0, 8);
-    if (digits.length <= 2) return digits;
-    if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-  };
 
   const toggleRowExpanded = (id) => setExpandedRows(prev => {
     const next = new Set(prev);
@@ -369,9 +372,21 @@ const CustomerManagementView = ({
                   </td>
 
                   <td data-mobile="actions">
-                    <button onClick={() => openModal(customer)} className="btn-edit" title="Editar">
-                      <Edit className="w-4 h-4" />
-                    </button>
+                    <div className="flex justify-end gap-1">
+                      <button
+                        onClick={() => openPurchaseHistory(customer)}
+                        className="btn btn-primary btn-sm"
+                        title="Ver compras"
+                      >
+                        <ShoppingBag className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => openModal(customer)} className="btn-edit" title="Editar">
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => openDeleteModal(customer)} className="btn-delete" title="Eliminar">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -398,151 +413,12 @@ const CustomerManagementView = ({
 
       {/* Modal alta/edición */}
       {showModal && (
-        <div className={`ticket-modal-overlay${customerModalClosing ? ' closing' : ''}`}>
-          <div
-            className={`ticket-modal-container${customerModalClosing ? ' closing' : ''}`}
-            style={{ maxWidth: '680px', width: '95vw' }}
-          >
-            <div className="modal-header">
-              <h3 className="modal-title">
-                {editingCustomer ? 'Editar Cliente' : 'Nuevo Cliente'}
-              </h3>
-              <button onClick={closeCustomerModal} className="modal-close">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit}>
-              <div className="space-y-3">
-                {/* Nombre */}
-                <div className="form-group">
-                  <label className="form-label">Nombre y Apellido / Razón Social *</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={formData.nombre}
-                    onChange={e => setFormData({ ...formData, nombre: e.target.value })}
-                    required
-                  />
-                </div>
-
-                {/* Tipo doc + Documento */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="form-group">
-                    <label className="form-label">Tipo de documento</label>
-                    <select
-                      className="form-select"
-                      value={formData.tipo_documento}
-                      onChange={e => setFormData({ ...formData, tipo_documento: e.target.value })}
-                    >
-                      <option value="dni">DNI</option>
-                      <option value="cuit">CUIT</option>
-                      <option value="cuil">CUIL</option>
-                      <option value="pasaporte">Pasaporte</option>
-                      <option value="otro">Otro</option>
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">
-                      {formData.tipo_documento === 'cuit' ? 'CUIT' : formData.tipo_documento === 'cuil' ? 'CUIL' : formData.tipo_documento === 'pasaporte' ? 'Pasaporte' : formData.tipo_documento === 'otro' ? 'Número' : 'DNI'}
-                    </label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={formData.documento}
-                      onChange={e => setFormData({ ...formData, documento: e.target.value })}
-                      placeholder="Opcional"
-                    />
-                  </div>
-                </div>
-
-                {/* Teléfono + Email */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="form-group">
-                    <label className="form-label flex items-center gap-1"><Phone className="w-3.5 h-3.5" />Teléfono</label>
-                    <input
-                      type="tel"
-                      className="form-input"
-                      value={formData.telefono}
-                      onChange={e => setFormData({ ...formData, telefono: e.target.value })}
-                      placeholder="Opcional"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label flex items-center gap-1"><Mail className="w-3.5 h-3.5" />Email</label>
-                    <input
-                      type="email"
-                      className="form-input"
-                      value={formData.email}
-                      onChange={e => setFormData({ ...formData, email: e.target.value })}
-                      placeholder="Opcional"
-                    />
-                  </div>
-                </div>
-
-                {/* Dirección */}
-                <div className="form-group">
-                  <label className="form-label flex items-center gap-1"><MapPin className="w-3.5 h-3.5" />Dirección</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={formData.direccion}
-                    onChange={e => setFormData({ ...formData, direccion: e.target.value })}
-                    placeholder="Opcional"
-                  />
-                </div>
-
-                {/* Fecha nacimiento + Estado */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="form-group">
-                    <label className="form-label flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />Fecha de nacimiento</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={formData.fecha_nacimiento}
-                      onChange={e => setFormData({ ...formData, fecha_nacimiento: formatDateInput(e.target.value) })}
-                      placeholder="dd/mm/yyyy"
-                      maxLength={10}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label flex items-center gap-1"><CircleDot className="w-3.5 h-3.5" />Estado</label>
-                    <select
-                      className="form-select"
-                      value={formData.activo ? 'true' : 'false'}
-                      onChange={e => setFormData({ ...formData, activo: e.target.value === 'true' })}
-                    >
-                      <option value="true">Activo</option>
-                      <option value="false">Inactivo</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Observaciones */}
-                <div className="form-group">
-                  <label className="form-label flex items-center gap-1"><FileText className="w-3.5 h-3.5" />Observaciones</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={formData.observaciones}
-                    onChange={e => setFormData({ ...formData, observaciones: e.target.value })}
-                    placeholder="Notas adicionales... (opcional)"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-3 mt-6">
-                <button type="button" onClick={closeCustomerModal} className="btn btn-secondary">
-                  Cancelar
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  <Save className="w-4 h-4" />
-                  {editingCustomer ? 'Actualizar' : 'Crear'} Cliente
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <CustomerFormModal
+          editingCustomer={editingCustomer}
+          closing={customerModalClosing}
+          onClose={closeCustomerModal}
+          onSaved={handleCustomerSaved}
+        />
       )}
 
       {/* Bulk Delete Modal */}
@@ -587,6 +463,48 @@ const CustomerManagementView = ({
           onClose={closeBulkEditModal}
           onSave={handleBulkEditSave}
           saving={bulkEditSaving}
+        />
+      )}
+
+      {/* Delete Customer Modal */}
+      {(customerToDelete || deleteModalClosing) && (
+        <div className={`modal-overlay${deleteModalClosing ? ' closing' : ''}`}>
+          <div className={`modal-content max-w-md${deleteModalClosing ? ' closing' : ''}`}>
+            <div className="modal-header">
+              <h3 className="modal-title flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-red-600" />
+                Eliminar cliente
+              </h3>
+              <button onClick={closeDeleteModal} className="modal-close">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
+              Estás por eliminar a <strong>{customerToDelete?.nombre}</strong> de forma permanente.
+              <br />Esta acción no se puede deshacer.
+            </div>
+            <div className="flex justify-end space-x-3 mt-6">
+              <button type="button" onClick={closeDeleteModal} disabled={deleting} className="btn btn-secondary">
+                Cancelar
+              </button>
+              <button type="button" onClick={handleDeleteCustomer} disabled={deleting} className="btn bg-red-600 text-white hover:bg-red-700 disabled:opacity-50">
+                {deleting ? (
+                  <><div className="spinner w-4 h-4" /> Eliminando...</>
+                ) : (
+                  <><Trash2 className="w-4 h-4" /> Eliminar</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Purchase History Modal */}
+      {(purchaseHistoryCustomer || purchaseHistoryClosing) && (
+        <CustomerPurchaseHistoryModal
+          customer={purchaseHistoryCustomer || {}}
+          closing={purchaseHistoryClosing}
+          onClose={closePurchaseHistory}
         />
       )}
     </div>

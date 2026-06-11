@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { formatAmount } from '../../lib/utils';
 import BarcodeScanner from '../BarcodeScanner';
@@ -124,6 +124,14 @@ const POSView = ({
   tieneFacturacion = true,
   tieneClientes = true,
 }) => {
+  const [slideDir, setSlideDir] = useState('right');
+  const handleTabSwitch = (tabId) => {
+    const oldIdx = tabs.findIndex(t => t.id === activeTabId);
+    const newIdx = tabs.findIndex(t => t.id === tabId);
+    setSlideDir(newIdx >= oldIdx ? 'right' : 'left');
+    setActiveTabId(tabId);
+  };
+
   const [weightInputDraft, setWeightInputDraft] = React.useState({});
   const [focusedIdx, setFocusedIdx] = React.useState(-1);
   const [priceCheckFocusedIdx, setPriceCheckFocusedIdx] = React.useState(-1);
@@ -528,7 +536,7 @@ const POSView = ({
               <button
                 key={tab.id}
                 className={`sales-tab ${isActive ? 'active' : ''}`}
-                onClick={() => setActiveTabId(tab.id)}
+                onClick={() => handleTabSwitch(tab.id)}
                 style={{
                   background: isActive ? tc.activeBg : tc.bg,
                   borderColor: isActive ? tc.activeBg : tc.border,
@@ -557,19 +565,21 @@ const POSView = ({
               </h2>
               <div className="flex gap-2">
                 {tieneFacturacion && (
-                  <button
-                    onClick={() => setShowInvoicePanel(v => !v)}
-                    className="btn btn-secondary btn-sm"
-                    title="Factura"
-                    style={showInvoicePanel
-                      ? { background: 'var(--primary)', borderColor: 'var(--primary)', color: '#fff' }
-                      : (selectedCustomer || (invoiceConfig?.tipo_comprobante !== 'ticket') || (invoiceConfig?.descuento_valor > 0))
-                        ? { background: 'var(--primary-bg)', borderColor: 'var(--primary)', color: 'var(--primary)' }
-                        : {}
-                    }
-                  >
-                    <Receipt className="w-4 h-4" />
-                  </button>
+                  <div className={`btn-reveal${cart.length > 0 ? ' show' : ''}`}>
+                    <button
+                      onClick={() => setShowInvoicePanel(v => !v)}
+                      className="btn btn-secondary btn-sm"
+                      title="Factura"
+                      style={showInvoicePanel
+                        ? { background: 'var(--primary)', borderColor: 'var(--primary)', color: '#fff' }
+                        : (selectedCustomer || (invoiceConfig?.tipo_comprobante !== 'ticket') || (invoiceConfig?.descuento_valor > 0))
+                          ? { background: 'var(--primary-bg)', borderColor: 'var(--primary)', color: 'var(--primary)' }
+                          : {}
+                      }
+                    >
+                      <Receipt className="w-4 h-4" />
+                    </button>
+                  </div>
                 )}
                 <button
                   onClick={openLastTicket}
@@ -589,18 +599,19 @@ const POSView = ({
                 >
                   {loadingReturn ? <div className="spinner w-4 h-4" /> : <RotateCcw className="w-4 h-4" />}
                 </button>
-                {cart.length > 0 && (
+                <div className={`btn-reveal${cart.length > 0 ? ' show' : ''}`}>
                   <button
                     onClick={clearCart}
                     className="btn btn-secondary btn-sm"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
-                )}
+                </div>
               </div>
             </div>
           </div>
 
+          <div key={activeTabId} className={`tab-slide-${slideDir}`}>
           <div className="cart-items" ref={cartItemsRef}>
             {cart.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
@@ -693,7 +704,7 @@ const POSView = ({
                   const pct = (config?.payment_method_adjustments || {})[paymentMethod] ?? 0;
                   if (pct === 0) return null;
                   return (
-                    <div className="total-row" style={{ color: pct < 0 ? '#16a34a' : '#dc2626' }}>
+                    <div key={paymentMethod} className="total-row amount-update" style={{ color: pct < 0 ? '#16a34a' : '#dc2626' }}>
                       <span className="total-label">
                         {pct < 0 ? `Desc. ${paymentMethod} (${Math.abs(pct)}%):` : `Recargo ${paymentMethod} (${pct}%):`}
                       </span>
@@ -719,7 +730,7 @@ const POSView = ({
                 )}
                 <div className="total-row total-final">
                   <span>Total:</span>
-                  <span>{config?.currency_symbol || '$'}{formatAmount(calculateTotal())}</span>
+                  <span key={paymentMethod} className="amount-update">{config?.currency_symbol || '$'}{formatAmount(calculateTotal())}</span>
                 </div>
               </div>
 
@@ -792,6 +803,7 @@ const POSView = ({
               </button>
             </div>
           )}
+          </div>{/* end tab-slide wrapper */}
       </div>
 
       {/* Ticket Modal */}

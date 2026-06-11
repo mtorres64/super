@@ -214,7 +214,7 @@ const ComprasView = ({
                       <td data-label="Impuestos" className="text-right text-gray-700">{formatMoney(compra.impuestos)}</td>
                       <td data-label="Total" className="text-right font-semibold text-gray-900">{formatMoney(compra.total)}</td>
                       <td data-mobile="actions">
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 justify-end">
                           <button
                             onClick={() => openCompraModal(compra)}
                             className="btn-edit"
@@ -224,19 +224,17 @@ const ComprasView = ({
                           </button>
                           <button
                             onClick={() => handleOpenDistribuirModal(compra)}
-                            className="btn btn-sm flex items-center gap-1"
-                            style={{ background: 'var(--secondary)', color: 'var(--secondary-text)' }}
+                            className="btn btn-color-secondary btn-icon-sm"
                             title="Aplicar a sucursal"
                           >
-                            <GitBranch className="w-3 h-3" />
+                            <GitBranch className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleDeleteCompra(compra)}
-                            className="btn btn-sm flex items-center gap-1"
-                            style={{ background: 'var(--tertiary)', color: 'var(--tertiary-text)' }}
+                            className="btn btn-tertiary btn-icon-sm"
                             title="Eliminar"
                           >
-                            <Trash2 className="w-3 h-3" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
@@ -311,7 +309,7 @@ const ComprasView = ({
                         </span>
                       </td>
                       <td data-mobile="actions">
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 justify-end">
                           <button
                             onClick={() => openProveedorModal(prov)}
                             className="btn-edit"
@@ -321,7 +319,7 @@ const ComprasView = ({
                           </button>
                           <button
                             onClick={() => handleToggleProveedor(prov)}
-                            className={`btn btn-sm ${prov.activo ? 'btn-danger' : 'btn-secondary'}`}
+                            className={`btn btn-icon-sm ${prov.activo ? 'btn-danger' : 'btn-secondary'}`}
                             title={prov.activo ? 'Desactivar' : 'Activar'}
                           >
                             {prov.activo ? <X className="w-4 h-4" /> : <Save className="w-4 h-4" />}

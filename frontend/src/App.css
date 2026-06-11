@@ -373,11 +373,13 @@ body {
   border: 1.5px solid var(--gray-200);
   border-radius: var(--radius-md);
   font-size: 0.9375rem;
+  line-height: 1.4;
   color: var(--gray-900);
   background-color: #ffffff;
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   outline: none;
   font-family: inherit;
+  box-sizing: border-box;
 }
 
 .form-select:hover:not(:focus) {
@@ -511,18 +513,38 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.35rem;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: #2563eb;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid transparent;
+  background: #2563eb;
+  color: #ffffff;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background 0.15s ease;
 }
 
 .btn-edit:hover {
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: #1d4ed8;
+}
+
+.btn-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid transparent;
+  background: #dc2626;
+  color: #ffffff;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-delete:hover {
+  background: #b91c1c;
 }
 
 /* ================================================
@@ -1153,6 +1175,12 @@ html.dark .invoice-section-btn:hover {
   justify-content: space-between;
   padding: 0.75rem 0;
   border-bottom: 1px solid var(--border-light);
+  animation: cart-item-in 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes cart-item-in {
+  from { opacity: 0; transform: scale(0.92) translateX(12px); }
+  to   { opacity: 1; transform: scale(1)    translateX(0);    }
 }
 
 .cart-item:last-child {
@@ -2165,6 +2193,55 @@ html.dark .modal-sticky-bottom {
   animation: fadeIn 0.25s ease-out;
 }
 
+/* Valor que se actualiza al cambiar método de pago */
+@keyframes amount-update {
+  from { opacity: 0; transform: translateY(-5px) scale(1.06); }
+  to   { opacity: 1; transform: translateY(0)     scale(1);    }
+}
+
+.amount-update {
+  animation: amount-update 0.18s ease-out both;
+}
+
+/* Animación de cambio de solapa del carrito */
+@keyframes tab-from-right {
+  from { opacity: 0; transform: translateX(28px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes tab-from-left {
+  from { opacity: 0; transform: translateX(-28px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.tab-slide-right,
+.tab-slide-left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tab-slide-right { animation: tab-from-right 0.2s ease-out both; }
+.tab-slide-left  { animation: tab-from-left  0.2s ease-out both; }
+
+/* Botón que aparece/desaparece desplazando a sus hermanos suavemente */
+.btn-reveal {
+  overflow: hidden;
+  max-width: 0;
+  opacity: 0;
+  margin-right: -8px; /* cancela el gap-2 del padre cuando está oculto */
+  transition: max-width 0.22s ease, opacity 0.18s ease, margin-right 0.22s ease;
+  display: flex;
+  align-items: center;
+}
+
+.btn-reveal.show {
+  max-width: 48px;
+  opacity: 1;
+  margin-right: 0;
+}
+
 /* Modal: clean slide-in / slide-out */
 @keyframes modal-slide-in {
   from { opacity: 0; transform: translateY(-10px) scale(0.98); }
@@ -2331,4 +2408,17 @@ html.dark .ticket-separator    { color: #5c5c5c; }
   animation: none !important;
   opacity: 1 !important;
   transform: none !important;
+}
+
+.no-animations .cart-item,
+.no-animations .amount-update,
+.no-animations .tab-slide-right,
+.no-animations .tab-slide-left {
+  animation: none !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+.no-animations .btn-reveal {
+  transition: none !important;
 }

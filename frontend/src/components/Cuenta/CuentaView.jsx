@@ -540,18 +540,20 @@ const CuentaView = ({
                       <td className="px-6 py-4 text-gray-400 text-xs font-mono" data-label="ID Pago">
                         {pago.mp_payment_id || '-'}
                       </td>
-                      <td className="px-4 py-4 text-center" data-mobile="actions">
+                      <td className="px-4 py-4 text-right" data-mobile="actions">
                         {pago.estado === 'approved' && (
-                          <button
-                            onClick={() => onDescargarRecibo(pago)}
-                            disabled={!!descargandoRecibo}
-                            title="Descargar recibo"
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-green-600 hover:bg-green-50 hover:text-green-700 transition-colors disabled:opacity-40 disabled:cursor-wait"
-                          >
-                            {descargandoRecibo === pago.id
-                              ? <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
-                              : <Download className="w-4 h-4" />}
-                          </button>
+                          <div className="flex justify-end">
+                            <button
+                              onClick={() => onDescargarRecibo(pago)}
+                              disabled={!!descargandoRecibo}
+                              title="Descargar recibo"
+                              className="btn btn-primary btn-icon-sm disabled:opacity-40 disabled:cursor-wait"
+                            >
+                              {descargandoRecibo === pago.id
+                                ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                : <Download className="w-4 h-4" />}
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>

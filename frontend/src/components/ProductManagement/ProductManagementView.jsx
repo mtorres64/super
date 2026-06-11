@@ -610,13 +610,15 @@ const ProductManagementView = ({
                   </span>
                 </td>
                 <td data-mobile="actions">
-                  <button
-                    onClick={() => openModal(product)}
-                    className="btn-edit"
-                    title="Editar"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => openModal(product)}
+                      className="btn-edit"
+                      title="Editar"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

@@ -1,30 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { API } from '../../App';
-import { toast } from 'sonner';
-import {
-  Search, X, Users, UserPlus, Phone, Mail, Hash,
-  ArrowLeft, Save, CircleDot, Calendar, MapPin, FileText,
-} from 'lucide-react';
-
-const formatDateInput = (value) => {
-  const digits = value.replace(/\D/g, '').slice(0, 8);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-};
-
-const emptyForm = {
-  nombre: '',
-  tipo_documento: 'dni',
-  documento: '',
-  telefono: '',
-  email: '',
-  direccion: '',
-  fecha_nacimiento: '',
-  observaciones: '',
-  activo: true,
-};
+import { Search, X, Users, UserPlus, Phone, Mail, Hash } from 'lucide-react';
+import CustomerFormModal from '../CustomerManagement/CustomerFormModal';
 
 /* ─── Level 1: Customer search/pick ────────────────────────────── */
 const CustomerPickerModal = ({ onSelect, onClose, closing }) => {
@@ -189,201 +167,14 @@ const CustomerPickerModal = ({ onSelect, onClose, closing }) => {
 
       {/* Level 2: New customer form */}
       {showNewForm && (
-        <NewCustomerForm
+        <CustomerFormModal
+          posMode
           closing={newFormClosing}
           onClose={closeNewForm}
           onSaved={handleNewCustomerSaved}
         />
       )}
     </>
-  );
-};
-
-/* ─── Level 2: New customer form ───────────────────────────────── */
-export const NewCustomerForm = ({ closing, onClose, onSaved }) => {
-  const [formData, setFormData] = useState(emptyForm);
-  const [saving, setSaving] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      const payload = {
-        ...formData,
-        documento: formData.documento || null,
-        telefono: formData.telefono || null,
-        email: formData.email || null,
-        direccion: formData.direccion || null,
-        fecha_nacimiento: formData.fecha_nacimiento || null,
-        observaciones: formData.observaciones || null,
-      };
-      const res = await axios.post(`${API}/customers`, payload);
-      toast.success('Cliente creado');
-      onSaved(res.data);
-    } catch (err) {
-      const detail = err.response?.data?.detail;
-      toast.error(typeof detail === 'string' ? detail : 'Error al crear el cliente');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div
-      className={`ticket-modal-overlay${closing ? ' closing' : ''}`}
-      style={{ zIndex: 1100 }}
-      onClick={onClose}
-    >
-      <div
-        className={`ticket-modal-container${closing ? ' closing' : ''}`}
-        style={{ maxWidth: '520px', width: '95vw', zIndex: 1101 }}
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="modal-header">
-          <h3 className="modal-title flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition-colors mr-1"
-              title="Volver"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            <UserPlus className="w-5 h-5" />
-            Nuevo Cliente
-          </h3>
-          <button onClick={onClose} className="modal-close">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit}>
-          <div className="space-y-3">
-            <div className="form-group">
-              <label className="form-label">Nombre y Apellido / Razón Social *</label>
-              <input
-                type="text"
-                className="form-input"
-                value={formData.nombre}
-                onChange={e => setFormData({ ...formData, nombre: e.target.value })}
-                required
-                autoFocus
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="form-group">
-                <label className="form-label">Tipo de documento</label>
-                <select
-                  className="form-select"
-                  value={formData.tipo_documento}
-                  onChange={e => setFormData({ ...formData, tipo_documento: e.target.value })}
-                >
-                  <option value="dni">DNI</option>
-                  <option value="cuit">CUIT</option>
-                  <option value="cuil">CUIL</option>
-                  <option value="pasaporte">Pasaporte</option>
-                  <option value="otro">Otro</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Número</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={formData.documento}
-                  onChange={e => setFormData({ ...formData, documento: e.target.value })}
-                  placeholder="Opcional"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="form-group">
-                <label className="form-label flex items-center gap-1"><Phone className="w-3.5 h-3.5" />Teléfono</label>
-                <input
-                  type="tel"
-                  className="form-input"
-                  value={formData.telefono}
-                  onChange={e => setFormData({ ...formData, telefono: e.target.value })}
-                  placeholder="Opcional"
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label flex items-center gap-1"><Mail className="w-3.5 h-3.5" />Email</label>
-                <input
-                  type="email"
-                  className="form-input"
-                  value={formData.email}
-                  onChange={e => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="Opcional"
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label flex items-center gap-1"><MapPin className="w-3.5 h-3.5" />Dirección</label>
-              <input
-                type="text"
-                className="form-input"
-                value={formData.direccion}
-                onChange={e => setFormData({ ...formData, direccion: e.target.value })}
-                placeholder="Opcional"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="form-group">
-                <label className="form-label flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />Nacimiento</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={formData.fecha_nacimiento}
-                  onChange={e => setFormData({ ...formData, fecha_nacimiento: formatDateInput(e.target.value) })}
-                  placeholder="dd/mm/yyyy"
-                  maxLength={10}
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label flex items-center gap-1"><CircleDot className="w-3.5 h-3.5" />Estado</label>
-                <select
-                  className="form-select"
-                  value={formData.activo ? 'true' : 'false'}
-                  onChange={e => setFormData({ ...formData, activo: e.target.value === 'true' })}
-                >
-                  <option value="true">Activo</option>
-                  <option value="false">Inactivo</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label flex items-center gap-1"><FileText className="w-3.5 h-3.5" />Observaciones</label>
-              <input
-                type="text"
-                className="form-input"
-                value={formData.observaciones}
-                onChange={e => setFormData({ ...formData, observaciones: e.target.value })}
-                placeholder="Opcional"
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-3 mt-5">
-            <button type="button" onClick={onClose} disabled={saving} className="btn btn-secondary">
-              Volver
-            </button>
-            <button type="submit" disabled={saving} className="btn btn-primary">
-              {saving ? (
-                <><div className="spinner w-4 h-4" />Guardando...</>
-              ) : (
-                <><Save className="w-4 h-4" />Crear y Seleccionar</>
-              )}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
   );
 };
 

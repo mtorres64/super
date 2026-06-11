@@ -24,18 +24,6 @@ const CustomerManagement = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState(null);
 
-  const [formData, setFormData] = useState({
-    nombre: '',
-    tipo_documento: 'dni',
-    documento: '',
-    telefono: '',
-    email: '',
-    direccion: '',
-    fecha_nacimiento: '',
-    observaciones: '',
-    activo: true,
-  });
-
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [selectAllGlobal, setSelectAllGlobal] = useState(false);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
@@ -43,6 +31,8 @@ const CustomerManagement = () => {
   const [showBulkEditModal, setShowBulkEditModal] = useState(false);
   const [bulkEditItems, setBulkEditItems] = useState([]);
   const [bulkEditSaving, setBulkEditSaving] = useState(false);
+
+  const [purchaseHistoryCustomer, setPurchaseHistoryCustomer] = useState(null);
 
   const fetchConfiguration = async () => {
     try {
@@ -121,82 +111,45 @@ const CustomerManagement = () => {
     setSelectAllGlobal(false);
   }, [debouncedSearch, selectedActivo]);
 
-  const resetForm = () => {
-    setFormData({
-      nombre: '',
-      tipo_documento: 'dni',
-      documento: '',
-      telefono: '',
-      email: '',
-      direccion: '',
-      fecha_nacimiento: '',
-      observaciones: '',
-      activo: true,
-    });
-    setEditingCustomer(null);
-  };
-
   const openModal = (customer = null) => {
-    if (customer) {
-      setFormData({
-        nombre: customer.nombre || '',
-        tipo_documento: customer.tipo_documento || 'dni',
-        documento: customer.documento || '',
-        telefono: customer.telefono || '',
-        email: customer.email || '',
-        direccion: customer.direccion || '',
-        fecha_nacimiento: customer.fecha_nacimiento || '',
-        observaciones: customer.observaciones || '',
-        activo: customer.activo !== undefined ? customer.activo : true,
-      });
-      setEditingCustomer(customer);
-    } else {
-      resetForm();
-    }
+    setEditingCustomer(customer || null);
     setShowModal(true);
   };
 
   const closeModal = () => {
     setShowModal(false);
-    resetForm();
+    setEditingCustomer(null);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const payload = {
-        ...formData,
-        documento: formData.documento || null,
-        telefono: formData.telefono || null,
-        email: formData.email || null,
-        direccion: formData.direccion || null,
-        fecha_nacimiento: formData.fecha_nacimiento || null,
-        observaciones: formData.observaciones || null,
-      };
+  const handleCustomerSaved = async () => {
+    await loadCustomers(currentPage, debouncedSearch, config?.items_per_page || 50, selectedActivo);
+    closeCustomerModal();
+  };
 
-      if (editingCustomer) {
-        await axios.put(`${API}/customers/${editingCustomer.id}`, payload);
-        toast.success('Cliente actualizado exitosamente');
-      } else {
-        await axios.post(`${API}/customers`, payload);
-        toast.success('Cliente creado exitosamente');
-      }
+  const [customerToDelete, setCustomerToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteCustomer = async () => {
+    if (!customerToDelete) return;
+    setDeleting(true);
+    try {
+      await axios.delete(`${API}/customers/${customerToDelete.id}`);
+      toast.success('Cliente eliminado');
+      closeDeleteModal();
       await loadCustomers(currentPage, debouncedSearch, config?.items_per_page || 50, selectedActivo);
-      closeCustomerModal();
     } catch (error) {
-      const detail = error.response?.data?.detail;
-      const msg = typeof detail === 'string'
-        ? detail
-        : Array.isArray(detail)
-          ? detail.map(d => d.msg).join(', ')
-          : 'Error al guardar el cliente';
+      const msg = error.response?.data?.detail || 'Error al eliminar el cliente';
       toast.error(msg);
+    } finally {
+      setDeleting(false);
     }
   };
 
   const [customerModalClosing, closeCustomerModal] = useModalClose(closeModal);
   const [bulkDeleteModalClosing, closeBulkDeleteModal] = useModalClose(() => setShowBulkDeleteModal(false));
   const [bulkEditModalClosing, closeBulkEditModal] = useModalClose(() => { setShowBulkEditModal(false); setBulkEditItems([]); });
+  const [purchaseHistoryClosing, closePurchaseHistory] = useModalClose(() => setPurchaseHistoryCustomer(null));
+  const [deleteModalClosing, closeDeleteModal] = useModalClose(() => setCustomerToDelete(null));
 
   const { sortedItems: sortedCustomers, sortConfig, requestSort } = useSortableData(customers);
   const itemsPerPage = config?.items_per_page || 50;
@@ -336,8 +289,6 @@ const CustomerManagement = () => {
       showBulkDeleteModal={showBulkDeleteModal}
       setShowBulkDeleteModal={setShowBulkDeleteModal}
       bulkDeleting={bulkDeleting}
-      formData={formData}
-      setFormData={setFormData}
       paginatedCustomers={paginatedCustomers}
       sortedCustomers={sortedCustomers}
       itemsPerPage={itemsPerPage}
@@ -349,7 +300,7 @@ const CustomerManagement = () => {
       openModal={openModal}
       closeCustomerModal={closeCustomerModal}
       closeBulkDeleteModal={closeBulkDeleteModal}
-      handleSubmit={handleSubmit}
+      handleCustomerSaved={handleCustomerSaved}
       handleBulkDelete={handleBulkDelete}
       handleBulkSetStatus={handleBulkSetStatus}
       showBulkEditModal={showBulkEditModal}
@@ -363,6 +314,16 @@ const CustomerManagement = () => {
       handlePageChange={handlePageChange}
       toggleSelectRow={toggleSelectRow}
       toggleSelectAll={toggleSelectAll}
+      purchaseHistoryCustomer={purchaseHistoryCustomer}
+      purchaseHistoryClosing={purchaseHistoryClosing}
+      openPurchaseHistory={(customer) => setPurchaseHistoryCustomer(customer)}
+      closePurchaseHistory={closePurchaseHistory}
+      customerToDelete={customerToDelete}
+      deleteModalClosing={deleteModalClosing}
+      deleting={deleting}
+      openDeleteModal={(customer) => setCustomerToDelete(customer)}
+      closeDeleteModal={closeDeleteModal}
+      handleDeleteCustomer={handleDeleteCustomer}
     />
   );
 };

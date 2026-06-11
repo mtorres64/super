@@ -889,6 +889,14 @@ const SettingsView = ({
                       <span>FAC-000123</span>
                     </div>
                     <div className="ticket-info-row">
+                      <span>Cliente:</span>
+                      <span>Juan García</span>
+                    </div>
+                    <div className="ticket-info-row">
+                      <span>DNI:</span>
+                      <span>28.456.789</span>
+                    </div>
+                    <div className="ticket-info-row">
                       <span>Fecha:</span>
                       <span>{new Date().toLocaleString('es-AR')}</span>
                     </div>

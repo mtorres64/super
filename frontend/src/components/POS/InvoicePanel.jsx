@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { API } from '../../App';
 import { formatAmount } from '../../lib/utils';
-import { NewCustomerForm } from './CustomerPickerModal';
+import CustomerFormModal from '../CustomerManagement/CustomerFormModal';
 import {
   X, Users, UserPlus, Search, FileText, Tag, Percent,
   Plus, Trash2, ChevronDown, ChevronUp, Receipt,
@@ -491,7 +491,8 @@ const InvoicePanel = ({
 
       {/* Formulario nuevo cliente — modal nivel 2 */}
       {showNewForm && (
-        <NewCustomerForm
+        <CustomerFormModal
+          posMode
           closing={newFormClosing}
           onClose={closeNewForm}
           onSaved={handleNewCustomerSaved}

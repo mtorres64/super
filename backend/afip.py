@@ -6,6 +6,7 @@ import asyncio
 import base64
 import hashlib
 import logging
+import re
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Tuple
 from xml.etree import ElementTree as ET
@@ -23,6 +24,8 @@ WSAA_WSDL_HOMO = "https://wsaahomo.afip.gov.ar/ws/services/LoginCms?WSDL"
 WSAA_WSDL_PROD = "https://wsaa.afip.gov.ar/ws/services/LoginCms?WSDL"
 WSFE_WSDL_HOMO = "https://wswhomo.afip.gov.ar/wsfev1/service.asmx?WSDL"
 WSFE_WSDL_PROD = "https://servicios1.afip.gov.ar/wsfev1/service.asmx?WSDL"
+WSPADRON_WSDL_HOMO = "https://awshomo.afip.gov.ar/sr-padron/webservices/personaServiceA4?WSDL"
+WSPADRON_WSDL_PROD = "https://aws.afip.gov.ar/sr-padron/webservices/personaServiceA4?WSDL"
 
 TIPO_COMPROBANTE_NOMBRES = {1: "Factura A", 6: "Factura B", 11: "Factura C"}
 DOC_TIPO_CONSUMIDOR_FINAL = 99
@@ -130,7 +133,7 @@ class AfipService:
             exp = datetime.now(timezone.utc) + timedelta(hours=11)
         return token, sign, exp
 
-    async def _authenticate(self, afip_cfg: dict, jwt_secret: str) -> Tuple[str, str, datetime]:
+    async def _authenticate(self, afip_cfg: dict, jwt_secret: str, service_name: str = "wsfe") -> Tuple[str, str, datetime]:
         """Autentica contra WSAA y retorna (token, sign, expiration)."""
         try:
             import zeep
@@ -141,7 +144,7 @@ class AfipService:
         cert_pem = base64.b64decode(afip_cfg["cert_pem"])
         key_pem = decrypt_private_key(afip_cfg["key_pem_encrypted"], jwt_secret)
 
-        tra_xml = self._build_tra("wsfe")
+        tra_xml = self._build_tra(service_name)
         cms_b64 = self._sign_tra(tra_xml, cert_pem, key_pem)
 
         def _do_login():
@@ -155,13 +158,13 @@ class AfipService:
 
         return self._parse_ta(response)
 
-    async def get_token_sign(self, afip_cfg: dict, db, jwt_secret: str) -> Tuple[str, str]:
+    async def get_token_sign(self, afip_cfg: dict, db, jwt_secret: str, service_name: str = "wsfe") -> Tuple[str, str]:
         """
-        Retorna (token, sign) vigentes. Usa caché en db.afip_tokens.
+        Retorna (token, sign) vigentes para el servicio indicado. Usa caché en db.afip_tokens.
         Re-autentica si el token está por vencer (< 10 min) o no existe.
         """
         now = datetime.now(timezone.utc)
-        cached = await db.afip_tokens.find_one({"empresa_id": afip_cfg["empresa_id"]})
+        cached = await db.afip_tokens.find_one({"empresa_id": afip_cfg["empresa_id"], "service": service_name})
 
         if cached:
             exp = cached["expiration"]
@@ -170,10 +173,10 @@ class AfipService:
             if exp > now + timedelta(minutes=10):
                 return cached["token"], cached["sign"]
 
-        token, sign, exp = await self._authenticate(afip_cfg, jwt_secret)
+        token, sign, exp = await self._authenticate(afip_cfg, jwt_secret, service_name)
 
         await db.afip_tokens.update_one(
-            {"empresa_id": afip_cfg["empresa_id"]},
+            {"empresa_id": afip_cfg["empresa_id"], "service": service_name},
             {"$set": {"token": token, "sign": sign, "expiration": exp}},
             upsert=True
         )
@@ -359,4 +362,70 @@ class AfipService:
             "cae_vencimiento":  det.CAEFchVto,   # "AAAAMMDD"
             "nro_comprobante":  nro_cbte,
             "tipo_comprobante": tipo_cbte,
+        }
+
+    # ── WS_SR_PADRON_A4 ───────────────────────────────────────────────────────
+
+    def _get_padron_url(self, ambiente: str) -> str:
+        return WSPADRON_WSDL_PROD if ambiente == "produccion" else WSPADRON_WSDL_HOMO
+
+    async def consultar_padron(self, cuit_consultar: str, afip_cfg: dict, db, jwt_secret: str) -> dict:
+        """
+        Consulta el WS_SR_PADRON_A4 con el certificado del comercio.
+        Retorna {nombre, tipo_persona, estado_clave, direccion}.
+        Lanza RuntimeError si el CUIT no existe o hay error de servicio.
+        """
+        try:
+            import zeep
+        except ImportError:
+            raise RuntimeError("La librería 'zeep' no está instalada.")
+
+        token, sign = await self.get_token_sign(afip_cfg, db, jwt_secret, "ws_sr_padron_a4")
+
+        cuit_emisor = int(re.sub(r"\D", "", afip_cfg["cuit"]))
+        id_persona  = int(re.sub(r"\D", "", cuit_consultar))
+        padron_url  = self._get_padron_url(afip_cfg["ambiente"])
+
+        def _do_consulta():
+            client = zeep.Client(padron_url)
+            return client.service.getPersona(
+                token=token,
+                sign=sign,
+                cuitRepresentada=cuit_emisor,
+                idPersona=id_persona,
+            )
+
+        try:
+            result = await asyncio.to_thread(_do_consulta)
+        except Exception as e:
+            msg = str(e)
+            if "persona no existente" in msg.lower() or "no encontrada" in msg.lower():
+                raise LookupError("CUIT no encontrado en el padrón de ARCA/AFIP")
+            raise RuntimeError(f"Error consultando padrón: {msg}")
+
+        persona = getattr(result, "persona", None) or (result if hasattr(result, "idPersona") else None)
+        if not persona:
+            raise LookupError("CUIT no encontrado en el padrón de ARCA/AFIP")
+
+        tipo = getattr(persona, "tipoPersona", "") or ""
+        if tipo.upper() == "JURIDICA":
+            nombre = getattr(persona, "nombre", "") or ""
+        else:
+            apellido = getattr(persona, "apellido", "") or ""
+            nombre_p = getattr(persona, "nombre", "") or ""
+            nombre = f"{apellido}, {nombre_p}".strip(", ") if apellido or nombre_p else ""
+
+        domicilio = getattr(persona, "domicilioFiscal", None)
+        partes = []
+        if domicilio:
+            for campo in ("direccion", "localidad", "descripcionProvincia"):
+                val = getattr(domicilio, campo, None)
+                if val:
+                    partes.append(str(val))
+
+        return {
+            "nombre":       nombre,
+            "tipo_persona": tipo,
+            "estado_clave": getattr(persona, "estadoClave", "") or "",
+            "direccion":    ", ".join(partes) if partes else None,
         }

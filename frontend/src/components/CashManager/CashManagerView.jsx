@@ -338,7 +338,7 @@ const CashManagerView = ({
                       <th className="px-4 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">Retiros</th>
                       <th className="px-4 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">M. Final</th>
                       <th className="px-4 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">Diferencia</th>
-                      <th className="px-4 py-3 text-center font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                      <th className="px-4 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -386,11 +386,10 @@ const CashManagerView = ({
                             ) : '—'}
                           </td>
                           <td className="px-4 py-3">
-                            <div className="flex items-center justify-center gap-2">
+                            <div className="flex items-center justify-end gap-2">
                               <Link
                                 to={`/cash-report/${s.id}`}
-                                className="inline-flex items-center justify-center w-8 h-8 rounded transition-opacity hover:opacity-80"
-                                style={{ background: 'var(--secondary)', color: 'var(--secondary-text)' }}
+                                className="btn btn-color-secondary btn-icon-sm"
                                 title="Ver detalle"
                               >
                                 <Eye className="w-4 h-4" />
@@ -398,8 +397,7 @@ const CashManagerView = ({
                               {s.status === 'abierta' && (
                                 <button
                                   onClick={() => openAdminCloseModal(s)}
-                                  className="inline-flex items-center justify-center w-8 h-8 rounded transition-opacity hover:opacity-80"
-                                  style={{ background: 'var(--tertiary)', color: 'var(--tertiary-text)' }}
+                                  className="btn btn-tertiary btn-icon-sm"
                                   title="Cerrar caja"
                                 >
                                   <Lock className="w-4 h-4" />

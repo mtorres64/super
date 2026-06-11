@@ -18,16 +18,18 @@ const CashReportsTab = () => {
   const [branchFilter, setBranchFilter] = useState(location.state?.branchFilter ?? '');
   const [users, setUsers] = useState([]);
   const [userFilter, setUserFilter] = useState(location.state?.userFilter ?? '');
-  const PER_PAGE = 15;
+  const [config, setConfig] = useState(null);
 
   useEffect(() => {
     fetchBranches();
     fetchUsers();
+    axios.get(`${API}/config`).then(r => setConfig(r.data)).catch(() => setConfig({}));
   }, []);
 
   useEffect(() => {
+    if (config === null) return;
     fetchSessions(page);
-  }, [page, branchFilter, userFilter]);
+  }, [page, branchFilter, userFilter, config]);
 
   const fetchBranches = async () => {
     try {
@@ -44,9 +46,10 @@ const CashReportsTab = () => {
   };
 
   const fetchSessions = async (p = 1) => {
+    const perPage = config?.items_per_page || 10;
     setLoading(true);
     try {
-      const params = { page: p, per_page: PER_PAGE };
+      const params = { page: p, per_page: perPage };
       if (branchFilter) params.branch_id = branchFilter;
       if (userFilter)   params.user_id   = userFilter;
       const res = await axios.get(`${API}/cash-sessions/history`, { params });
@@ -172,14 +175,16 @@ const CashReportsTab = () => {
                       )}
                     </td>
                     <td data-mobile="actions">
-                      <button
-                        onClick={() => navigate(`/cash-report/${s.id}`, { state: { branchFilter, userFilter } })}
-                        className="btn btn-primary btn-sm flex items-center gap-1"
-                        title="Ver reporte"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Ver</span>
-                      </button>
+                      <div className="flex justify-end">
+                        <button
+                          onClick={() => navigate(`/cash-report/${s.id}`, { state: { branchFilter, userFilter } })}
+                          className="btn btn-primary btn-sm"
+                          title="Ver reporte"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Ver</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -192,7 +197,7 @@ const CashReportsTab = () => {
           currentPage={page}
           totalPages={totalPages}
           totalItems={total}
-          itemsPerPage={PER_PAGE}
+          itemsPerPage={config?.items_per_page || 10}
           onPageChange={setPage}
           itemName="sesiones"
         />

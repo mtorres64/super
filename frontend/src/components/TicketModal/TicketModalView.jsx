@@ -8,7 +8,7 @@ const TIPO_CBTE_LETRA  = { 1: 'A', 6: 'B', 11: 'C' };
 const fmtVencCAE = (v) =>
   v ? `${v.slice(6, 8)}/${v.slice(4, 6)}/${v.slice(0, 4)}` : '';
 
-const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, title, closing, onClose, onPrint }) => {
+const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, title, closing, onClose, onPrint, customer }) => {
   if (!sale) return null;
 
   const sym = config?.currency_symbol || '$';
@@ -87,7 +87,33 @@ const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, t
               </div>
               <div style={{ textAlign: 'center', fontSize: '10px', marginBottom: '2px' }}>ORIGINAL</div>
 
-              {sale.cuit_receptor && (
+              {customer && (
+                <>
+                  <div className="ticket-info-row">
+                    <span>Cliente:</span>
+                    <span>{customer.nombre}</span>
+                  </div>
+                  {customer.documento && (
+                    <div className="ticket-info-row">
+                      <span>{(customer.tipo_documento || 'DNI').toUpperCase()}:</span>
+                      <span>{customer.documento}</span>
+                    </div>
+                  )}
+                  {sale.cuit_receptor && (
+                    <div className="ticket-info-row">
+                      <span>CUIT:</span>
+                      <span>{sale.cuit_receptor}</span>
+                    </div>
+                  )}
+                  {customer.direccion && (
+                    <div className="ticket-info-row">
+                      <span>Domicilio:</span>
+                      <span>{customer.direccion}</span>
+                    </div>
+                  )}
+                </>
+              )}
+              {!customer && sale.cuit_receptor && (
                 <div className="ticket-info-row">
                   <span>CUIT Receptor:</span>
                   <span>{sale.cuit_receptor}</span>

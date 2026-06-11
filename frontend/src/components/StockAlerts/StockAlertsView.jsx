@@ -130,7 +130,7 @@ const StockAlertsView = ({
                       Estado
                     </th>
                     {user?.rol === 'admin' && (
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Acciones
                       </th>
                     )}
@@ -181,8 +181,8 @@ const StockAlertsView = ({
                           )}
                         </td>
                         {user?.rol === 'admin' && (
-                          <td data-mobile="actions" className="px-4 py-3 text-center">
-                            <div className="flex items-center justify-center gap-2">
+                          <td data-mobile="actions" className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-2">
                               <button
                                 onClick={() => onOpenModal(item, 'stock')}
                                 className="btn btn-color-secondary btn-icon-sm"
