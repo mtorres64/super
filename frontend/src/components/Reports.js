@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { BarChart3, ShoppingBag, TrendingUp, Scale, Archive } from 'lucide-react';
+import { BarChart3, ShoppingBag, TrendingUp, Scale, Archive, Package } from 'lucide-react';
 import SalesReports from './SalesReports';
 import PurchasesReport from './PurchasesReport';
 import MargensReport from './MargensReport';
 import IncomeExpenseReport from './IncomeExpenseReport';
 import CashReportsTab from './CashReportsTab';
+import ProductsSoldReport from './ProductsSoldReport';
 
 const TABS = [
-  { key: 'ventas',           label: 'Ventas',              icon: BarChart3 },
-  { key: 'compras',          label: 'Compras',             icon: ShoppingBag },
-  { key: 'margenes',         label: 'Márgenes',            icon: TrendingUp },
-  { key: 'ingresos-egresos', label: 'Ingresos / Egresos',  icon: Scale },
-  { key: 'caja',             label: 'Caja',                icon: Archive },
+  { key: 'ventas',             label: 'Ventas',               icon: BarChart3 },
+  { key: 'productos-vendidos', label: 'Productos Vendidos',   icon: Package },
+  { key: 'compras',            label: 'Compras',              icon: ShoppingBag },
+  { key: 'margenes',           label: 'Márgenes',             icon: TrendingUp },
+  { key: 'ingresos-egresos',   label: 'Ingresos / Egresos',   icon: Scale },
+  { key: 'caja',               label: 'Caja',                 icon: Archive },
 ];
 
 const Reports = () => {
@@ -42,11 +44,12 @@ const Reports = () => {
       </div>
 
       {/* Contenido */}
-      {activeTab === 'ventas'           && <SalesReports />}
-      {activeTab === 'compras'          && <PurchasesReport />}
-      {activeTab === 'margenes'         && <MargensReport />}
-      {activeTab === 'ingresos-egresos' && <IncomeExpenseReport />}
-      {activeTab === 'caja'             && <CashReportsTab />}
+      {activeTab === 'ventas'             && <SalesReports />}
+      {activeTab === 'productos-vendidos' && <ProductsSoldReport />}
+      {activeTab === 'compras'            && <PurchasesReport />}
+      {activeTab === 'margenes'           && <MargensReport />}
+      {activeTab === 'ingresos-egresos'   && <IncomeExpenseReport />}
+      {activeTab === 'caja'               && <CashReportsTab />}
     </div>
   );
 };

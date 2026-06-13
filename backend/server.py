@@ -3473,6 +3473,119 @@ async def get_reporte_ingresos_egresos(
         "balance_total": round(total_ingresos - total_egresos, 2),
     }
 
+@api_router.get("/reportes/productos-vendidos")
+async def get_reporte_productos_vendidos(
+    fecha_desde: str = Query(...),
+    fecha_hasta: str = Query(...),
+    branch_id: Optional[str] = Query(None),
+    user: User = Depends(get_current_user)
+):
+    AR_TZ = timezone(timedelta(hours=-3))
+
+    desde_local = datetime.strptime(fecha_desde, "%Y-%m-%d").replace(
+        hour=0, minute=0, second=0, tzinfo=AR_TZ
+    )
+    hasta_local = datetime.strptime(fecha_hasta, "%Y-%m-%d").replace(
+        hour=23, minute=59, second=59, tzinfo=AR_TZ
+    )
+    desde_utc = desde_local.astimezone(timezone.utc)
+    hasta_utc = hasta_local.astimezone(timezone.utc)
+
+    filtro = {
+        "empresa_id": user.empresa_id,
+        "fecha": {"$gte": desde_utc, "$lte": hasta_utc},
+        "estado": {"$ne": "cancelado"},
+        "branch_id": {"$nin": ["global", "", None]},
+    }
+    if branch_id and branch_id != "all":
+        filtro["branch_id"] = branch_id
+
+    sales = await db.sales.find(
+        filtro,
+        {"items": 1, "branch_id": 1, "_id": 0}
+    ).to_list(100000)
+
+    products_cursor = await db.products.find(
+        {"empresa_id": user.empresa_id},
+        {"id": 1, "nombre": 1, "categoria_id": 1, "_id": 0}
+    ).to_list(10000)
+    product_map = {p["id"]: p for p in products_cursor}
+
+    categories_cursor = await db.categories.find(
+        {"empresa_id": user.empresa_id},
+        {"id": 1, "nombre": 1, "_id": 0}
+    ).to_list(1000)
+    cat_map = {c["id"]: c["nombre"] for c in categories_cursor}
+
+    branches_cursor = await db.branches.find(
+        {"empresa_id": user.empresa_id},
+        {"id": 1, "nombre": 1, "_id": 0}
+    ).to_list(1000)
+    branch_name_map = {b["id"]: b["nombre"] for b in branches_cursor}
+
+    # Clave de agrupación: (nombre_normalizado, branch_id) para desagregar por sucursal
+    # y fusionar productos duplicados con el mismo nombre dentro de la misma sucursal
+    by_key: dict = {}
+    for sale in sales:
+        bid = sale.get("branch_id", "")
+        branch_nombre = branch_name_map.get(bid, bid or "Sin sucursal")
+        for item in sale.get("items", []):
+            pid = item.get("producto_id", "")
+            if not pid:
+                continue
+            prod_data = product_map.get(pid, {})
+            nombre = (item.get("nombre") or prod_data.get("nombre", "Sin nombre")).strip()
+            cantidad = float(item.get("cantidad", 0))
+            subtotal = float(item.get("subtotal") or item.get("total") or 0)
+            categoria_id = prod_data.get("categoria_id", "")
+            categoria_nombre = cat_map.get(categoria_id, "Sin categoría") if categoria_id else "Sin categoría"
+
+            key = (nombre.lower(), bid)
+            if key not in by_key:
+                by_key[key] = {
+                    "nombre": nombre,
+                    "branch_id": bid,
+                    "branch_nombre": branch_nombre,
+                    "categoria_id": categoria_id,
+                    "categoria_nombre": categoria_nombre,
+                    "cantidad_vendida": 0.0,
+                    "total_recaudado": 0.0,
+                    "num_ventas": 0,
+                    "_product_ids": set(),
+                }
+
+            by_key[key]["cantidad_vendida"] += cantidad
+            by_key[key]["total_recaudado"] += subtotal
+            by_key[key]["num_ventas"] += 1
+            by_key[key]["_product_ids"].add(pid)
+
+    # Cargar stock actual desde branch_products
+    all_pids = list({pid for entry in by_key.values() for pid in entry["_product_ids"]})
+    all_bids = list({entry["branch_id"] for entry in by_key.values() if entry["branch_id"]})
+    bp_cursor = await db.branch_products.find(
+        {"product_id": {"$in": all_pids}, "branch_id": {"$in": all_bids}, "empresa_id": user.empresa_id},
+        {"product_id": 1, "branch_id": 1, "stock": 1, "_id": 0}
+    ).to_list(100000)
+    # stock_map: (product_id, branch_id) -> stock
+    stock_map = {(bp["product_id"], bp["branch_id"]): bp.get("stock", 0) for bp in bp_cursor}
+
+    result = []
+    for entry in by_key.values():
+        qty = entry["cantidad_vendida"]
+        total = entry["total_recaudado"]
+        bid = entry["branch_id"]
+        stock_actual = sum(stock_map.get((pid, bid), 0) for pid in entry["_product_ids"])
+        entry["cantidad_vendida"] = round(qty, 2)
+        entry["total_recaudado"] = round(total, 2)
+        entry["precio_promedio"] = round(total / qty, 2) if qty > 0 else 0.0
+        entry["stock_actual"] = stock_actual
+        del entry["_product_ids"]
+        result.append(entry)
+
+    result.sort(key=lambda x: (x["nombre"].lower(), x["branch_nombre"]))
+    return result
+
+
 @api_router.post("/sales/{sale_id}/return")
 async def create_sale_return(sale_id: str, return_data: ReturnCreate, user: User = Depends(get_current_user)):
     sale = await db.sales.find_one({"id": sale_id, "empresa_id": user.empresa_id})
