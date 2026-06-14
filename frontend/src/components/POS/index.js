@@ -117,10 +117,14 @@ const POS = () => {
   const setModifyingSale = (saleId, invoiceNum) =>
     setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, modifyingSaleId: saleId, modifyingInvoiceNum: invoiceNum } : t));
   const cancelModification = () => {
-    setModifyingSale(null, null);
-    setCart([]);
-    setSelectedCustomer(null);
-    setInvoiceConfig({ ...defaultInvoiceConfig });
+    if (activeTab.modifyingSaleId && tabs.length > 1) {
+      closeSaleTab(activeTabId);
+    } else {
+      setModifyingSale(null, null);
+      setCart([]);
+      setSelectedCustomer(null);
+      setInvoiceConfig({ ...defaultInvoiceConfig });
+    }
   };
 
   const barcodeInputRef = useRef(null);
@@ -830,6 +834,11 @@ const POS = () => {
   };
 
   const loadLastSaleForModification = async () => {
+    const existingModifyTab = tabs.find(t => t.modifyingSaleId);
+    if (existingModifyTab) {
+      setActiveTabId(existingModifyTab.id);
+      return;
+    }
     setLoadingModify(true);
     try {
       const salesResponse = await axios.get(`${API}/sales`);
@@ -870,6 +879,7 @@ const POS = () => {
             invoiceConfig: { ...defaultInvoiceConfig },
             modifyingSaleId: sale.id,
             modifyingInvoiceNum: sale.numero_factura,
+            createdForModification: true,
           }
         ]);
         setActiveTabId(newId);
