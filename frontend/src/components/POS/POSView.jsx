@@ -31,6 +31,7 @@ import {
   ChevronDown,
   ChevronUp,
   Receipt,
+  Edit2,
 } from 'lucide-react';
 
 const POSView = ({
@@ -46,7 +47,8 @@ const POSView = ({
   closeSaleTab,
   TAB_COLORS,
   searchTerm,
-  setSearchTerm,
+  searchInputRef,
+  handleSearchChange,
   commitSearch,
   clearSearch,
   barcode,
@@ -123,6 +125,12 @@ const POSView = ({
   calculateImpuestosExtra,
   tieneFacturacion = true,
   tieneClientes = true,
+  loadingModify,
+  lastSaleIsAfip,
+  loadLastSaleForModification,
+  modifyingSaleId,
+  modifyingInvoiceNum,
+  cancelModification,
 }) => {
   const [slideDir, setSlideDir] = useState('right');
   const handleTabSwitch = (tabId) => {
@@ -300,57 +308,66 @@ const POSView = ({
           {/* Search Section */}
           <div className="pos-search">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Columna 1: búsqueda */}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
+                  ref={config?.unified_barcode_search ? searchInputRef : undefined}
                   type="text"
-                  placeholder="Buscar productos..."
-                  className="form-input pl-10"
-                  style={searchTerm ? { paddingRight: '2.25rem' } : {}}
+                  placeholder={config?.unified_barcode_search ? 'Buscar productos o escanear código...' : 'Buscar productos...'}
+                  className={`form-input pl-10 ${config?.unified_barcode_search && isAutoScanning ? 'bg-green-50 border-green-300' : ''}`}
+                  style={searchTerm && !(config?.unified_barcode_search && isAutoScanning) ? { paddingRight: '2.25rem' } : {}}
                   value={searchTerm}
-                  autoComplete="on"
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  autoComplete="off"
+                  onChange={handleSearchChange}
                   onKeyDown={handleSearchKeyDown}
                 />
-                {searchTerm && (
+                {config?.unified_barcode_search && isAutoScanning && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Volume2 className="h-4 w-4 text-green-600 animate-pulse" />
+                  </div>
+                )}
+                {searchTerm && !(config?.unified_barcode_search && isAutoScanning) && (
                   productsLoading
                     ? <div className="absolute right-3 top-1/2 -translate-y-1/2"><div className="spinner spinner-on-light w-4 h-4 text-gray-400" /></div>
-                    : <button
-                        type="button"
-                        onClick={clearSearch}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      >
+                    : <button type="button" onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                         <X className="h-4 w-4" />
                       </button>
                 )}
               </div>
 
+              {/* Columna 2: barcode (modo clásico) o solo botones (modo unificado) */}
               <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Scan className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <input
-                    ref={barcodeInputRef}
-                    type="text"
-                    placeholder="Código de barras o usar escáner"
-                    className={`form-input pl-10 ${isAutoScanning ? 'bg-green-50 border-green-300' : ''}`}
-                    value={barcode}
-                    onChange={handleBarcodeInput}
-                    onKeyPress={handleBarcodeKeyPress}
-                    autoComplete="off"
-                  />
-                  {isAutoScanning && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <Volume2 className="h-4 w-4 text-green-600 animate-pulse" />
+                {!config?.unified_barcode_search && (
+                  <>
+                    <div className="relative flex-1">
+                      <Scan className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <input
+                        ref={barcodeInputRef}
+                        type="text"
+                        placeholder="Código de barras o usar escáner"
+                        className={`form-input pl-10 ${isAutoScanning ? 'bg-green-50 border-green-300' : ''}`}
+                        value={barcode}
+                        onChange={handleBarcodeInput}
+                        onKeyPress={handleBarcodeKeyPress}
+                        autoComplete="off"
+                      />
+                      {isAutoScanning && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                          <Volume2 className="h-4 w-4 text-green-600 animate-pulse" />
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => searchProductByBarcode()}
-                  className="btn btn-secondary"
-                  disabled={!barcode.trim()}
-                >
-                  <Keyboard className="w-4 h-4" />
-                </button>
+                    <button onClick={() => searchProductByBarcode()} className="btn btn-secondary" disabled={!barcode.trim()}>
+                      <Keyboard className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
+                {config?.unified_barcode_search && (
+                  <button onClick={() => searchProductByBarcode(searchTerm)} className="btn btn-secondary" disabled={!searchTerm.trim()}>
+                    <Keyboard className="w-4 h-4" />
+                  </button>
+                )}
                 <button
                   onClick={() => setShowBarcodeScanner(true)}
                   className="btn btn-primary"
@@ -607,6 +624,16 @@ const POSView = ({
                 >
                   {loadingReturn ? <div className="spinner w-4 h-4" /> : <RotateCcw className="w-4 h-4" />}
                 </button>
+                {!lastSaleIsAfip && (
+                  <button
+                    onClick={loadLastSaleForModification}
+                    className="btn btn-secondary btn-sm"
+                    title="Modificar última venta"
+                    disabled={loadingModify}
+                  >
+                    {loadingModify ? <div className="spinner w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
+                  </button>
+                )}
                 <div className={`btn-reveal${cart.length > 0 ? ' show' : ''}`}>
                   <button
                     onClick={clearCart}
@@ -620,6 +647,33 @@ const POSView = ({
           </div>
 
           <div key={activeTabId} className={`tab-slide-${slideDir}`}>
+          {modifyingSaleId && (
+            <div style={{
+              background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+              border: '2px solid #f59e0b',
+              borderRadius: '8px',
+              margin: '0 0 0 0',
+              padding: '0.5rem 0.75rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '0.5rem',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <Edit2 style={{ width: '1rem', height: '1rem', color: '#b45309', flexShrink: 0 }} />
+                <span style={{ fontWeight: 700, color: '#92400e', fontSize: '0.82rem' }}>
+                  Modificando venta {modifyingInvoiceNum}
+                </span>
+              </div>
+              <button
+                onClick={cancelModification}
+                style={{ fontSize: '0.75rem', color: '#92400e', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: '0.1rem 0.3rem', borderRadius: '4px' }}
+                title="Cancelar modificación"
+              >
+                Cancelar
+              </button>
+            </div>
+          )}
           <div className="cart-items" ref={cartItemsRef}>
             {cart.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
@@ -795,12 +849,21 @@ const POSView = ({
               <button
                 onClick={processSale}
                 disabled={loading || cart.length === 0}
-                className="btn btn-primary btn-lg w-full"
+                className="btn btn-lg w-full"
+                style={modifyingSaleId
+                  ? { background: '#f59e0b', borderColor: '#d97706', color: '#fff' }
+                  : { background: 'var(--primary)', borderColor: 'var(--primary)', color: '#fff' }
+                }
               >
                 {loading ? (
                   <>
                     <div className="spinner" />
-                    Procesando...
+                    {modifyingSaleId ? 'Guardando...' : 'Procesando...'}
+                  </>
+                ) : modifyingSaleId ? (
+                  <>
+                    <Edit2 className="w-5 h-5" />
+                    Confirmar modificación ({config?.currency_symbol || '$'}{formatAmount(calculateTotal())})
                   </>
                 ) : (
                   <>

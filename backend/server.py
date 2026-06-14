@@ -607,6 +607,7 @@ class Configuration(BaseModel):
     sounds_enabled: bool = True
     auto_focus_barcode: bool = True
     barcode_scan_timeout: int = 100  # milliseconds
+    unified_barcode_search: bool = False
     receipt_footer_text: str = "¡Gracias por su compra!"
 
     # Inventory Settings
@@ -662,6 +663,7 @@ class ConfigurationUpdate(BaseModel):
     sounds_enabled: Optional[bool] = None
     auto_focus_barcode: Optional[bool] = None
     barcode_scan_timeout: Optional[int] = None
+    unified_barcode_search: Optional[bool] = None
     receipt_footer_text: Optional[str] = None
     default_minimum_stock: Optional[int] = None
     low_stock_alert_enabled: Optional[bool] = None
@@ -3161,6 +3163,154 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
                     sale.afip_error  = str(afip_err)
 
     return sale
+
+@api_router.put("/sales/{sale_id}", response_model=Sale)
+async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(get_current_user)):
+    original_sale = await db.sales.find_one({"id": sale_id, "empresa_id": user.empresa_id})
+    if not original_sale:
+        raise HTTPException(status_code=404, detail="Venta no encontrada")
+    if original_sale.get('estado') == 'cancelado':
+        raise HTTPException(status_code=400, detail="No se puede modificar una venta cancelada")
+
+    config = await db.configuration.find_one({"empresa_id": user.empresa_id})
+    tax_rate = config['tax_rate'] if config else 0.12
+    auto_update_inventory = config.get('auto_update_inventory', True) if config else True
+
+    # Restore stock from original items
+    if auto_update_inventory:
+        for orig_item in original_sale.get('items', []):
+            prod_id = orig_item['producto_id']
+            cantidad = orig_item['cantidad']
+            global_prod = await db.products.find_one({"id": prod_id, "empresa_id": user.empresa_id})
+            if not global_prod:
+                continue
+            control_stock = global_prod.get('control_stock', True)
+            if not control_stock:
+                continue
+            product_kind = global_prod.get('kind', 'normal')
+            if product_kind == 'combo':
+                for ci in global_prod.get('combo_items', []):
+                    comp = await db.products.find_one({"id": ci['product_id'], "empresa_id": user.empresa_id})
+                    if not comp or not comp.get('control_stock', True):
+                        continue
+                    comp_cantidad = ci['cantidad'] * cantidad
+                    restored = False
+                    if user.branch_id:
+                        comp_bp = await db.branch_products.find_one({"product_id": ci['product_id'], "branch_id": user.branch_id, "empresa_id": user.empresa_id})
+                        if comp_bp:
+                            await db.branch_products.update_one({"product_id": ci['product_id'], "branch_id": user.branch_id, "empresa_id": user.empresa_id}, {"$inc": {"stock": int(comp_cantidad)}})
+                            restored = True
+                    if not restored:
+                        await db.products.update_one({"id": ci['product_id'], "empresa_id": user.empresa_id}, {"$inc": {"stock": int(comp_cantidad)}})
+            else:
+                restored = False
+                if user.branch_id:
+                    bp = await db.branch_products.find_one({"product_id": prod_id, "branch_id": user.branch_id, "empresa_id": user.empresa_id, "activo": True})
+                    if bp:
+                        await db.branch_products.update_one({"product_id": prod_id, "branch_id": user.branch_id, "empresa_id": user.empresa_id}, {"$inc": {"stock": int(cantidad)}})
+                        restored = True
+                if not restored:
+                    await db.products.update_one({"id": prod_id, "empresa_id": user.empresa_id}, {"$inc": {"stock": int(cantidad)}})
+
+    # Process new items (same validation + stock deduction as create_sale)
+    total_amount = 0
+    validated_items = []
+    for item in sale_data.items:
+        precio_unitario = None
+        product_nombre = None
+        global_product = await db.products.find_one({"id": item.producto_id, "empresa_id": user.empresa_id, "activo": True})
+        if not global_product:
+            raise HTTPException(status_code=400, detail="Producto no encontrado")
+        product_kind = global_product.get('kind', 'normal')
+        control_stock = global_product.get('control_stock', True)
+        manage_stock = control_stock and auto_update_inventory
+
+        if product_kind == 'combo':
+            if user.branch_id:
+                branch_product = await db.branch_products.find_one({"product_id": item.producto_id, "branch_id": user.branch_id, "empresa_id": user.empresa_id, "activo": True})
+                if branch_product:
+                    precio_unitario = branch_product.get('precio_por_peso') or branch_product['precio']
+            if precio_unitario is None:
+                precio_unitario = global_product.get('precio_por_peso') or global_product['precio']
+            product_nombre = global_product['nombre']
+            for ci in global_product.get('combo_items', []):
+                comp = await db.products.find_one({"id": ci['product_id'], "empresa_id": user.empresa_id})
+                comp_control = comp.get('control_stock', True) if comp else False
+                if not comp or not comp_control or not auto_update_inventory:
+                    continue
+                comp_cantidad = ci['cantidad'] * item.cantidad
+                deducted = False
+                if user.branch_id:
+                    comp_bp = await db.branch_products.find_one({"product_id": ci['product_id'], "branch_id": user.branch_id, "empresa_id": user.empresa_id, "activo": True})
+                    if comp_bp:
+                        if comp_bp.get('stock', 0) < comp_cantidad:
+                            raise HTTPException(status_code=400, detail=f"Stock insuficiente para {comp['nombre']}")
+                        await db.branch_products.update_one({"product_id": ci['product_id'], "branch_id": user.branch_id, "empresa_id": user.empresa_id}, {"$inc": {"stock": -int(comp_cantidad)}})
+                        deducted = True
+                if not deducted:
+                    if comp.get('stock', 0) < comp_cantidad:
+                        raise HTTPException(status_code=400, detail=f"Stock insuficiente para {comp['nombre']}")
+                    await db.products.update_one({"id": ci['product_id'], "empresa_id": user.empresa_id}, {"$inc": {"stock": -int(comp_cantidad)}})
+        else:
+            if user.branch_id:
+                branch_product = await db.branch_products.find_one({"product_id": item.producto_id, "branch_id": user.branch_id, "empresa_id": user.empresa_id, "activo": True})
+                if branch_product:
+                    if manage_stock and branch_product.get('stock', 0) < item.cantidad:
+                        raise HTTPException(status_code=400, detail=f"Stock insuficiente para {global_product['nombre']}")
+                    precio_unitario = branch_product.get('precio_por_peso') or branch_product.get('precio')
+                    if manage_stock:
+                        await db.branch_products.update_one({"product_id": item.producto_id, "branch_id": user.branch_id, "empresa_id": user.empresa_id}, {"$inc": {"stock": -int(item.cantidad)}})
+                    product_nombre = global_product['nombre']
+            if precio_unitario is None:
+                if manage_stock and global_product.get('stock', 0) < item.cantidad:
+                    raise HTTPException(status_code=400, detail=f"Stock insuficiente para {global_product['nombre']}")
+                precio_unitario = global_product.get('precio_por_peso') or global_product.get('precio')
+                product_nombre = global_product['nombre']
+                if manage_stock:
+                    await db.products.update_one({"id": item.producto_id, "empresa_id": user.empresa_id}, {"$inc": {"stock": -int(item.cantidad)}})
+
+        if precio_unitario is None:
+            raise HTTPException(status_code=400, detail=f"No se pudo determinar el precio para {product_nombre or item.producto_id}")
+        subtotal_item = item.cantidad * precio_unitario
+        validated_items.append(SaleItem(producto_id=item.producto_id, nombre=product_nombre, cantidad=item.cantidad, precio_unitario=precio_unitario, subtotal=subtotal_item))
+        total_amount += subtotal_item
+
+    # Recalculate totals
+    subtotal = total_amount
+    impuestos = total_amount * tax_rate
+    base_total = total_amount * (1 + tax_rate)
+    adjustments = (config.get('payment_method_adjustments') or {}) if config else {}
+    adjustment_pct = adjustments.get(sale_data.metodo_pago.value, 0.0)
+    adjustment_amount = base_total * (adjustment_pct / 100.0)
+    descuento = sale_data.descuento or 0.0
+    impuestos_extra_total = sale_data.impuestos_extra_total or 0.0
+    total = base_total + adjustment_amount - descuento + impuestos_extra_total
+
+    # Update the sale
+    old_total = original_sale.get('total', 0)
+    update_fields = {
+        "items": [i.dict() for i in validated_items],
+        "subtotal": subtotal,
+        "impuestos": impuestos,
+        "total": total,
+        "metodo_pago": sale_data.metodo_pago.value,
+        "cliente_id": sale_data.cliente_id,
+        "descuento": descuento,
+        "impuestos_extra_total": impuestos_extra_total,
+        "condicion_iva_receptor": sale_data.condicion_iva_receptor,
+        "observaciones_comprobante": sale_data.observaciones_comprobante,
+        "fecha_modificacion": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.sales.update_one({"id": sale_id}, {"$set": update_fields})
+
+    # Adjust cash session total
+    diff = total - old_total
+    if diff != 0:
+        await db.cash_sessions.update_one({"id": original_sale['session_id']}, {"$inc": {"monto_ventas": diff}})
+
+    updated = await db.sales.find_one({"id": sale_id})
+    return Sale(**updated)
+
 
 @api_router.get("/sales", response_model=List[Sale])
 async def get_sales(customer_id: Optional[str] = None, user: User = Depends(get_current_user)):

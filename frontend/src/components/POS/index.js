@@ -46,13 +46,15 @@ const POS = () => {
   const [configLoaded, setConfigLoaded] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [barcode, setBarcode] = useState('');
-  const [tabs, setTabs] = useState([{ id: 1, cart: [], paymentMethod: 'efectivo', colorIndex: 0, customer: null, invoiceConfig: { ...defaultInvoiceConfig } }]);
+  const [tabs, setTabs] = useState([{ id: 1, cart: [], paymentMethod: 'efectivo', colorIndex: 0, customer: null, invoiceConfig: { ...defaultInvoiceConfig }, modifyingSaleId: null, modifyingInvoiceNum: null }]);
   const [showInvoicePanel, setShowInvoicePanel] = useState(false);
   const [activeTabId, setActiveTabId] = useState(1);
   const [nextTabId, setNextTabId] = useState(2);
   const [loading, setLoading] = useState(false);
   const [loadingLastTicket, setLoadingLastTicket] = useState(false);
   const [loadingReturn, setLoadingReturn] = useState(false);
+  const [loadingModify, setLoadingModify] = useState(false);
+  const [lastSaleIsAfip, setLastSaleIsAfip] = useState(false);
   const [productsLoading, setProductsLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -110,7 +112,27 @@ const POS = () => {
       : t
     ));
 
+  const modifyingSaleId = activeTab.modifyingSaleId || null;
+  const modifyingInvoiceNum = activeTab.modifyingInvoiceNum || null;
+  const setModifyingSale = (saleId, invoiceNum) =>
+    setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, modifyingSaleId: saleId, modifyingInvoiceNum: invoiceNum } : t));
+  const cancelModification = () => {
+    setModifyingSale(null, null);
+    setCart([]);
+    setSelectedCustomer(null);
+    setInvoiceConfig({ ...defaultInvoiceConfig });
+  };
+
   const barcodeInputRef = useRef(null);
+  const searchInputRef = useRef(null);
+  const focusSearch = () => {
+    if (isMobile()) return;
+    if (configRef.current?.unified_barcode_search) {
+      searchInputRef.current?.focus();
+    } else if (configRef.current?.auto_focus_barcode !== false) {
+      barcodeInputRef.current?.focus();
+    }
+  };
   const isMobile = () => window.innerWidth < 768;
   const lastKeyTime = useRef(0);
   const cartItemsRef = useRef(null);
@@ -118,6 +140,11 @@ const POS = () => {
   const lastCameraCode = useRef('');
   const lastCameraTime = useRef(0);
   const searchingRef = useRef(false);
+  const globalBarcodeBuffer = useRef('');
+  const globalLastKeyTime = useRef(0);
+  const globalBarcodeTimerRef = useRef(null);
+  const configRef = useRef(null);
+  const searchByCodeRef = useRef(null);
 
   useEffect(() => {
     axios.get(`${API}/branches`)
@@ -125,15 +152,25 @@ const POS = () => {
       .catch(() => {});
   }, []);
 
+  const fetchLastSaleAfipStatus = async () => {
+    try {
+      const res = await axios.get(`${API}/sales`);
+      const sales = res.data;
+      if (sales && sales.length > 0) {
+        const afipTypes = Object.values(TIPO_COMPROBANTE_AFIP);
+        setLastSaleIsAfip(afipTypes.includes(sales[0].tipo_comprobante));
+      }
+    } catch { /* ignore */ }
+  };
+
   useEffect(() => {
     fetchCategories();
     fetchConfiguration();
     fetchAfipConfig();
     fetchCurrentSession();
+    fetchLastSaleAfipStatus();
 
-    if (barcodeInputRef.current && config?.auto_focus_barcode !== false && !isMobile()) {
-      barcodeInputRef.current.focus();
-    }
+    focusSearch();
   }, []);
 
   // Auto-search while typing (from 2nd character), with debounce
@@ -151,9 +188,40 @@ const POS = () => {
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
   }, [searchTerm]);
 
+  const handleSearchChange = (e) => {
+    const value = e.target.value;
+
+    if (config?.unified_barcode_search) {
+      const currentTime = Date.now();
+      const scanTimeout = config?.barcode_scan_timeout || 100;
+      const elapsed = currentTime - lastKeyTime.current;
+      lastKeyTime.current = currentTime;
+
+      if (elapsed < scanTimeout && value.length >= 8) {
+        setIsAutoScanning(true);
+        clearTimeout(barcodeTimerRef.current);
+        barcodeTimerRef.current = setTimeout(() => {
+          searchProductByBarcode(value);
+          setIsAutoScanning(false);
+        }, scanTimeout);
+        setSearchTerm(value);
+        return;
+      }
+      setIsAutoScanning(false);
+    }
+
+    setSearchTerm(value);
+  };
+
   // Confirm text search on Enter press (immediate, no debounce)
   const commitSearch = () => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (config?.unified_barcode_search && isAutoScanning) {
+      clearTimeout(barcodeTimerRef.current);
+      searchProductByBarcode(searchTerm);
+      setIsAutoScanning(false);
+      return;
+    }
     setDebouncedSearch(searchTerm);
     setCurrentPage(1);
   };
@@ -264,9 +332,7 @@ const POS = () => {
         setBarcode('');
       }
 
-      if (barcodeInputRef.current && config?.auto_focus_barcode !== false && !isMobile()) {
-        barcodeInputRef.current.focus();
-      }
+      focusSearch();
     } catch (error) {
       playErrorSound();
       toast.error('Error al buscar producto');
@@ -312,6 +378,63 @@ const POS = () => {
     setBarcode(scannedCode);
     searchProductByBarcode(scannedCode);
   };
+
+  // Mantener refs actualizados para el listener global
+  useEffect(() => { configRef.current = config; }, [config]);
+  useEffect(() => { searchByCodeRef.current = searchProductByBarcode; });
+
+  // Listener global: captura la pistola aunque ningún input tenga foco.
+  // Si hay un input/textarea/select con foco, deja pasar las teclas sin interferir.
+  useEffect(() => {
+    const isInputActive = () => {
+      const el = document.activeElement;
+      if (!el) return false;
+      const tag = el.tagName.toLowerCase();
+      return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
+    };
+
+    const handleGlobalKey = (e) => {
+      if (isInputActive()) return;
+      if (e.key.length > 1 && e.key !== 'Enter') return;
+
+      const now = Date.now();
+      const scanTimeout = configRef.current?.barcode_scan_timeout || 100;
+
+      if (e.key === 'Enter') {
+        const code = globalBarcodeBuffer.current;
+        globalBarcodeBuffer.current = '';
+        clearTimeout(globalBarcodeTimerRef.current);
+        if (code.length >= 3) searchByCodeRef.current?.(code);
+        return;
+      }
+
+      const elapsed = now - globalLastKeyTime.current;
+      globalLastKeyTime.current = now;
+
+      // Si tardó más de 500ms desde la última tecla, es inicio de nueva secuencia
+      if (elapsed > 500) {
+        globalBarcodeBuffer.current = e.key;
+      } else {
+        globalBarcodeBuffer.current += e.key;
+      }
+
+      // Disparar automáticamente cuando hay suficientes chars a velocidad de scanner
+      if (globalBarcodeBuffer.current.length >= 8 && elapsed < scanTimeout) {
+        clearTimeout(globalBarcodeTimerRef.current);
+        globalBarcodeTimerRef.current = setTimeout(() => {
+          const code = globalBarcodeBuffer.current;
+          globalBarcodeBuffer.current = '';
+          searchByCodeRef.current?.(code);
+        }, scanTimeout);
+      }
+    };
+
+    document.addEventListener('keydown', handleGlobalKey);
+    return () => {
+      document.removeEventListener('keydown', handleGlobalKey);
+      clearTimeout(globalBarcodeTimerRef.current);
+    };
+  }, []);
 
   const playSuccessSound = () => {
     if (config?.sounds_enabled === false) return;
@@ -422,6 +545,9 @@ const POS = () => {
         precio_unitario: product.precio
       }]);
     }
+
+    if (searchTerm) clearSearch();
+    focusSearch();
   };
 
   const updateQuantity = (productId, newQuantity) => {
@@ -446,6 +572,7 @@ const POS = () => {
         ? { ...item, quantity: newQuantity }
         : item
     ));
+    focusSearch();
   };
 
   const getEffectivePrice = (item) => {
@@ -461,9 +588,7 @@ const POS = () => {
 
   const clearCart = () => {
     setCart([]);
-    if (barcodeInputRef.current && config?.auto_focus_barcode !== false && !isMobile()) {
-      barcodeInputRef.current.focus();
-    }
+    focusSearch();
   };
 
   const calculateSubtotal = () => {
@@ -535,10 +660,14 @@ const POS = () => {
         ...(invoiceConfig.observaciones && { observaciones_comprobante: invoiceConfig.observaciones }),
       };
 
-      const response = await axios.post(`${API}/sales`, saleData);
+      const isModifying = !!activeTab.modifyingSaleId;
+      const response = isModifying
+        ? await axios.put(`${API}/sales/${activeTab.modifyingSaleId}`, saleData)
+        : await axios.post(`${API}/sales`, saleData);
 
       playSuccessSound();
       loadProducts(currentPage, debouncedSearch);
+      setLastSaleIsAfip(!!TIPO_COMPROBANTE_AFIP[invoiceConfig.tipo_comprobante]);
       const receiptData = response.data;
       if (config?.show_receipt_after_sale ?? true) {
         setSaleReceipt(receiptData);
@@ -549,6 +678,7 @@ const POS = () => {
         clearCart();
         setSelectedCustomer(null);
         setInvoiceConfig({ ...defaultInvoiceConfig });
+        setModifyingSale(null, null);
       }
       if (config?.print_receipt_auto) {
         setSaleReceipt(receiptData);
@@ -604,10 +734,10 @@ const POS = () => {
 
   const addSaleTab = () => {
     const newId = nextTabId;
-    setTabs(prev => [...prev, { id: newId, cart: [], paymentMethod: 'efectivo', colorIndex: prev.length % TAB_COLORS.length, customer: null, invoiceConfig: { ...defaultInvoiceConfig } }]);
+    setTabs(prev => [...prev, { id: newId, cart: [], paymentMethod: 'efectivo', colorIndex: prev.length % TAB_COLORS.length, customer: null, invoiceConfig: { ...defaultInvoiceConfig }, modifyingSaleId: null, modifyingInvoiceNum: null }]);
     setActiveTabId(newId);
     setNextTabId(prev => prev + 1);
-    if (barcodeInputRef.current && !isMobile()) barcodeInputRef.current.focus();
+    focusSearch();
   };
 
   const closeSaleTab = (tabId) => {
@@ -699,6 +829,66 @@ const POS = () => {
     }
   };
 
+  const loadLastSaleForModification = async () => {
+    setLoadingModify(true);
+    try {
+      const salesResponse = await axios.get(`${API}/sales`);
+      const sales = salesResponse.data;
+      if (!sales || sales.length === 0) {
+        toast.error('No hay ventas registradas para modificar');
+        return;
+      }
+      const sale = sales[0];
+      if (sale.estado === 'cancelado') {
+        toast.error('La última venta está cancelada y no puede modificarse');
+        return;
+      }
+
+      const cartItems = sale.items.map(item => ({
+        id: item.producto_id,
+        product_id: item.producto_id,
+        nombre: item.nombre || item.producto_id,
+        precio: item.precio_unitario,
+        precio_unitario: item.precio_unitario,
+        quantity: item.cantidad,
+        control_stock: false,
+      }));
+
+      const targetTabHasItems = activeTab.cart.length > 0;
+
+      if (targetTabHasItems) {
+        // Open in a new tab
+        const newId = nextTabId;
+        setTabs(prev => [
+          ...prev,
+          {
+            id: newId,
+            cart: cartItems,
+            paymentMethod: sale.metodo_pago || 'efectivo',
+            colorIndex: prev.length % TAB_COLORS.length,
+            customer: null,
+            invoiceConfig: { ...defaultInvoiceConfig },
+            modifyingSaleId: sale.id,
+            modifyingInvoiceNum: sale.numero_factura,
+          }
+        ]);
+        setActiveTabId(newId);
+        setNextTabId(prev => prev + 1);
+      } else {
+        // Load in current tab
+        setCart(cartItems);
+        setPaymentMethod(sale.metodo_pago || 'efectivo');
+        setModifyingSale(sale.id, sale.numero_factura);
+      }
+
+      toast.success(`Venta ${sale.numero_factura} cargada para modificación`);
+    } catch (error) {
+      toast.error('Error al cargar la venta para modificación');
+    } finally {
+      setLoadingModify(false);
+    }
+  };
+
   return (
     <POSView
       sessionLoading={sessionLoading}
@@ -713,7 +903,8 @@ const POS = () => {
       closeSaleTab={closeSaleTab}
       TAB_COLORS={TAB_COLORS}
       searchTerm={searchTerm}
-      setSearchTerm={setSearchTerm}
+      searchInputRef={searchInputRef}
+      handleSearchChange={handleSearchChange}
       commitSearch={commitSearch}
       clearSearch={clearSearch}
       barcode={barcode}
@@ -743,6 +934,12 @@ const POS = () => {
       openLastTicket={openLastTicket}
       loadingReturn={loadingReturn}
       openReturnModal={openReturnModal}
+      loadingModify={loadingModify}
+      lastSaleIsAfip={lastSaleIsAfip}
+      loadLastSaleForModification={loadLastSaleForModification}
+      modifyingSaleId={modifyingSaleId}
+      modifyingInvoiceNum={modifyingInvoiceNum}
+      cancelModification={cancelModification}
       clearCart={clearCart}
       getEffectivePrice={getEffectivePrice}
       updateQuantity={updateQuantity}

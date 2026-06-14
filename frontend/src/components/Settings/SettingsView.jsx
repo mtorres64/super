@@ -381,6 +381,21 @@ const SettingsView = ({
                   </label>
                 </div>
 
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <h4 className="font-medium text-gray-900">Búsqueda y escáner unificados</h4>
+                    <p className="text-sm text-gray-500">Un solo campo detecta tanto texto como código de barras automáticamente</p>
+                  </div>
+                  <label className="switch">
+                    <input
+                      type="checkbox"
+                      checked={config?.unified_barcode_search || false}
+                      onChange={(e) => updateConfig('unified_barcode_search', e.target.checked)}
+                    />
+                    <span className="slider"></span>
+                  </label>
+                </div>
+
                 <div className="form-group">
                   <label className="form-label">Tiempo de espera para escáner automático (ms)</label>
                   <input
