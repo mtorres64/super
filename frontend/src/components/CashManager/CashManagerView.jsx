@@ -444,8 +444,10 @@ const CashManagerView = ({
                   className="form-input"
                   value={openForm.monto_inicial}
                   onChange={(e) => setOpenForm({ ...openForm, monto_inicial: e.target.value })}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && openForm.monto_inicial && !openingCash) openCashSession(); }}
                   placeholder="0.00"
                   required
+                  autoFocus
                 />
                 <p className="text-sm text-gray-500 mt-1">
                   Dinero en efectivo con el que inicia la caja
@@ -525,8 +527,10 @@ const CashManagerView = ({
                   className="form-input"
                   value={closeForm.monto_final}
                   onChange={(e) => setCloseForm({ ...closeForm, monto_final: e.target.value })}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && closeForm.monto_final && !closingCash) closeCashSession(); }}
                   placeholder="0.00"
                   required
+                  autoFocus
                 />
                 <p className="text-sm text-gray-500 mt-1">
                   Dinero real contado en la caja

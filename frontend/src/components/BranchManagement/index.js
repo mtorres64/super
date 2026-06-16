@@ -617,8 +617,10 @@ const BranchManagement = () => {
       entries.map(async ([productId, changes]) => {
         const product = branchProductsCache[productId];
         if (!product) return;
+        const { costo_calculado, ...apiChanges } = changes;
+        const costoPayload = costo_calculado != null ? { costo: costo_calculado } : {};
         if (product.branch_product_id) {
-          await axios.put(`${API}/branch-products/${product.branch_product_id}`, changes);
+          await axios.put(`${API}/branch-products/${product.branch_product_id}`, { ...apiChanges, ...costoPayload });
         } else {
           await axios.post(`${API}/branch-products`, {
             product_id: productId,
@@ -626,7 +628,8 @@ const BranchManagement = () => {
             precio: changes.precio ?? product.precio_global,
             margen: changes.margen,
             stock: changes.stock ?? product.stock_global,
-            stock_minimo: changes.stock_minimo ?? 10
+            stock_minimo: changes.stock_minimo ?? 10,
+            ...costoPayload,
           });
         }
       })
@@ -702,26 +705,71 @@ const BranchManagement = () => {
   const allFilteredSelected = selectAllGlobal || (sortedProducts.length > 0 && sortedProducts.every(p => selectedRows.has(p.product_id)));
   const someFilteredSelected = selectAllGlobal || sortedProducts.some(p => selectedRows.has(p.product_id));
 
-  const handlePendingMargenChange = (productId, margen, costo, precioGlobal) => {
-    const base = costo > 0 ? costo : precioGlobal;
-    const newPrecio = base > 0
-      ? parseFloat((base * (1 + margen / 100)).toFixed(2))
-      : base;
-    setPendingChanges(prev => ({
-      ...prev,
-      [productId]: { ...prev[productId], margen, precio: newPrecio }
-    }));
+  const applyPriceRounding = (price) => {
+    const redondeo = config?.redondeo_precio ?? 0;
+    if (!redondeo) return parseFloat(price.toFixed(2));
+    return Math.round(price / redondeo) * redondeo;
   };
 
-  const handlePendingPrecioChange = (productId, precio, costo, precioGlobal) => {
-    const base = costo > 0 ? costo : precioGlobal;
-    const impliedMargen = base > 0
-      ? parseFloat(((precio - base) / base * 100).toFixed(2))
-      : 0;
-    setPendingChanges(prev => ({
-      ...prev,
-      [productId]: { ...prev[productId], precio, margen: impliedMargen }
-    }));
+  // Costo cambia → precio = costo * (1 + margen)
+  const handlePendingCostoChange = (productId, newCosto, savedMargen) => {
+    setPendingChanges(prev => {
+      const existing = prev[productId] || {};
+      const currentMargen = existing.margen ?? savedMargen ?? 0;
+      const newPrecio = applyPriceRounding(newCosto * (1 + currentMargen / 100));
+      return {
+        ...prev,
+        [productId]: { ...existing, costo_calculado: newCosto, precio: newPrecio, margen: currentMargen },
+      };
+    });
+  };
+
+  // Precio cambia → margen = (precio - costo) / costo
+  // Si no hay costo pero hay margen → costo = precio / (1 + margen)
+  // Si no hay costo ni margen → margen = 0, costo = precio
+  const handlePendingPrecioChange = (productId, newPrecio, savedCosto, savedMargen) => {
+    setPendingChanges(prev => {
+      const existing = prev[productId] || {};
+      const currentCosto = existing.costo_calculado ?? savedCosto;
+      const currentMargen = existing.margen ?? savedMargen;
+
+      if (currentCosto > 0) {
+        const newMargen = parseFloat(((newPrecio - currentCosto) / currentCosto * 100).toFixed(2));
+        return { ...prev, [productId]: { ...existing, precio: newPrecio, margen: newMargen } };
+      } else if (currentMargen) {
+        const newCosto = parseFloat((newPrecio / (1 + currentMargen / 100)).toFixed(2));
+        return { ...prev, [productId]: { ...existing, precio: newPrecio, costo_calculado: newCosto } };
+      } else {
+        return { ...prev, [productId]: { ...existing, precio: newPrecio, margen: 0, costo_calculado: newPrecio } };
+      }
+    });
+  };
+
+  // Margen cambia → precio = costo * (1 + margen)
+  // Si no hay costo → mantener precio, calcular costo implícito
+  const handlePendingMargenChange = (productId, newMargen, savedCosto, savedPrecioSucursal, precioGlobal) => {
+    setPendingChanges(prev => {
+      const existing = prev[productId] || {};
+      const currentCosto = existing.costo_calculado ?? savedCosto;
+      const currentPrecio = existing.precio ?? savedPrecioSucursal ?? precioGlobal;
+
+      if (currentCosto > 0) {
+        const newPrecio = applyPriceRounding(currentCosto * (1 + newMargen / 100));
+        return { ...prev, [productId]: { ...existing, margen: newMargen, precio: newPrecio } };
+      } else {
+        const impliedCosto = currentPrecio > 0 && newMargen !== 0
+          ? parseFloat((currentPrecio / (1 + newMargen / 100)).toFixed(2))
+          : null;
+        return {
+          ...prev,
+          [productId]: {
+            ...existing,
+            margen: newMargen,
+            ...(impliedCosto !== null && { costo_calculado: impliedCosto }),
+          },
+        };
+      }
+    });
   };
 
   return (
@@ -777,6 +825,7 @@ const BranchManagement = () => {
       onProductFieldChange={handleProductFieldChange}
       onPendingMargenChange={handlePendingMargenChange}
       onPendingPrecioChange={handlePendingPrecioChange}
+      onPendingCostoChange={handlePendingCostoChange}
       onToggleSelectAll={toggleSelectAll}
       onToggleSelectRow={toggleSelectRow}
       onSaveProductChanges={saveProductChanges}

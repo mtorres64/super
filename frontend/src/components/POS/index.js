@@ -326,10 +326,12 @@ const POS = () => {
       const items = response.data.items || [];
       const match = items.find(p => p.codigo_barras === code);
       if (match) {
-        addToCart(match);
+        const added = addToCart(match);
         setBarcode('');
-        playSuccessSound();
-        toast.success(`${match.nombre} agregado al carrito`);
+        if (added) {
+          playSuccessSound();
+          toast.success(`${match.nombre} agregado al carrito`);
+        }
       } else {
         playErrorSound();
         toast.error('Producto no encontrado en esta sucursal');
@@ -518,14 +520,14 @@ const POS = () => {
     if (!currentSession) {
       const sucursal = activeBranch?.nombre || 'esta sucursal';
       toast.error(`No hay caja abierta en ${sucursal}. Abrí la caja desde Gestión de Caja para poder vender.`);
-      return;
+      return false;
     }
     const stockControlActive = config?.auto_update_inventory !== false;
     const productControlsStock = product.control_stock !== false;
     if (stockControlActive && productControlsStock && (product.stock ?? 0) <= 0) {
       playErrorSound();
       toast.error(`Sin stock disponible: ${product.nombre}`);
-      return;
+      return false;
     }
 
     const existingItem = cart.find(item => item.id === product.id);
@@ -535,7 +537,7 @@ const POS = () => {
       if (stockControlActive && productControlsStock && newQty > (product.stock ?? 0)) {
         playErrorSound();
         toast.error(`Stock máximo disponible: ${product.stock ?? 0}`);
-        return;
+        return false;
       }
       setCart(cart.map(item =>
         item.id === product.id
@@ -552,6 +554,7 @@ const POS = () => {
 
     if (searchTerm) clearSearch();
     focusSearch();
+    return true;
   };
 
   const updateQuantity = (productId, newQuantity) => {
@@ -670,6 +673,7 @@ const POS = () => {
         : await axios.post(`${API}/sales`, saleData);
 
       playSuccessSound();
+      setShowInvoicePanel(false);
       loadProducts(currentPage, debouncedSearch);
       setLastSaleIsAfip(!!TIPO_COMPROBANTE_AFIP[invoiceConfig.tipo_comprobante]);
       const receiptData = response.data;

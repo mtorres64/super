@@ -74,6 +74,7 @@ const BranchManagementView = ({
   onProductFieldChange,
   onPendingMargenChange,
   onPendingPrecioChange,
+  onPendingCostoChange,
   onToggleSelectAll,
   onToggleSelectRow,
   onSaveProductChanges,
@@ -503,7 +504,7 @@ const BranchManagementView = ({
                   </th>
                   <th onClick={() => requestSort('nombre')} className="cursor-pointer select-none hover:bg-gray-50">Producto <SortIcon columnKey="nombre" sortConfig={sortConfig} /></th>
                   <th>Categoría</th>
-                  <th className="text-center cursor-pointer select-none hover:bg-gray-50" onClick={() => requestSort('costo_sucursal')}>Precio Costo <SortIcon columnKey="costo_sucursal" sortConfig={sortConfig} /></th>
+                  <th className="text-center cursor-pointer select-none bg-yellow-100 hover:bg-yellow-200" onClick={() => requestSort('costo_sucursal')}>Precio Costo <SortIcon columnKey="costo_sucursal" sortConfig={sortConfig} /></th>
                   <th className="text-center bg-yellow-100">Margen %</th>
                   <th className="text-center cursor-pointer select-none bg-yellow-100 hover:bg-yellow-200" onClick={() => requestSort('precio_sucursal')}>Precio Sucursal <SortIcon columnKey="precio_sucursal" sortConfig={sortConfig} /></th>
                   <th className="text-center cursor-pointer select-none bg-yellow-100 hover:bg-yellow-200" onClick={() => requestSort('stock_sucursal')}>Stock Sucursal <SortIcon columnKey="stock_sucursal" sortConfig={sortConfig} /></th>
@@ -577,10 +578,19 @@ const BranchManagementView = ({
                           );
                         })()}
                       </td>
-                      <td data-label="Precio Costo" className="text-center">
-                        <span className="text-gray-500">
-                          {product.costo_sucursal != null ? `$${product.costo_sucursal.toFixed(2)}` : '—'}
-                        </span>
+                      <td data-label="Precio Costo" className="text-center bg-yellow-50">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          className={`w-24 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.costo_calculado !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}`}
+                          value={changes.costo_calculado != null ? changes.costo_calculado : (product.costo_sucursal ?? '')}
+                          placeholder="—"
+                          onChange={(e) => {
+                            const costo = parseFloat(e.target.value);
+                            if (!isNaN(costo)) onPendingCostoChange(product.product_id, costo, product.margen_sucursal);
+                          }}
+                        />
                       </td>
                       <td data-label="Margen %" className="text-center bg-yellow-50">
                         <div className="flex items-center justify-center gap-1">
@@ -590,8 +600,8 @@ const BranchManagementView = ({
                             className={`w-20 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.margen !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}`}
                             value={currentMargen}
                             onChange={(e) => {
-                              const margen = parseFloat(e.target.value) || 0;
-                              onPendingMargenChange(product.product_id, margen, product.costo_sucursal, product.precio_global);
+                              const parsed = parseFloat(e.target.value);
+                              if (!isNaN(parsed)) onPendingMargenChange(product.product_id, parsed, product.costo_sucursal, product.precio_sucursal, product.precio_global);
                             }}
                           />
                           <span className="text-sm text-gray-500">%</span>
@@ -605,8 +615,8 @@ const BranchManagementView = ({
                           className={`w-28 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.precio !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}`}
                           value={currentPrice}
                           onChange={(e) => {
-                            const precio = parseFloat(e.target.value) || 0;
-                            onPendingPrecioChange(product.product_id, precio, product.costo_sucursal, product.precio_global);
+                            const parsed = parseFloat(e.target.value);
+                            if (!isNaN(parsed)) onPendingPrecioChange(product.product_id, parsed, product.costo_sucursal, product.margen_sucursal);
                           }}
                           placeholder={product.precio_global?.toFixed(2)}
                         />
@@ -618,7 +628,7 @@ const BranchManagementView = ({
                               min="0"
                               className="w-28 text-center border border-gray-200 rounded px-2 py-1 text-xs bg-white"
                               value={changes.precio_por_peso !== undefined ? changes.precio_por_peso : (product.precio_por_peso_sucursal ?? '')}
-                              onChange={(e) => onProductFieldChange(product.product_id, 'precio_por_peso', parseFloat(e.target.value) || 0)}
+                              onChange={(e) => { const p = parseFloat(e.target.value); if (!isNaN(p)) onProductFieldChange(product.product_id, 'precio_por_peso', p); }}
                               placeholder="precio/kg"
                             />
                           </div>
@@ -630,7 +640,7 @@ const BranchManagementView = ({
                           min="0"
                           className={`w-20 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.stock !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}`}
                           value={currentStock}
-                          onChange={(e) => onProductFieldChange(product.product_id, 'stock', parseInt(e.target.value) || 0)}
+                          onChange={(e) => { const s = parseInt(e.target.value); if (!isNaN(s)) onProductFieldChange(product.product_id, 'stock', s); }}
                         />
                       </td>
                       <td data-label="Stock Mínimo" className="text-center">

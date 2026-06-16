@@ -571,6 +571,7 @@ class BranchProductCreate(BaseModel):
     stock: int = 0
     stock_minimo: int = 10
     margen: Optional[float] = None
+    costo: Optional[float] = None
 
 class BranchProductUpdate(BaseModel):
     precio: Optional[float] = None

@@ -4,6 +4,12 @@ import { formatAmount, parseApiDate } from '../../lib/utils';
 
 const TIPO_CBTE_NOMBRES = { 1: 'FACTURA A', 6: 'FACTURA B', 11: 'FACTURA C' };
 const TIPO_CBTE_LETRA  = { 1: 'A', 6: 'B', 11: 'C' };
+const CONDICIONES_IVA  = {
+  consumidor_final:      'Consumidor Final',
+  responsable_inscripto: 'Responsable Inscripto',
+  monotributista:        'Monotributista',
+  exento:                'Exento',
+};
 
 const fmtVencCAE = (v) =>
   v ? `${v.slice(6, 8)}/${v.slice(4, 6)}/${v.slice(0, 4)}` : '';
@@ -111,12 +117,22 @@ const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, t
                       <span>{customer.direccion}</span>
                     </div>
                   )}
+                  <div className="ticket-info-row">
+                    <span>Cond. IVA:</span>
+                    <span>{CONDICIONES_IVA[sale.condicion_iva_receptor] || 'Consumidor Final'}</span>
+                  </div>
                 </>
               )}
               {!customer && sale.cuit_receptor && (
                 <div className="ticket-info-row">
                   <span>CUIT Receptor:</span>
                   <span>{sale.cuit_receptor}</span>
+                </div>
+              )}
+              {!customer && (
+                <div className="ticket-info-row">
+                  <span>Cond. IVA:</span>
+                  <span>{CONDICIONES_IVA[sale.condicion_iva_receptor] || 'Consumidor Final'}</span>
                 </div>
               )}
             </>

@@ -265,7 +265,7 @@ const ProductManagement = () => {
     try {
       const productData = {
         ...formData,
-        precio: parseFloat(formData.precio),
+        precio: parseFloat(formData.precio) || 0,
         precio_costo: formData.precio_costo !== '' ? parseFloat(formData.precio_costo) : null,
         stock: formData.control_stock ? (parseInt(formData.stock) || 0) : 0,
         stock_minimo: formData.control_stock ? (parseInt(formData.stock_minimo) || 0) : 0,

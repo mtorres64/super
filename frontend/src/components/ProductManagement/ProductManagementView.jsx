@@ -708,9 +708,9 @@ const ProductManagementView = ({
                   </div>
                 </div>
 
-                {/* Row 3: Categoría | Precio | Precio/kg */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="form-group" style={{ position: 'relative' }}>
+                {/* Row 3: Categoría | Control de stock */}
+                <div className="flex flex-wrap gap-3 items-start">
+                  <div className="form-group flex-shrink-0" style={{ position: 'relative', width: '33.33%' }}>
                     <label className="form-label">Categoría *</label>
                     <div className="relative">
                       {formData.categoria_id && (() => {
@@ -755,33 +755,7 @@ const ProductManagementView = ({
                       </div>
                     )}
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">{formData.tipo === 'por_peso' ? 'Precio Unitario/Kg *' : 'Precio Unitario *'}</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="form-input"
-                      value={formData.precio}
-                      onChange={(e) => setFormData({...formData, precio: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Precio Costo{editingProduct ? ' (actualiza todas las sucursales)' : ''}</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      className="form-input"
-                      value={formData.precio_costo}
-                      onChange={(e) => setFormData({...formData, precio_costo: e.target.value})}
-                      placeholder="Opcional"
-                    />
-                  </div>
-                </div>
-
-                {/* Row 4: Control de stock + Stock actual + Stock mínimo */}
-                <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg border transition-colors"
+                  <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg border transition-colors flex-1"
                   style={{ background: formData.control_stock ? '#f0fdf4' : '#f9fafb', borderColor: formData.control_stock ? '#86efac' : '#e5e7eb' }}>
                   {/* Toggle visual */}
                   <div className="flex items-center gap-3 flex-shrink-0 self-center pb-1">
@@ -808,17 +782,6 @@ const ProductManagementView = ({
                   {/* Stock inputs */}
                   <div className="flex gap-3 flex-1 flex-wrap">
                     <div className="form-group mb-0 flex-1 min-w-28">
-                      <label className="form-label">Stock Actual {formData.control_stock && <span className="text-red-500">*</span>}</label>
-                      <input
-                        type="number"
-                        className="form-input"
-                        disabled={!formData.control_stock}
-                        value={formData.stock}
-                        onChange={(e) => setFormData({...formData, stock: e.target.value})}
-                        required={formData.control_stock}
-                      />
-                    </div>
-                    <div className="form-group mb-0 flex-1 min-w-28">
                       <label className="form-label">Stock Mínimo {formData.control_stock && <span className="text-red-500">*</span>}</label>
                       <input
                         type="number"
@@ -830,6 +793,7 @@ const ProductManagementView = ({
                       />
                     </div>
                   </div>
+                </div>
                 </div>
 
                 {/* Combo items */}
