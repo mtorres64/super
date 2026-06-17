@@ -358,6 +358,25 @@ async def send_password_reset_email(destinatario: str, codigo: str):
     smtp_cfg = await get_smtp_config()
     await asyncio.to_thread(_send_password_reset_sync, destinatario, codigo, saas_nombre, smtp_cfg)
 
+def _send_solicitud_notify_sync(empresa_nombre: str, admin_nombre: str, admin_email: str, telefono: str, smtp_cfg: dict = None):
+    html = (
+        '<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f9fafb;padding:32px;">'
+        '<div style="max-width:480px;margin:0 auto;background:white;border-radius:12px;padding:32px;border:1px solid #e5e7eb;">'
+        '<h2 style="color:#059669;margin-top:0;">Nueva solicitud de cuenta - PULS</h2>'
+        f'<p style="margin:8px 0;"><strong>Empresa:</strong> {empresa_nombre}</p>'
+        f'<p style="margin:8px 0;"><strong>Nombre:</strong> {admin_nombre}</p>'
+        f'<p style="margin:8px 0;"><strong>Email:</strong> {admin_email}</p>'
+        f'<p style="margin:8px 0;"><strong>Teléfono:</strong> {telefono}</p>'
+        '<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">'
+        '<p style="color:#6b7280;font-size:12px;margin:0;">Contactar al cliente y crear su cuenta manualmente.</p>'
+        '</div></body></html>'
+    )
+    _smtp_send("ing.torresma@gmail.com", f"Nueva solicitud PULS: {empresa_nombre}", html, smtp_cfg=smtp_cfg)
+
+async def send_solicitud_notify(empresa_nombre: str, admin_nombre: str, admin_email: str, telefono: str):
+    smtp_cfg = await get_smtp_config()
+    await asyncio.to_thread(_send_solicitud_notify_sync, empresa_nombre, admin_nombre, admin_email, telefono, smtp_cfg)
+
 
 class OTPEnviar(BaseModel):
     email: str
@@ -420,6 +439,12 @@ class EmpresaRegister(BaseModel):
     admin_email: str
     admin_password: str
     otp_token: str
+
+class EmpresaSolicitud(BaseModel):
+    empresa_nombre: str
+    admin_nombre: str
+    admin_email: str
+    telefono: str
 
 class OwnerCreateCliente(BaseModel):
     empresa_nombre: str
@@ -1556,6 +1581,16 @@ async def otp_verificar(data: OTPVerificar):
         algorithm=ALGORITHM,
     )
     return {"ok": True, "verificacion_token": token}
+
+
+@api_router.post("/auth/empresa/solicitar")
+async def solicitar_cuenta(data: EmpresaSolicitud):
+    try:
+        await send_solicitud_notify(data.empresa_nombre, data.admin_nombre, data.admin_email, data.telefono)
+    except Exception:
+        logging.exception("Error enviando notificación de solicitud")
+        raise HTTPException(status_code=500, detail="No se pudo enviar la solicitud. Intentá de nuevo.")
+    return {"ok": True, "mensaje": "Solicitud enviada. Te contactaremos pronto."}
 
 
 @api_router.post("/auth/empresa/register", response_model=Token)

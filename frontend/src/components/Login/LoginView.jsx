@@ -2,7 +2,7 @@ import React from 'react';
 import {
   User, Lock, Building2, Mail, ShieldCheck,
   ArrowLeft, Send, KeyRound, Eye, EyeOff,
-  CheckCircle, BarChart2, ShoppingCart, Package,
+  CheckCircle, BarChart2, ShoppingCart, Package, Phone,
 } from 'lucide-react';
 import PulsLogo from '../PulsLogo';
 
@@ -80,6 +80,9 @@ const LoginView = ({
   setShowNueva,
   loading,
   features,
+  telefono,
+  setTelefono,
+  handleSolicitarCuenta,
   handleLogin,
   handleEnviarOtpRegistro,
   handleVerificarYRegistrar,
@@ -233,7 +236,20 @@ const LoginView = ({
 
           {/* Panel derecho */}
           <div className="login-panel-right">
-            {step === 'datos' ? (
+            {step === 'enviado' ? (
+              <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+                <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem' }}>
+                  <CheckCircle style={{ width: 32, height: 32, color: '#10b981' }} />
+                </div>
+                <h2 style={{ fontSize: '1.3rem', fontWeight: 700, color: '#111827', marginBottom: '0.5rem' }}>¡Solicitud enviada!</h2>
+                <p style={{ color: '#6b7280', fontSize: '0.875rem', lineHeight: 1.6, marginBottom: '1.75rem' }}>
+                  Recibimos tus datos. Nos pondremos en contacto a la brevedad para configurar tu cuenta.
+                </p>
+                <button type="button" className="btn btn-primary btn-lg w-full" onClick={() => { setStep('datos'); setMode('login'); }}>
+                  Volver al inicio
+                </button>
+              </div>
+            ) : (
               <>
                 <h2 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#111827', marginBottom: '0.35rem' }}>
                   Crear cuenta
@@ -241,7 +257,7 @@ const LoginView = ({
                 <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1.75rem' }}>
                   Completá los datos para registrar tu empresa
                 </p>
-                <form onSubmit={handleEnviarOtpRegistro}>
+                <form onSubmit={handleSolicitarCuenta}>
                   <div className="form-group">
                     <label className="form-label">Nombre de la empresa</label>
                     <div className="input-icon-wrap">
@@ -267,35 +283,20 @@ const LoginView = ({
                     </div>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Contraseña</label>
+                    <label className="form-label">Número de teléfono</label>
                     <div className="input-icon-wrap">
-                      <span className="input-icon"><Lock size={15} /></span>
-                      <input type={showPassword ? 'text' : 'password'} className="form-input"
-                        value={password} onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••" required style={{ paddingRight: '2.5rem' }} />
-                      <button type="button" className="input-icon-right" onClick={() => setShowPassword(!showPassword)}>
-                        {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                      </button>
+                      <span className="input-icon"><Phone size={15} /></span>
+                      <input type="tel" className="form-input" value={telefono}
+                        onChange={(e) => setTelefono(e.target.value)} placeholder="+54 9 11 1234-5678" required />
                     </div>
                   </div>
                   <button type="submit" className="btn btn-primary btn-lg w-full" disabled={loading}>
                     {loading
-                      ? <><div className="spinner" />Enviando código...</>
-                      : <><Send className="w-4 h-4 inline mr-2" />Enviar código de verificación</>}
+                      ? <><div className="spinner" />Enviando solicitud...</>
+                      : <><Send className="w-4 h-4 inline mr-2" />Solicitar gratis</>}
                   </button>
                 </form>
               </>
-            ) : (
-              <OtpBlock
-                otpDigits={otpDigits} otpRefs={otpRefs} email={email}
-                loading={loading} otpCode={otpCode}
-                handleOtpKeyDown={handleOtpKeyDown} handleOtpChange={handleOtpChange}
-                handleOtpPaste={handleOtpPaste} onReenviarClick={reenviarCodigo}
-                onSubmit={handleVerificarYRegistrar}
-                onReenviar="auth/otp/enviar"
-                backLabel="Cambiar datos"
-                backAction={() => { setStep('datos'); setOtpDigits(['', '', '', '']); }}
-              />
             )}
 
             <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #f3f4f6', textAlign: 'center' }}>

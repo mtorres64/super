@@ -23,6 +23,7 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [empresaNombre, setEmpresaNombre] = useState('');
   const [adminNombre, setAdminNombre]   = useState('');
+  const [telefono, setTelefono]         = useState('');
 
   const [otpDigits, setOtpDigits]       = useState(['', '', '', '']);
   const [resetToken, setResetToken]     = useState('');
@@ -60,6 +61,20 @@ const Login = () => {
       setTimeout(() => otpRefs[0].current?.focus(), 100);
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al enviar el código');
+    } finally { setLoading(false); }
+  };
+
+  const handleSolicitarCuenta = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await axios.post(`${API}/auth/empresa/solicitar`, {
+        empresa_nombre: empresaNombre, admin_nombre: adminNombre,
+        admin_email: email, telefono,
+      });
+      setStep('enviado');
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al enviar la solicitud');
     } finally { setLoading(false); }
   };
 
@@ -170,7 +185,7 @@ const Login = () => {
   // ── Nav ───────────────────────────────────────────────────────────────────
   const goToLogin = () => {
     setMode('login'); setStep('datos');
-    setEmail(''); setPassword(''); setEmpresaNombre(''); setAdminNombre('');
+    setEmail(''); setPassword(''); setEmpresaNombre(''); setAdminNombre(''); setTelefono('');
     setOtpDigits(['', '', '', '']); setResetToken(''); setNuevaPassword('');
     setShowPassword(false); setShowNueva(false);
   };
@@ -198,6 +213,9 @@ const Login = () => {
       setShowNueva={setShowNueva}
       loading={loading}
       features={FEATURES}
+      telefono={telefono}
+      setTelefono={setTelefono}
+      handleSolicitarCuenta={handleSolicitarCuenta}
       handleLogin={handleLogin}
       handleEnviarOtpRegistro={handleEnviarOtpRegistro}
       handleVerificarYRegistrar={handleVerificarYRegistrar}
