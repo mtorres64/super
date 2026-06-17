@@ -37,6 +37,7 @@ const PurchasesReportView = ({
   handleExportPDF,
   exportToXLSX,
   formatDate,
+  formatTime,
   formatAmount,
   getBranchName,
   getProveedorName,
@@ -113,6 +114,7 @@ const PurchasesReportView = ({
             <Calendar className="w-4 h-4 text-gray-400" />
             <select
               className="form-select"
+              style={{ width: dateFilter === 'custom' ? '180px' : 'auto' }}
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
             >
@@ -122,24 +124,26 @@ const PurchasesReportView = ({
               <option value="all">Todas</option>
               <option value="custom">Rango personalizado</option>
             </select>
+            {dateFilter === 'custom' && (
+              <>
+                <input
+                  type="date"
+                  className="form-select"
+                  style={{ width: 'auto' }}
+                  value={customDateFrom}
+                  onChange={(e) => setCustomDateFrom(e.target.value)}
+                />
+                <span className="text-gray-400 text-sm">—</span>
+                <input
+                  type="date"
+                  className="form-select"
+                  style={{ width: 'auto' }}
+                  value={customDateTo}
+                  onChange={(e) => setCustomDateTo(e.target.value)}
+                />
+              </>
+            )}
           </div>
-
-          {dateFilter === 'custom' && (
-            <>
-              <input
-                type="date"
-                className="form-input"
-                value={customDateFrom}
-                onChange={(e) => setCustomDateFrom(e.target.value)}
-              />
-              <input
-                type="date"
-                className="form-input"
-                value={customDateTo}
-                onChange={(e) => setCustomDateTo(e.target.value)}
-              />
-            </>
-          )}
         </div>
       </div>
 
@@ -278,8 +282,7 @@ const PurchasesReportView = ({
             <thead>
               <tr>
                 <th onClick={() => requestSort('numero_factura')} className="cursor-pointer select-none hover:bg-gray-50">Factura <SortIcon columnKey="numero_factura" sortConfig={sortConfig} /></th>
-                <th onClick={() => requestSort('fecha')} className="cursor-pointer select-none hover:bg-gray-50">Fecha <SortIcon columnKey="fecha" sortConfig={sortConfig} /></th>
-                <th>Sucursal</th>
+                <th onClick={() => requestSort('created_at')} className="cursor-pointer select-none hover:bg-gray-50">Fecha <SortIcon columnKey="created_at" sortConfig={sortConfig} /></th>
                 <th onClick={() => requestSort('proveedor_nombre')} className="cursor-pointer select-none hover:bg-gray-50">Proveedor <SortIcon columnKey="proveedor_nombre" sortConfig={sortConfig} /></th>
                 <th style={{ textAlign: 'center' }}>Items</th>
                 <th style={{ textAlign: 'right' }}>Subtotal</th>
@@ -293,12 +296,9 @@ const PurchasesReportView = ({
                   <td data-mobile="title">
                     <span className="font-medium text-blue-600">{compra.numero_factura}</span>
                   </td>
-                  <td data-label="Fecha">{formatDate(compra.fecha)}</td>
-                  <td data-label="Sucursal">
-                    <span className="flex items-center gap-1 text-sm text-gray-600">
-                      <Building2 className="w-3 h-3" />
-                      {getBranchName(compra.sucursal_id)}
-                    </span>
+                  <td data-label="Fecha">
+                    <div>{formatDate(compra.fecha)}</div>
+                    {compra.created_at && <div className="text-xs text-gray-400">{formatTime(compra.created_at)}</div>}
                   </td>
                   <td data-label="Proveedor">
                     <span className="flex items-center gap-1 text-sm text-gray-600">

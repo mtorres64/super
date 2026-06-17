@@ -14,7 +14,9 @@ export const ownerAxios = axios.create({ baseURL: OWNER_API });
 export const formatDate = (d) => {
   if (!d) return '—';
   try {
-    return parseApiDate(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const datePart = String(d).slice(0, 10);
+    const [y, m, day] = datePart.split('-');
+    return `${day}/${m}/${y}`;
   } catch { return '—'; }
 };
 

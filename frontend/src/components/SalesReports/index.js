@@ -148,26 +148,30 @@ const SalesReports = () => {
       filteredSales = filteredSales.filter(sale => sale.cajero_id === userFilter);
     }
 
+    const utcMidnight = (y, m, d) => new Date(Date.UTC(y, m, d));
+
     switch (dateFilter) {
-      case 'today':
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      case 'today': {
+        const today = utcMidnight(now.getFullYear(), now.getMonth(), now.getDate());
         filteredSales = filteredSales.filter(sale => new Date(sale.fecha) >= today);
         break;
-      case 'week':
-        const weekAgo = new Date(now);
-        weekAgo.setDate(now.getDate() - 7);
+      }
+      case 'week': {
+        const weekAgo = utcMidnight(now.getFullYear(), now.getMonth(), now.getDate() - 7);
         filteredSales = filteredSales.filter(sale => new Date(sale.fecha) >= weekAgo);
         break;
-      case 'month':
-        const monthAgo = new Date(now);
-        monthAgo.setMonth(now.getMonth() - 1);
+      }
+      case 'month': {
+        const monthAgo = utcMidnight(now.getFullYear(), now.getMonth() - 1, now.getDate());
         filteredSales = filteredSales.filter(sale => new Date(sale.fecha) >= monthAgo);
         break;
+      }
       case 'custom':
         if (customDateFrom && customDateTo) {
-          const fromDate = new Date(customDateFrom);
-          const toDate = new Date(customDateTo);
-          toDate.setHours(23, 59, 59, 999);
+          const [fy, fm, fd] = customDateFrom.split('-').map(Number);
+          const [ty, tm, td] = customDateTo.split('-').map(Number);
+          const fromDate = utcMidnight(fy, fm - 1, fd);
+          const toDate = new Date(Date.UTC(ty, tm - 1, td, 23, 59, 59, 999));
           filteredSales = filteredSales.filter(sale => {
             const saleDate = new Date(sale.fecha);
             return saleDate >= fromDate && saleDate <= toDate;
@@ -215,12 +219,13 @@ const SalesReports = () => {
 
   const formatDate = (dateString) => {
     const date = parseApiDate(dateString);
-    return date.toLocaleDateString('es-ES', {
+    return date.toLocaleDateString('es-AR', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      timeZone: 'America/Argentina/Buenos_Aires',
     });
   };
 

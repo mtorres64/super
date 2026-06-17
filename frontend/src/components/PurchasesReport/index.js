@@ -68,29 +68,31 @@ const PurchasesReport = () => {
       filtered = filtered.filter(c => c.proveedor_id === proveedorFilter);
     }
 
+    // Usar UTC midnight para comparar con fecha (guardada como medianoche UTC)
+    const utcMidnight = (y, m, d) => new Date(Date.UTC(y, m, d));
+
     switch (dateFilter) {
       case 'today': {
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const today = utcMidnight(now.getFullYear(), now.getMonth(), now.getDate());
         filtered = filtered.filter(c => new Date(c.fecha) >= today);
         break;
       }
       case 'week': {
-        const weekAgo = new Date(now);
-        weekAgo.setDate(now.getDate() - 7);
+        const weekAgo = utcMidnight(now.getFullYear(), now.getMonth(), now.getDate() - 7);
         filtered = filtered.filter(c => new Date(c.fecha) >= weekAgo);
         break;
       }
       case 'month': {
-        const monthAgo = new Date(now);
-        monthAgo.setMonth(now.getMonth() - 1);
+        const monthAgo = utcMidnight(now.getFullYear(), now.getMonth() - 1, now.getDate());
         filtered = filtered.filter(c => new Date(c.fecha) >= monthAgo);
         break;
       }
       case 'custom':
         if (customDateFrom && customDateTo) {
-          const fromDate = new Date(customDateFrom);
-          const toDate = new Date(customDateTo);
-          toDate.setHours(23, 59, 59, 999);
+          const [fy, fm, fd] = customDateFrom.split('-').map(Number);
+          const [ty, tm, td] = customDateTo.split('-').map(Number);
+          const fromDate = utcMidnight(fy, fm - 1, fd);
+          const toDate = new Date(Date.UTC(ty, tm - 1, td, 23, 59, 59, 999));
           filtered = filtered.filter(c => {
             const d = new Date(c.fecha);
             return d >= fromDate && d <= toDate;
@@ -136,15 +138,18 @@ const PurchasesReport = () => {
     return { totalCompras, totalGastado, promedio, byProveedor, byBranch };
   };
 
+  const AR_TZ = 'America/Argentina/Buenos_Aires';
+
   const formatDate = (dateString) => {
-    const date = parseApiDate(dateString);
-    return date.toLocaleDateString('es-ES', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    if (!dateString) return '—';
+    const datePart = String(dateString).slice(0, 10);
+    const [year, month, day] = datePart.split('-');
+    return `${day}/${month}/${year}`;
+  };
+
+  const formatTime = (iso) => {
+    if (!iso) return '';
+    return parseApiDate(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: AR_TZ });
   };
 
   const handleExportPDF = () => {
@@ -328,7 +333,7 @@ const PurchasesReport = () => {
   };
 
   const filteredCompras = loading ? [] : getFilteredCompras();
-  const { sortedItems: sortedCompras, sortConfig, requestSort } = useSortableData(filteredCompras);
+  const { sortedItems: sortedCompras, sortConfig, requestSort } = useSortableData(filteredCompras, { key: 'created_at', direction: 'desc' }, 'desc');
 
   if (loading) {
     return (
@@ -367,6 +372,7 @@ const PurchasesReport = () => {
       handleExportPDF={handleExportPDF}
       exportToXLSX={exportToXLSX}
       formatDate={formatDate}
+      formatTime={formatTime}
       formatAmount={formatAmount}
       getBranchName={getBranchName}
       getProveedorName={getProveedorName}

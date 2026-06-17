@@ -30,6 +30,7 @@ const formatFecha = (fecha) => {
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+      timeZone: 'America/Argentina/Buenos_Aires',
     });
   } catch {
     return '—';

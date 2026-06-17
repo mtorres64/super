@@ -29,8 +29,9 @@ const PAGO_ESTADO_CONFIG = {
 
 const formatDate = (dateStr) => {
   if (!dateStr) return '-';
-  const d = parseApiDate(dateStr);
-  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const datePart = String(dateStr).slice(0, 10);
+  const [y, m, day] = datePart.split('-');
+  return `${day}/${m}/${y}`;
 };
 
 const formatCurrency = (amount, currency = 'ARS') =>
@@ -163,8 +164,9 @@ const Cuenta = () => {
 
     const fmtDate = (d) => {
       if (!d) return '-';
-      const date = new Date(d);
-      return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const datePart = String(d).slice(0, 10);
+      const [y, m, day] = datePart.split('-');
+      return `${day}/${m}/${y}`;
     };
     const fmtCurrency = (amount, currency = 'ARS') =>
       new Intl.NumberFormat('es-AR', { style: 'currency', currency }).format(amount);

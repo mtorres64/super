@@ -24,22 +24,25 @@ const ProductsSoldReport = () => {
 
   const getDateRange = useCallback(() => {
     const now = new Date();
-    const toStr = (d) => d.toISOString().split('T')[0];
+    const pad = (n) => String(n).padStart(2, '0');
+    // Usa fecha local (Argentina) para alinear con cómo se almacenan las fechas en la BD
+    const localStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const today = localStr(now);
     switch (dateFilter) {
       case 'today':
-        return { desde: toStr(now), hasta: toStr(now) };
+        return { desde: today, hasta: today };
       case 'week': {
         const w = new Date(now);
         w.setDate(now.getDate() - 7);
-        return { desde: toStr(w), hasta: toStr(now) };
+        return { desde: localStr(w), hasta: today };
       }
       case 'month': {
         const m = new Date(now);
         m.setMonth(now.getMonth() - 1);
-        return { desde: toStr(m), hasta: toStr(now) };
+        return { desde: localStr(m), hasta: today };
       }
       case 'all':
-        return { desde: '2020-01-01', hasta: toStr(now) };
+        return { desde: '2020-01-01', hasta: today };
       case 'custom':
         return customDateFrom && customDateTo
           ? { desde: customDateFrom, hasta: customDateTo }

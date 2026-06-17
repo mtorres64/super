@@ -44,12 +44,13 @@ const CashReport = () => {
 
   const formatDate = (dateString) => {
     const date = parseApiDate(dateString);
-    return date.toLocaleDateString('es-ES', {
+    return date.toLocaleDateString('es-AR', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      timeZone: 'America/Argentina/Buenos_Aires',
     });
   };
 
