@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 
-export function useSortableData(items, initialConfig = null) {
+export function useSortableData(items, initialConfig = null, defaultDirection = 'asc') {
   const [sortConfig, setSortConfig] = useState(initialConfig);
 
   const sortedItems = useMemo(() => {
@@ -23,10 +23,12 @@ export function useSortableData(items, initialConfig = null) {
 
   const requestSort = (key) => {
     setSortConfig(prev => {
-      if (prev?.key === key) {
-        return prev.direction === 'asc' ? { key, direction: 'desc' } : null;
-      }
-      return { key, direction: 'asc' };
+      if (prev?.key !== key) return { key, direction: defaultDirection };
+      const opposite = prev.direction === 'asc' ? 'desc' : 'asc';
+      // si hay defaultDirection no 'asc', nunca quitar el sort: ciclo desc ↔ asc
+      if (defaultDirection !== 'asc') return { key, direction: opposite };
+      // comportamiento original: asc → desc → null
+      return prev.direction === 'asc' ? { key, direction: 'desc' } : null;
     });
   };
 

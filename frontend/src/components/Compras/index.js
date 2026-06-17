@@ -729,12 +729,22 @@ const Compras = () => {
     (p.ruc_cuit && p.ruc_cuit.includes(searchProveedor))
   );
 
-  const { sortedItems: sortedCompras, sortConfig: comprasSortConfig, requestSort: comprasRequestSort } = useSortableData(filteredCompras);
+  const { sortedItems: sortedCompras, sortConfig: comprasSortConfig, requestSort: comprasRequestSort } = useSortableData(filteredCompras, { key: 'created_at', direction: 'desc' }, 'desc');
   const { sortedItems: sortedProveedores, sortConfig: proveedoresSortConfig, requestSort: proveedoresRequestSort } = useSortableData(filteredProveedores);
+
+  const AR_TZ = 'America/Argentina/Buenos_Aires';
 
   const formatDate = (iso) => {
     if (!iso) return '—';
-    return parseApiDate(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    // fecha es solo fecha (sin hora): extraer la parte "YYYY-MM-DD" sin convertir timezone
+    const datePart = String(iso).slice(0, 10);
+    const [year, month, day] = datePart.split('-');
+    return `${day}/${month}/${year}`;
+  };
+
+  const formatTime = (iso) => {
+    if (!iso) return '';
+    return parseApiDate(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: AR_TZ });
   };
 
   const formatMoney = (val) => {
@@ -806,6 +816,7 @@ const Compras = () => {
       getAutocompleteOptions={getAutocompleteOptions}
       handleSucursalChange={handleSucursalChange}
       formatDate={formatDate}
+      formatTime={formatTime}
       formatMoney={formatMoney}
       distribuirModal={distribuirModal}
       distribuirForm={distribuirForm}

@@ -84,6 +84,7 @@ const ComprasView = ({
   getAutocompleteOptions,
   handleSucursalChange,
   formatDate,
+  formatTime,
   formatMoney,
   distribuirModal,
   distribuirForm,
@@ -178,7 +179,7 @@ const ComprasView = ({
               <table className="table table-collapsible">
                 <thead>
                   <tr>
-                    <th onClick={() => comprasRequestSort('fecha')} className="cursor-pointer select-none hover:bg-gray-50">Fecha <SortIcon columnKey="fecha" sortConfig={comprasSortConfig} /></th>
+                    <th onClick={() => comprasRequestSort('created_at')} className="cursor-pointer select-none hover:bg-gray-50">Fecha <SortIcon columnKey="created_at" sortConfig={comprasSortConfig} /></th>
                     <th onClick={() => comprasRequestSort('numero_factura')} className="cursor-pointer select-none hover:bg-gray-50">N° Factura <SortIcon columnKey="numero_factura" sortConfig={comprasSortConfig} /></th>
                     <th onClick={() => comprasRequestSort('proveedor_nombre')} className="cursor-pointer select-none hover:bg-gray-50">Proveedor <SortIcon columnKey="proveedor_nombre" sortConfig={comprasSortConfig} /></th>
                     <th>Sucursal</th>
@@ -191,10 +192,13 @@ const ComprasView = ({
                 <tbody>
                   {filteredCompras.map(compra => (
                     <tr key={compra.id} data-expanded={expandedRows.has(compra.id) ? 'true' : undefined}>
-                      <td data-label="Fecha" className="text-sm text-gray-600">{formatDate(compra.fecha)}</td>
+                      <td data-label="Fecha" className="text-sm text-gray-600">
+                        <div>{formatDate(compra.fecha)}</div>
+                        {compra.created_at && <div className="text-xs text-gray-400">{formatTime(compra.created_at)}</div>}
+                      </td>
                       <td data-mobile="title" className="font-medium md:cursor-default cursor-pointer" onClick={() => toggleRowExpanded(compra.id)}>
                         <div className="flex-1 min-w-0">
-                          <div className="text-xs font-bold text-gray-700 md:hidden">{formatDate(compra.fecha)}</div>
+                          <div className="text-xs font-bold text-gray-700 md:hidden">{formatDate(compra.fecha)}{compra.created_at ? ` ${formatTime(compra.created_at)}` : ''}</div>
                           <span className="truncate">{compra.numero_factura}</span>
                           {!expandedRows.has(compra.id) && compra.items && compra.items.length > 0 && (
                             <div className="text-xs text-gray-400 truncate md:hidden mt-0.5">
