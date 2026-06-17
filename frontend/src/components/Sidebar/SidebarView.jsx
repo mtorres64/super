@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import PulsLogo from '../PulsLogo';
-import { LogOut, X, ArrowLeftRight, Settings } from 'lucide-react';
+import { LogOut, X, ArrowLeftRight, Settings, Shield, ArrowLeft } from 'lucide-react';
 
 const SidebarView = ({
   isOpen,
@@ -16,6 +16,9 @@ const SidebarView = ({
   activeBranch,
   canSwitchBranch,
   onSwitchBranch,
+  isImpersonating,
+  impersonationEmpresa,
+  onStopImpersonation,
 }) => {
   return (
     <div className={`sidebar ${isOpen ? 'sidebar-open' : ''}`}>
@@ -68,6 +71,23 @@ const SidebarView = ({
           </Link>
         ))}
       </nav>
+
+      {isImpersonating && (
+        <div style={{ margin: '0 10px 8px', background: '#ea580c', borderRadius: 10, padding: '10px 12px', color: 'white' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.7rem', fontWeight: 600, marginBottom: 3, opacity: 0.85 }}>
+            <Shield size={12} />
+            Modo impersonación
+          </div>
+          <p style={{ fontSize: '0.82rem', fontWeight: 700, margin: '0 0 8px', lineHeight: 1.2 }}>{impersonationEmpresa}</p>
+          <button
+            onClick={onStopImpersonation}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(0,0,0,0.2)', border: 'none', borderRadius: 6, color: 'white', fontSize: '0.72rem', fontWeight: 600, padding: '4px 8px', cursor: 'pointer', width: '100%' }}
+          >
+            <ArrowLeft size={11} />
+            Volver al panel owner
+          </button>
+        </div>
+      )}
 
       <div className="sidebar-footer">
         <div className="user-info">

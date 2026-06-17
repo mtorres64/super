@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
-import { Menu, AlertTriangle, ArrowLeft, Shield } from 'lucide-react';
+import { Menu, AlertTriangle } from 'lucide-react';
 import './App.css';
 
 // Components
@@ -424,21 +424,7 @@ const Layout = ({ children }) => {
           <span className="text-sm font-semibold text-gray-700">PULS market·app</span>
           <div className="w-9" />
         </div>
-        {isImpersonating && (
-          <div className="bg-orange-600 text-white px-4 py-2.5 flex items-center justify-between text-sm font-medium shrink-0">
-            <div className="flex items-center gap-2">
-              <Shield className="w-4 h-4 shrink-0" />
-              <span>Modo impersonación: <strong>{impersonationEmpresa}</strong></span>
-            </div>
-            <button
-              onClick={stopImpersonation}
-              className="flex items-center gap-1.5 bg-orange-700 hover:bg-orange-800 px-3 py-1 rounded-lg text-xs font-semibold transition-colors"
-            >
-              <ArrowLeft className="w-3 h-3" />
-              Volver al panel owner
-            </button>
-          </div>
-        )}
+
         {enGracia && (
           <div className="bg-amber-500 text-white px-4 py-2 flex items-center gap-2 text-sm font-medium shrink-0">
             <AlertTriangle className="w-4 h-4 shrink-0" />
