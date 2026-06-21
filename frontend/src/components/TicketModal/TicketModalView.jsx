@@ -66,7 +66,33 @@ const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, t
           <div className="ticket-separator">{'- '.repeat(16)}</div>
 
           {/* ── Encabezado del comprobante ── */}
-          {isAfipFactura ? (
+          {sale._esPresupuesto ? (
+            <>
+              <div style={{ textAlign: 'center', fontWeight: 700, fontSize: '14px', letterSpacing: '1px', margin: '6px 0' }}>
+                PRESUPUESTO
+              </div>
+              {customer && (
+                <>
+                  <div className="ticket-info-row">
+                    <span>Cliente:</span>
+                    <span>{customer.nombre}</span>
+                  </div>
+                  {customer.documento && (
+                    <div className="ticket-info-row">
+                      <span>{(customer.tipo_documento || 'DNI').toUpperCase()}:</span>
+                      <span>{customer.documento}</span>
+                    </div>
+                  )}
+                  {customer.telefono && (
+                    <div className="ticket-info-row">
+                      <span>Tel:</span>
+                      <span>{customer.telefono}</span>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          ) : isAfipFactura ? (
             <>
               {/* Fila: Pto.Vta | [LETRA] | Nº */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '4px 0' }}>

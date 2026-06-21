@@ -828,6 +828,56 @@ const SettingsView = ({
 
               <div className="space-y-4">
                 <div className="form-group">
+                  <label className="form-label">Formato de impresión de documentos</label>
+                  <p className="text-sm text-gray-500 mb-3">
+                    Aplica a comprobantes, recibos, facturas, presupuestos y remitos
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => updateConfig('receipt_format', 'ticket')}
+                      className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${
+                        (config?.receipt_format || 'ticket') === 'ticket'
+                          ? 'border-green-500 bg-green-50 text-green-700'
+                          : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 2h12a1 1 0 011 1v1H5V3a1 1 0 011-1zM5 4h14v15l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5V4z"/>
+                        <line x1="8" y1="8" x2="16" y2="8" strokeLinecap="round"/>
+                        <line x1="8" y1="11" x2="16" y2="11" strokeLinecap="round"/>
+                        <line x1="8" y1="14" x2="13" y2="14" strokeLinecap="round"/>
+                      </svg>
+                      <div className="text-center">
+                        <div className="font-semibold text-sm">Ticket</div>
+                        <div className="text-xs opacity-75">Impresora térmica</div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateConfig('receipt_format', 'a4')}
+                      className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${
+                        config?.receipt_format === 'a4'
+                          ? 'border-green-500 bg-green-50 text-green-700'
+                          : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <rect x="4" y="2" width="16" height="20" rx="1" ry="1"/>
+                        <line x1="7" y1="7" x2="17" y2="7" strokeLinecap="round"/>
+                        <line x1="7" y1="10" x2="17" y2="10" strokeLinecap="round"/>
+                        <line x1="7" y1="13" x2="17" y2="13" strokeLinecap="round"/>
+                        <line x1="7" y1="16" x2="13" y2="16" strokeLinecap="round"/>
+                      </svg>
+                      <div className="text-center">
+                        <div className="font-semibold text-sm">A4</div>
+                        <div className="text-xs opacity-75">Hoja tamaño carta</div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="form-group">
                   <label className="form-label">Texto del pie de recibo</label>
                   <textarea
                     className="form-input"
@@ -838,6 +888,7 @@ const SettingsView = ({
                   />
                 </div>
 
+                {(config?.receipt_format || 'ticket') === 'ticket' && (
                 <div className="form-group">
                   <label className="form-label">Ancho del recibo (caracteres)</label>
                   <input
@@ -852,6 +903,7 @@ const SettingsView = ({
                     Ancho en caracteres para impresoras térmicas
                   </p>
                 </div>
+                )}
 
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <div>

@@ -651,6 +651,7 @@ class Configuration(BaseModel):
     print_receipt_auto: bool = False
     show_receipt_after_sale: bool = True
     receipt_width: int = 80  # characters
+    receipt_format: str = "ticket"  # "ticket" | "a4"
 
     # Pagination Settings
     items_per_page: int = 10
@@ -701,6 +702,7 @@ class ConfigurationUpdate(BaseModel):
     print_receipt_auto: Optional[bool] = None
     show_receipt_after_sale: Optional[bool] = None
     receipt_width: Optional[int] = None
+    receipt_format: Optional[str] = None
     items_per_page: Optional[int] = None
     product_view_mode: Optional[str] = None
     company_logo: Optional[str] = None

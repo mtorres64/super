@@ -16,10 +16,12 @@ import {
   Calendar,
   Hash,
   GitBranch,
-  ChevronDown
+  ChevronDown,
+  Printer
 } from 'lucide-react';
 import SortIcon from '../ui/SortIcon';
 import DistribuirModal from './DistribuirModal';
+import RemitoModal from './RemitoModal';
 
 const ComprasView = ({
   activeTab,
@@ -96,6 +98,11 @@ const ComprasView = ({
   handleDistribuirOpcionChange,
   handleDistribuirItemChange,
   handleDistribuirSubmit,
+  remitoModal,
+  remitoModalClosing,
+  handleOpenRemitoModal,
+  closeRemitoModalAnim,
+  comprasConfig,
 }) => {
   const [expandedRows, setExpandedRows] = React.useState(new Set());
   const toggleRowExpanded = (id) => setExpandedRows(prev => {
@@ -225,6 +232,13 @@ const ComprasView = ({
                             title="Editar"
                           >
                             <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleOpenRemitoModal(compra)}
+                            className="btn btn-primary btn-icon-sm"
+                            title="Ver remito"
+                          >
+                            <Printer className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleOpenDistribuirModal(compra)}
@@ -802,6 +816,19 @@ const ComprasView = ({
           loading={distribuirLoading}
           closing={distribuirModalClosing}
           formatMoney={formatMoney}
+        />
+      )}
+
+      {/* ── MODAL REMITO ── */}
+      {remitoModal && (
+        <RemitoModal
+          compra={remitoModal}
+          branches={branches}
+          closing={remitoModalClosing}
+          onClose={closeRemitoModalAnim}
+          formatDate={formatDate}
+          formatMoney={formatMoney}
+          config={comprasConfig}
         />
       )}
     </div>

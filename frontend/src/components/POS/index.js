@@ -68,6 +68,8 @@ const POS = () => {
   const [mobileTab, setMobileTab] = useState('products');
   const [saleReceipt, setSaleReceipt] = useState(null);
   const [receiptReturns, setReceiptReturns] = useState([]);
+  const [presupuestoReceipt, setPresupuestoReceipt] = useState(null);
+  const [presupuestoClosing, setPresupuestoClosing] = useState(false);
   const [afipConfig, setAfipConfig] = useState(null);
   const [returnModal, setReturnModal] = useState(null);
   const [infoPanelVisible, setInfoPanelVisible] = useState(() => localStorage.getItem('pos_info_visible') !== 'false');
@@ -84,6 +86,33 @@ const POS = () => {
   const { user, activeBranch, modulosActivos } = useContext(AuthContext);
   const tieneFacturacion = modulosActivos.includes('facturacion');
   const tieneClientes = modulosActivos.includes('clientes');
+
+  const closePresupuesto = () => {
+    setPresupuestoClosing(true);
+    setTimeout(() => { setPresupuestoReceipt(null); setPresupuestoClosing(false); }, 300);
+  };
+
+  const generarPresupuesto = () => {
+    if (cart.length === 0) return;
+    const sub = calculateSubtotal();
+    const tax = calculateTax();
+    const adj = calculatePaymentAdjustment();
+    setPresupuestoReceipt({
+      _esPresupuesto: true,
+      items: cart.map(item => ({
+        nombre: item.nombre,
+        cantidad: item.quantity,
+        precio_unitario: getEffectivePrice(item),
+        subtotal: getEffectivePrice(item) * item.quantity,
+      })),
+      subtotal: sub,
+      impuestos: tax,
+      total: sub + tax + adj,
+      metodo_pago: paymentMethod,
+      fecha: new Date().toISOString(),
+      afip_estado: null,
+    });
+  };
 
   const closeReceipt = () => {
     setReceiptClosing(true);
@@ -690,7 +719,9 @@ const POS = () => {
       }
       if (config?.print_receipt_auto) {
         setSaleReceipt(receiptData);
-        setTimeout(() => window.print(), 300);
+        if (config?.receipt_format !== 'a4') {
+          setTimeout(() => window.print(), 300);
+        }
       }
     } catch (error) {
       playErrorSound();
@@ -972,6 +1003,10 @@ const POS = () => {
       receiptClosing={receiptClosing}
       closeReceipt={closeReceipt}
       printTicket={printTicket}
+      presupuestoReceipt={presupuestoReceipt}
+      presupuestoClosing={presupuestoClosing}
+      closePresupuesto={closePresupuesto}
+      generarPresupuesto={generarPresupuesto}
       afipConfig={afipConfig}
       user={user}
       returnModal={returnModal}

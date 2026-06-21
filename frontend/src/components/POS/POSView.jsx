@@ -91,6 +91,10 @@ const POSView = ({
   setPaymentMethod,
   loading,
   processSale,
+  generarPresupuesto,
+  presupuestoReceipt,
+  presupuestoClosing,
+  closePresupuesto,
   saleReceipt,
   receiptReturns,
   receiptClosing,
@@ -247,8 +251,8 @@ const POSView = ({
         </div>
 
         {/* Cash Session Alert + Scanner Info */}
-        <div className="hidden md:block mb-2">
-          {infoPanelVisible && <div className="flex flex-col md:flex-row gap-4">
+        {infoPanelVisible && <div className="hidden md:block mb-2">
+          <div className="flex flex-col md:flex-row gap-4">
         {sessionLoading ? (
           <div className="flex-1 bg-gray-50 border border-gray-200 p-4 rounded-lg">
             <div className="flex items-center">
@@ -300,8 +304,8 @@ const POSView = ({
             <p>• <strong>Manual:</strong> Ingresa el código y presiona Enter</p>
           </div>
         </div>
+          </div>
         </div>}
-        </div>
 
         {/* Search + Products (dimmed when no session) */}
         <div style={{ ...sessionDisabledStyle, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, gap: '1rem' }}>
@@ -846,6 +850,17 @@ const POSView = ({
                 </div>
               </div>
 
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={generarPresupuesto}
+                  disabled={cart.length === 0}
+                  style={{ background: 'none', border: 'none', color: 'var(--primary, #10b981)', fontSize: '0.82rem', fontWeight: 600, cursor: cart.length === 0 ? 'default' : 'pointer', opacity: cart.length === 0 ? 0.4 : 1, padding: '2px 0', textDecoration: 'none' }}
+                >
+                  Presupuesto
+                </button>
+              </div>
+
               <button
                 onClick={processSale}
                 disabled={loading || cart.length === 0}
@@ -889,6 +904,21 @@ const POSView = ({
           closing={receiptClosing}
           onClose={closeReceipt}
           onPrint={printTicket}
+        />
+      )}
+
+      {/* Presupuesto Modal */}
+      {presupuestoReceipt && (
+        <TicketModal
+          sale={presupuestoReceipt}
+          returns={[]}
+          config={config}
+          afipConfig={null}
+          cajeroName={user?.nombre}
+          title="Presupuesto"
+          closing={presupuestoClosing}
+          onClose={closePresupuesto}
+          customerOverride={selectedCustomer || null}
         />
       )}
 

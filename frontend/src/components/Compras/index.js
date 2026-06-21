@@ -61,8 +61,12 @@ const Compras = () => {
   const cantidadInputRefs = useRef({});
   const costoInputRefs = useRef({});
 
-  // Config: precio
+  // Config
   const [autoUpdatePrices, setAutoUpdatePrices] = useState(true);
+  const [comprasConfig, setComprasConfig] = useState({});
+
+  // Remito modal
+  const [remitoModal, setRemitoModal] = useState(null); // compra object
 
   // Distribuir modal
   const [distribuirModal, setDistribuirModal] = useState(null); // { compra }
@@ -89,6 +93,7 @@ const Compras = () => {
     fetchGlobalProducts();
     axios.get(`${API}/config`).then(res => {
       setAutoUpdatePrices(res.data.auto_update_prices ?? true);
+      setComprasConfig(res.data);
     }).catch(() => {});
   }, []);
 
@@ -182,6 +187,9 @@ const Compras = () => {
       handleSucursalDistribuirChange(autoSucursal);
     }
   };
+
+  const handleOpenRemitoModal = (compra) => setRemitoModal(compra);
+  const closeRemitoModal = () => setRemitoModal(null);
 
   const closeDistribuirModal = () => {
     setDistribuirModal(null);
@@ -678,6 +686,7 @@ const Compras = () => {
   const [proveedorModalClosing, closeProveedorModalAnim] = useModalClose(closeProveedorModal);
   const [deleteModalClosing, closeDeleteModalAnim] = useModalClose(closeDeleteModal);
   const [distribuirModalClosing, closeDistribuirModalAnim] = useModalClose(closeDistribuirModal);
+  const [remitoModalClosing, closeRemitoModalAnim] = useModalClose(closeRemitoModal);
 
   const handleProveedorSubmit = async (e) => {
     e.preventDefault();
@@ -828,6 +837,11 @@ const Compras = () => {
       handleDistribuirOpcionChange={handleDistribuirOpcionChange}
       handleDistribuirItemChange={handleDistribuirItemChange}
       handleDistribuirSubmit={handleDistribuirSubmit}
+      remitoModal={remitoModal}
+      remitoModalClosing={remitoModalClosing}
+      handleOpenRemitoModal={handleOpenRemitoModal}
+      closeRemitoModalAnim={closeRemitoModalAnim}
+      comprasConfig={comprasConfig}
     />
   );
 };
