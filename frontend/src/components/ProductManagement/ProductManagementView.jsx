@@ -2,11 +2,21 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Plus, Edit, Trash2, Package, Search, Save, X,
   Download, Upload, FileText, Tag, Layers, Minus, CircleDot, SlidersHorizontal, ChevronDown, MoreVertical,
+  Link, Sparkles, Camera,
 } from 'lucide-react';
 import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
 import { getCategoryIcon, ICON_OPTIONS } from '../../utils/categoryIcons';
 import BulkEditModal from './BulkEditModal';
+
+const fmtTime = (secs) => {
+  if (secs <= 0) return 'Finalizando...';
+  if (secs < 60) return `~${secs} seg restantes`;
+  if (secs < 3600) return `~${Math.ceil(secs / 60)} min restantes`;
+  const h = Math.floor(secs / 3600);
+  const m = Math.ceil((secs % 3600) / 60);
+  return m > 0 ? `~${h} h ${m} min restantes` : `~${h} h restantes`;
+};
 
 const ProductManagementView = ({
   user,
@@ -43,6 +53,7 @@ const ProductManagementView = ({
   importProgress,
   templateLoading,
   importResult,
+  setImportJob,
   fileInputRef,
   selectedRows,
   setSelectedRows,
@@ -111,6 +122,18 @@ const ProductManagementView = ({
   closeBulkEditModal,
   updateBulkEditItem,
   handleBulkEditSave,
+  suggestingImage,
+  suggestImage,
+  uploadingImage,
+  uploadImage,
+  savingProduct,
+  driveToProxyUrl,
+  handleBulkSuggestImages,
+  bulkImageProgress,
+  setBulkImageProgress,
+  cancelBulkImages,
+  cancelImport,
+  config,
 }) => {
   const [categorySearch, setCategorySearch] = useState('');
   const [categoryInputText, setCategoryInputText] = useState('');
@@ -118,9 +141,16 @@ const ProductManagementView = ({
   const [focusedIdx, setFocusedIdx] = useState(-1);
   const [showCategoryFilter, setShowCategoryFilter] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [imgLoading, setImgLoading] = useState(false);
+  useEffect(() => { if (formData.imagen_url) setImgLoading(true); }, [formData.imagen_url]);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [expandedRows, setExpandedRows] = useState(new Set());
   const categoryFilterRef = useRef(null);
+  const bulkImageBottomRef = useRef(null);
+
+  useEffect(() => {
+    bulkImageBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [bulkImageProgress?.results?.length]);
 
   const toggleRowExpanded = (id) => setExpandedRows(prev => {
     const next = new Set(prev);
@@ -451,6 +481,13 @@ const ProductManagementView = ({
               Desactivar control stock
             </button>
             <button
+              onClick={handleBulkSuggestImages}
+              className="btn btn-sm bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100"
+            >
+              <Sparkles className="w-4 h-4" />
+              Sugerir fotos
+            </button>
+            <button
               onClick={() => setShowBulkDeleteModal(true)}
               className="btn btn-sm bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
             >
@@ -535,6 +572,13 @@ const ProductManagementView = ({
                 <td data-mobile="title" onClick={() => toggleRowExpanded(product.id)} className="md:cursor-default cursor-pointer">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     {(() => {
+                      if (product.imagen_url) {
+                        return (
+                          <div className="w-9 h-9 rounded-full bg-gray-100 flex-shrink-0 overflow-hidden">
+                            <img src={driveToProxyUrl(product.imagen_url)} alt="" className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none'; e.target.parentNode.classList.add('flex','items-center','justify-center'); }} />
+                          </div>
+                        );
+                      }
                       const cat = categories.find(c => c.id === product.categoria_id);
                       const CatIcon = getCategoryIcon(cat?.nombre, cat?.icono);
                       return (
@@ -659,146 +703,260 @@ const ProductManagementView = ({
 
             <form onSubmit={handleSubmit}>
               <div className="space-y-3">
-                {/* Row 1: Nombre */}
-                <div className="form-group">
-                  <label className="form-label">Nombre del Producto *</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={formData.nombre}
-                    onChange={(e) => setFormData({...formData, nombre: e.target.value})}
-                    required
-                  />
-                </div>
+                {/* Layout 2 columnas: foto | campos */}
+                <div className="flex gap-4 items-start">
 
-                {/* Row 2: Clase | Modo precio | Código */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="form-group">
-                    <label className="form-label">Clase *</label>
-                    <select
-                      className="form-select"
-                      value={formData.kind}
-                      onChange={(e) => setFormData({...formData, kind: e.target.value, combo_items: [], control_stock: e.target.value === 'combo' ? false : formData.control_stock})}
-                      required
-                    >
-                      <option value="normal">Normal</option>
-                      <option value="combo">Combo</option>
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Modo de precio *</label>
-                    <select
-                      className="form-select"
-                      value={formData.tipo}
-                      onChange={(e) => setFormData({...formData, tipo: e.target.value})}
-                      required
-                    >
-                      <option value="codigo_barras">Cód. Barras</option>
-                      <option value="por_peso">Por Peso</option>
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Código de Barras</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={formData.codigo_barras}
-                      onChange={(e) => setFormData({...formData, codigo_barras: e.target.value})}
-                    />
-                  </div>
-                </div>
-
-                {/* Row 3: Categoría | Control de stock */}
-                <div className="flex flex-wrap gap-3 items-start">
-                  <div className="form-group flex-shrink-0" style={{ position: 'relative', width: '33.33%' }}>
-                    <label className="form-label">Categoría *</label>
-                    <div className="relative">
-                      {formData.categoria_id && (() => {
-                        const selCat = categories.find(c => c.id === formData.categoria_id);
-                        const SelIcon = getCategoryIcon(categoryInputText, selCat?.icono);
-                        return <SelIcon className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />;
-                      })()}
-                      <input
-                        type="text"
-                        className={`form-input${formData.categoria_id ? ' pl-8' : ''}${!formData.categoria_id && categoryInputText ? ' border-red-400' : ''}`}
-                        value={categoryInputText}
-                        onChange={e => {
-                          setCategoryInputText(e.target.value);
-                          setShowCategoryAc(true);
-                          setFormData({ ...formData, categoria_id: '' });
-                        }}
-                        onFocus={() => setShowCategoryAc(true)}
-                        onBlur={() => setTimeout(() => setShowCategoryAc(false), 150)}
-                        placeholder="Buscar categoría..."
-                        autoComplete="off"
-                      />
-                    </div>
-                    {showCategoryAc && filteredCategoryOptions.length > 0 && (
-                      <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg shadow-xl max-h-48 overflow-y-auto" style={{ top: '100%', left: 0 }}>
-                        {filteredCategoryOptions.map(cat => {
-                          const CatIcon = getCategoryIcon(cat.nombre, cat.icono);
-                          return (
-                            <div
-                              key={cat.id}
-                              className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-800 flex items-center gap-2"
-                              onMouseDown={() => {
-                                setFormData({ ...formData, categoria_id: cat.id });
-                                setCategoryInputText(cat.nombre);
-                                setShowCategoryAc(false);
-                              }}
-                            >
-                              <CatIcon className="w-4 h-4 text-gray-400 shrink-0" />
-                              {cat.nombre}
+                  {/* Columna izquierda: foto */}
+                  <div className="flex-shrink-0 flex flex-col gap-1" style={{ width: '180px' }}>
+                    <div className="relative rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden group" style={{ width: '180px', height: '180px' }}>
+                      {uploadingImage ? (
+                        <div className="flex flex-col items-center gap-2 text-gray-400">
+                          <div className="spinner w-8 h-8" />
+                          <span className="text-xs">Subiendo...</span>
+                        </div>
+                      ) : formData.imagen_url ? (
+                        <>
+                          {imgLoading && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
+                              <div className="spinner w-8 h-8" />
                             </div>
-                          );
-                        })}
-                      </div>
+                          )}
+                          <img
+                            src={driveToProxyUrl(formData.imagen_url)}
+                            alt="preview"
+                            className="w-full h-full object-contain"
+                            onLoad={() => setImgLoading(false)}
+                            onError={(e) => {
+                              setImgLoading(false);
+                              const url = formData.imagen_url || '';
+                              if (url.includes('.400.jpg')) {
+                                e.target.src = url.replace('.400.jpg', '.full.jpg');
+                              } else {
+                                e.target.style.display = 'none';
+                              }
+                            }}
+                          />
+                        </>
+                      ) : config?.company_logo ? (
+                        <img
+                          src={config.company_logo}
+                          alt="logo empresa"
+                          className="w-full h-full object-contain opacity-40"
+                        />
+                      ) : (
+                        <Package className="w-8 h-8 text-gray-300" />
+                      )}
+                      {!uploadingImage && (
+                        <label
+                          className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-lg"
+                          title="Subir foto a Open Food Facts"
+                        >
+                          <Camera className="w-7 h-7 text-white" />
+                          <span className="text-white text-xs font-medium">Subir foto</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => e.target.files[0] && uploadImage(e.target.files[0])}
+                          />
+                        </label>
+                      )}
+                    </div>
+                    {formData.imagen_url && (
+                      <a
+                        href={formData.imagen_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-blue-500 hover:text-blue-700 hover:underline text-center"
+                      >
+                        Ver imagen completa
+                      </a>
+                    )}
+                    {formData.codigo_barras && !uploadingImage && (
+                      <p className="text-xs text-gray-400 text-center leading-tight">
+                        Hover para subir foto
+                      </p>
                     )}
                   </div>
-                  <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg border transition-colors flex-1"
-                  style={{ background: formData.control_stock ? '#f0fdf4' : '#f9fafb', borderColor: formData.control_stock ? '#86efac' : '#e5e7eb' }}>
-                  {/* Toggle visual */}
-                  <div className="flex items-center gap-3 flex-shrink-0 self-center pb-1">
-                    <button
-                      type="button"
-                      disabled={formData.kind === 'combo'}
-                      onClick={() => formData.kind !== 'combo' && setFormData({...formData, control_stock: !formData.control_stock})}
-                      className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
-                      style={{ background: formData.control_stock ? 'var(--primary)' : '#d1d5db' }}
-                      aria-pressed={formData.control_stock}
-                    >
-                      <span
-                        className="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
-                        style={{ transform: formData.control_stock ? 'translateX(1.375rem)' : 'translateX(0.25rem)' }}
-                      />
-                    </button>
-                    <div>
-                      <p className="text-sm font-semibold text-gray-700 leading-tight select-none">Control de stock</p>
-                      <p className="text-xs leading-tight" style={{ color: formData.kind === 'combo' ? '#9ca3af' : formData.control_stock ? '#16a34a' : '#9ca3af' }}>
-                        {formData.kind === 'combo' ? 'No aplica en combos' : formData.control_stock ? 'Activo — se descuenta en ventas' : 'Inactivo — no se controla'}
-                      </p>
-                    </div>
-                  </div>
-                  {/* Stock inputs */}
-                  <div className="flex gap-3 flex-1 flex-wrap">
-                    <div className="form-group mb-0 flex-1 min-w-28">
-                      <label className="form-label">Stock Mínimo {formData.control_stock && <span className="text-red-500">*</span>}</label>
+
+                  {/* Columna derecha: todos los campos */}
+                  <div className="flex-1 flex flex-col gap-3 min-w-0">
+
+                    {/* Nombre */}
+                    <div className="form-group mb-0">
+                      <label className="form-label">Nombre del Producto *</label>
                       <input
-                        type="number"
+                        type="text"
                         className="form-input"
-                        disabled={!formData.control_stock}
-                        value={formData.stock_minimo}
-                        onChange={(e) => setFormData({...formData, stock_minimo: e.target.value})}
-                        required={formData.control_stock}
+                        value={formData.nombre}
+                        onChange={(e) => setFormData({...formData, nombre: e.target.value})}
+                        required
                       />
                     </div>
+
+                    {/* URL de imagen */}
+                    <div className="flex flex-col gap-1">
+                    <label className="form-label">URL de imagen</label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="url"
+                          className="form-input pr-8"
+                          placeholder="URL de imagen..."
+                          value={formData.imagen_url}
+                          onChange={(e) => setFormData({...formData, imagen_url: e.target.value})}
+                        />
+                        {formData.imagen_url && (
+                          <button
+                            type="button"
+                            onClick={() => setFormData({...formData, imagen_url: ''})}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={suggestImage}
+                        disabled={suggestingImage || !formData.nombre.trim()}
+                        title="Buscar imagen según el nombre del producto"
+                        className="btn btn-secondary flex-shrink-0 disabled:opacity-50"
+                      >
+                        {suggestingImage ? <div className="spinner w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
+                        Sugerir
+                      </button>
+                    </div>
+                    </div>
+
+                    {/* Clase | Modo precio | Código */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="form-group mb-0">
+                        <label className="form-label">Clase *</label>
+                        <select
+                          className="form-select"
+                          value={formData.kind}
+                          onChange={(e) => setFormData({...formData, kind: e.target.value, combo_items: [], control_stock: e.target.value === 'combo' ? false : formData.control_stock})}
+                          required
+                        >
+                          <option value="normal">Normal</option>
+                          <option value="combo">Combo</option>
+                        </select>
+                      </div>
+                      <div className="form-group mb-0">
+                        <label className="form-label">Modo de precio *</label>
+                        <select
+                          className="form-select"
+                          value={formData.tipo}
+                          onChange={(e) => setFormData({...formData, tipo: e.target.value})}
+                          required
+                        >
+                          <option value="codigo_barras">Cód. Barras</option>
+                          <option value="por_peso">Por Peso</option>
+                        </select>
+                      </div>
+                      <div className="form-group mb-0">
+                        <label className="form-label">Código de Barras</label>
+                        <input
+                          type="text"
+                          className="form-input"
+                          value={formData.codigo_barras}
+                          onChange={(e) => setFormData({...formData, codigo_barras: e.target.value})}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Categoría | Stock Mínimo | Control de stock */}
+                    <div className="grid grid-cols-3 gap-3 items-end">
+                      {/* Categoría */}
+                      <div className="form-group mb-0 relative">
+                        <label className="form-label">Categoría *</label>
+                        <div className="relative">
+                          {formData.categoria_id && (() => {
+                            const selCat = categories.find(c => c.id === formData.categoria_id);
+                            const SelIcon = getCategoryIcon(categoryInputText, selCat?.icono);
+                            return <SelIcon className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />;
+                          })()}
+                          <input
+                            type="text"
+                            className={`form-input${formData.categoria_id ? ' pl-8' : ''}${!formData.categoria_id && categoryInputText ? ' border-red-400' : ''}`}
+                            value={categoryInputText}
+                            onChange={e => {
+                              setCategoryInputText(e.target.value);
+                              setShowCategoryAc(true);
+                              setFormData({ ...formData, categoria_id: '' });
+                            }}
+                            onFocus={() => setShowCategoryAc(true)}
+                            onBlur={() => setTimeout(() => setShowCategoryAc(false), 150)}
+                            placeholder="Buscar categoría..."
+                            autoComplete="off"
+                          />
+                        </div>
+                        {showCategoryAc && filteredCategoryOptions.length > 0 && (
+                          <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg shadow-xl max-h-48 overflow-y-auto" style={{ top: '100%', left: 0 }}>
+                            {filteredCategoryOptions.map(cat => {
+                              const CatIcon = getCategoryIcon(cat.nombre, cat.icono);
+                              return (
+                                <div
+                                  key={cat.id}
+                                  className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-800 flex items-center gap-2"
+                                  onMouseDown={() => {
+                                    setFormData({ ...formData, categoria_id: cat.id });
+                                    setCategoryInputText(cat.nombre);
+                                    setShowCategoryAc(false);
+                                  }}
+                                >
+                                  <CatIcon className="w-4 h-4 text-gray-400 shrink-0" />
+                                  {cat.nombre}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      {/* Stock Mínimo */}
+                      <div className="form-group mb-0">
+                        <label className="form-label">Stock Mínimo {formData.control_stock && <span className="text-red-500">*</span>}</label>
+                        <input
+                          type="number"
+                          className="form-input"
+                          disabled={!formData.control_stock}
+                          value={formData.stock_minimo}
+                          onChange={(e) => setFormData({...formData, stock_minimo: e.target.value})}
+                          required={formData.control_stock}
+                        />
+                      </div>
+                      {/* Control de stock */}
+                      <div className="form-group mb-0">
+                        <label className="form-label">Control de stock</label>
+                        <div className="form-input flex items-center justify-between">
+                          <span className="text-sm" style={{ color: formData.kind === 'combo' ? '#9ca3af' : formData.control_stock ? '#16a34a' : '#9ca3af' }}>
+                            {formData.kind === 'combo' ? 'No aplica' : formData.control_stock ? 'Activo' : 'Inactivo'}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={formData.kind === 'combo'}
+                            onClick={() => formData.kind !== 'combo' && setFormData({...formData, control_stock: !formData.control_stock})}
+                            className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
+                            style={{ background: formData.control_stock ? 'var(--primary)' : '#d1d5db' }}
+                            aria-pressed={formData.control_stock}
+                          >
+                            <span
+                              className="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
+                              style={{ transform: formData.control_stock ? 'translateX(1.375rem)' : 'translateX(0.25rem)' }}
+                            />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
                   </div>
-                </div>
                 </div>
 
                 {/* Combo items */}
                 {formData.kind === 'combo' && (
                   <div className="space-y-3">
+                  <div className="border-t-2 border-purple-200" />
                     <label className="form-label flex items-center gap-1">
                       <Layers className="w-4 h-4 text-purple-600" />
                       Productos del combo
@@ -931,14 +1089,17 @@ const ProductManagementView = ({
                   onClick={closeProductModal}
                   className="btn btn-secondary"
                 >
-                  Cancelar
+                  Cerrar
                 </button>
                 <button
                   type="submit"
                   className="btn btn-primary"
+                  disabled={savingProduct}
                 >
-                  <Save className="w-4 h-4" />
-                  {editingProduct ? 'Actualizar' : 'Crear'} Producto
+                  {savingProduct
+                    ? <><div className="spinner w-4 h-4" />{editingProduct ? 'Actualizando...' : 'Creando...'}</>
+                    : <><Save className="w-4 h-4" />{editingProduct ? 'Actualizar' : 'Crear'} Producto</>
+                  }
                 </button>
               </div>
             </form>
@@ -952,9 +1113,20 @@ const ProductManagementView = ({
           <div className={`modal-content modal-content-bounce${importModalClosing ? ' closing' : ''}`}>
             <div className="modal-header">
               <h3 className="modal-title">Importar Productos</h3>
-              <button onClick={closeImportModalAnim} className="modal-close">
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {importLoading && (
+                  <button
+                    type="button"
+                    onClick={() => { setImportJob(prev => ({ ...prev, minimized: true })); setShowImportModal(false); }}
+                    className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded px-2 py-1 hover:bg-gray-50"
+                  >
+                    Segundo plano
+                  </button>
+                )}
+                <button onClick={closeImportModalAnim} className="modal-close">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {!importResult ? (
@@ -1017,9 +1189,15 @@ const ProductManagementView = ({
                 )}
 
                 <div className="flex justify-end space-x-3 mt-6">
-                  <button type="button" onClick={closeImportModalAnim} className="btn btn-secondary" disabled={importLoading}>
-                    Cancelar
-                  </button>
+                  {importLoading ? (
+                    <button type="button" onClick={cancelImport} className="btn btn-danger">
+                      Cancelar importación
+                    </button>
+                  ) : (
+                    <button type="button" onClick={closeImportModalAnim} className="btn btn-secondary">
+                      Cancelar
+                    </button>
+                  )}
                   <button type="submit" className="btn btn-primary" disabled={importLoading}>
                     {importLoading ? (
                       <span className="flex items-center gap-2">
@@ -1351,6 +1529,92 @@ const ProductManagementView = ({
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Suggest Images Modal */}
+      {bulkImageProgress && !bulkImageProgress.minimized && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '480px', width: '95vw' }}>
+            <div className="modal-header">
+              <h3 className="modal-title flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-purple-600" />
+                Sugerencia de fotos
+              </h3>
+              <div className="flex items-center gap-2">
+                {bulkImageProgress.running && (
+                  <>
+                    <button
+                      onClick={cancelBulkImages}
+                      className="text-xs text-red-500 hover:text-red-700 border border-red-200 rounded px-2 py-1 hover:bg-red-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={() => setBulkImageProgress(prev => ({ ...prev, minimized: true }))}
+                      className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded px-2 py-1 hover:bg-gray-50"
+                    >
+                      Segundo plano
+                    </button>
+                  </>
+                )}
+                {!bulkImageProgress.running && (
+                  <button onClick={() => setBulkImageProgress(null)} className="modal-close">
+                    <X className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Progreso */}
+            <div className="mb-4">
+              <div className="flex justify-between text-sm text-gray-600 mb-1">
+                <span>{bulkImageProgress.running ? 'Buscando imágenes...' : 'Completado'}</span>
+                <span className="font-medium">{bulkImageProgress.current} / {bulkImageProgress.total}</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden mb-1">
+                <div
+                  className="h-3 rounded-full transition-all duration-300"
+                  style={{
+                    width: `${bulkImageProgress.total ? (bulkImageProgress.current / bulkImageProgress.total) * 100 : 0}%`,
+                    background: bulkImageProgress.running ? 'var(--primary)' : '#8b5cf6',
+                  }}
+                />
+              </div>
+              {bulkImageProgress.running && bulkImageProgress.secsRemaining !== null && bulkImageProgress.current > 0 && (
+                <p className="text-xs text-gray-400 text-right">{fmtTime(bulkImageProgress.secsRemaining)}</p>
+              )}
+            </div>
+
+            {/* Resultados */}
+            {bulkImageProgress.results.length > 0 && (
+              <div className="max-h-64 overflow-y-auto space-y-1 border border-gray-100 rounded-lg p-2">
+                {bulkImageProgress.results.map((r, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm py-1 px-2 rounded">
+                    <span className={`flex-shrink-0 text-base ${r.skipped ? 'text-blue-300' : r.ok ? 'text-green-500' : 'text-gray-300'}`}>
+                      {r.skipped ? '↷' : r.ok ? '✓' : '–'}
+                    </span>
+                    <span className={`truncate ${r.skipped ? 'text-gray-400 italic' : r.ok ? 'text-gray-800' : 'text-gray-400'}`}>{r.nombre}</span>
+                    {r.skipped && <span className="text-xs text-blue-300 flex-shrink-0">ya tiene foto</span>}
+                  </div>
+                ))}
+                <div ref={bulkImageBottomRef} />
+              </div>
+            )}
+
+            {!bulkImageProgress.running && (
+              <div className="flex justify-between items-center mt-4 text-sm text-gray-500">
+                <span>
+                  <span className="text-green-600 font-medium">{bulkImageProgress.results.filter(r => r.ok && !r.skipped).length}</span> encontradas,{' '}
+                  <span className="text-blue-400">{bulkImageProgress.results.filter(r => r.skipped).length}</span> ya tenían,{' '}
+                  <span className="text-gray-400">{bulkImageProgress.results.filter(r => !r.ok && !r.skipped).length}</span> sin resultado
+                </span>
+                <button onClick={() => setBulkImageProgress(null)} className="btn btn-primary btn-sm">
+                  Cerrar
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

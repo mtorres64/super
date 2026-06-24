@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Menu, AlertTriangle } from 'lucide-react';
+import { Menu, AlertTriangle, Sparkles, Upload } from 'lucide-react';
 import './App.css';
 
 // Components
@@ -26,6 +26,8 @@ import StockAlerts from './components/StockAlerts';
 import Notificaciones from './components/Notificaciones';
 import Manual from './components/Manual';
 import CustomerManagement from './components/CustomerManagement';
+import Tienda from './components/Tienda';
+import TiendaAdmin from './components/TiendaAdmin';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner';
 import BranchSelectionModal from './components/BranchSelectionModal';
@@ -36,16 +38,19 @@ const API = `${BACKEND_URL}/api`;
 // Context for authentication
 export const AuthContext = React.createContext();
 
+// Context for background jobs (persists across route changes)
+export const BulkJobContext = React.createContext();
+
 // Apply animation preference on startup
 if (localStorage.getItem('modal_animations') === 'false') {
   document.body.classList.add('no-animations');
 }
 
-// Apply dark mode preference on startup (skip login/landing)
+// Apply dark mode preference on startup (skip login/landing/tienda)
 if (localStorage.getItem('dark_mode') === 'true') {
   const path = window.location.pathname;
   const LANDING_PATHS = ['/', '/login', '/kioscos', '/ferreterias', '/petshops', '/corralones', '/distribuidoras', '/ropa'];
-  if (!LANDING_PATHS.includes(path)) {
+  if (!LANDING_PATHS.includes(path) && !path.startsWith('/tienda/')) {
     document.documentElement.classList.add('dark');
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#1e1e1e');
   }
@@ -152,7 +157,8 @@ const DarkModeManager = () => {
   React.useEffect(() => {
     const PUBLIC_PATHS = ['/', '/login'];
     const isDark = localStorage.getItem('dark_mode') === 'true';
-    if (isDark && !PUBLIC_PATHS.includes(location.pathname)) {
+    const isTienda = location.pathname.startsWith('/tienda/');
+    if (isDark && !PUBLIC_PATHS.includes(location.pathname) && !isTienda) {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
@@ -351,9 +357,13 @@ export const AuthProvider = ({ children }) => {
 // Layout component
 const Layout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { user, suscripcion, isImpersonating, impersonationEmpresa, stopImpersonation } = React.useContext(AuthContext);
+  const { user, suscripcion, modulosActivos, isImpersonating, impersonationEmpresa, stopImpersonation } = React.useContext(AuthContext);
+  const { bulkImageProgress, setBulkImageProgress, importJob, setImportJob } = React.useContext(BulkJobContext);
+  const navigateTo = useNavigate();
+  const location = useLocation();
   const [stockAlertCount, setStockAlertCount] = useState(0);
   const [notifCount, setNotifCount] = useState(0);
+  const [tiendaPendingCount, setTiendaPendingCount] = useState(0);
 
   useEffect(() => {
     if (!user) return;
@@ -387,19 +397,111 @@ const Layout = ({ children }) => {
     };
   }, [user]);
 
+  useEffect(() => {
+    if (!user || !modulosActivos.includes('tienda')) return;
+    const fetchPendingCount = () => {
+      axios.get(`${API}/pedidos/pendientes/count`)
+        .then(res => setTiendaPendingCount(res.data?.pendientes || 0))
+        .catch(() => {});
+    };
+    fetchPendingCount();
+    const interval = setInterval(fetchPendingCount, 30 * 1000);
+    window.addEventListener('tienda-pedido-nuevo', fetchPendingCount);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('tienda-pedido-nuevo', fetchPendingCount);
+    };
+  }, [user, modulosActivos]);
+
   const enGracia = suscripcion?.en_gracia;
   const graciaVenc = suscripcion?.gracia_vencimiento;
   const diasGracia = suscripcion?.dias_restantes ?? 0;
 
   return (
     <div className="flex h-screen bg-gray-50">
+      {/* Toast flotante: proceso en segundo plano */}
+      {bulkImageProgress?.minimized && (
+        <div
+          onClick={() => {
+            setBulkImageProgress(prev => ({ ...prev, minimized: false }));
+            if (location.pathname !== '/products') navigateTo('/products');
+          }}
+          className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 cursor-pointer bg-white border border-gray-200 rounded-xl shadow-lg p-3 flex flex-col gap-1.5"
+          style={{ minWidth: '260px', maxWidth: '320px' }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              {bulkImageProgress.running
+                ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-200 border-t-purple-600" />
+                : <Sparkles className="w-4 h-4 text-purple-600" />}
+              <span className="text-sm font-medium text-gray-700">
+                {bulkImageProgress.running ? 'Buscando imágenes...' : 'Sugerencia completada'}
+              </span>
+            </div>
+            <span className="text-xs text-gray-400 flex-shrink-0">
+              {bulkImageProgress.current}/{bulkImageProgress.total}
+            </span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+            <div
+              className="h-1.5 rounded-full transition-all duration-300"
+              style={{
+                width: `${bulkImageProgress.total ? (bulkImageProgress.current / bulkImageProgress.total) * 100 : 0}%`,
+                backgroundColor: bulkImageProgress.running ? 'var(--primary)' : '#8b5cf6',
+              }}
+            />
+          </div>
+          {bulkImageProgress.running && bulkImageProgress.secsRemaining > 0 && (
+            <p className="text-xs text-gray-400 text-right">
+              {bulkImageProgress.secsRemaining < 60
+                ? `~${bulkImageProgress.secsRemaining} seg restantes`
+                : bulkImageProgress.secsRemaining < 3600
+                  ? `~${Math.ceil(bulkImageProgress.secsRemaining / 60)} min restantes`
+                  : `~${(bulkImageProgress.secsRemaining / 3600).toFixed(1)} h restantes`}
+            </p>
+          )}
+          <p className="text-xs text-purple-500 text-center">Tocá para ver detalle</p>
+        </div>
+      )}
+
+      {/* Toast flotante: importación en segundo plano */}
+      {importJob?.minimized && (
+        <div
+          onClick={() => {
+            setImportJob(prev => ({ ...prev, minimized: false }));
+            if (location.pathname !== '/products') navigateTo('/products');
+          }}
+          className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 cursor-pointer bg-white border border-gray-200 rounded-xl shadow-lg p-3 flex flex-col gap-1.5"
+          style={{ minWidth: '260px', maxWidth: '320px' }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              {importJob.loading
+                ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-200 border-t-green-600" />
+                : <Upload className="w-4 h-4 text-green-600" />}
+              <span className="text-sm font-medium text-gray-700">
+                {importJob.loading ? 'Importando productos...' : 'Importación completada'}
+              </span>
+            </div>
+            <span className="text-xs text-gray-400 flex-shrink-0">{importJob.progress}%</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+            <div
+              className="h-1.5 rounded-full transition-all duration-300 bg-green-500"
+              style={{ width: `${importJob.progress}%` }}
+            />
+          </div>
+          <p className="text-xs text-green-600 text-center">Tocá para ver detalle</p>
+        </div>
+      )}
+
       {sidebarOpen && (
         <div
           className="sidebar-overlay overlay-visible"
           onClick={() => setSidebarOpen(false)}
         />
       )}
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} stockAlertCount={stockAlertCount} notifCount={notifCount} />
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} stockAlertCount={stockAlertCount} notifCount={notifCount} tiendaPendingCount={tiendaPendingCount} />
       <div
         className="flex-1 flex flex-col overflow-hidden"
         style={{
@@ -541,9 +643,25 @@ const ProtectedRoute = ({ children, allowedRoles = [], skipSubscriptionCheck = f
   return <Layout>{children}</Layout>;
 };
 
+const RequireAuth = ({ children }) => {
+  const { user, loading } = React.useContext(AuthContext);
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="animate-spin rounded-full h-7 w-7 border-2 border-gray-200 border-t-green-600"></div>
+      </div>
+    );
+  }
+  if (!user) return <Navigate to="/login" />;
+  return children;
+};
+
 function App() {
+  const [bulkImageProgress, setBulkImageProgress] = React.useState(null);
+  const [importJob, setImportJob] = React.useState(null); // { loading, progress, result, minimized }
   return (
     <div className="App">
+      <BulkJobContext.Provider value={{ bulkImageProgress, setBulkImageProgress, importJob, setImportJob }}>
       <AuthProvider>
         <BrowserRouter>
           <DarkModeManager />
@@ -681,10 +799,24 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            {/* Tienda pública — maneja su propia auth de clientes */}
+            <Route path="/tienda/:empresa_id" element={<Tienda />} />
+            <Route path="/tienda/:empresa_id/login" element={<Tienda seccion="login" />} />
+            <Route path="/tienda/:empresa_id/checkout" element={<Tienda seccion="checkout" />} />
+            {/* Módulo admin Tienda */}
+            <Route
+              path="/tienda-admin"
+              element={
+                <ProtectedRoute allowedRoles={['admin']} modulo="tienda">
+                  <TiendaAdmin />
+                </ProtectedRoute>
+              }
+            />
           </Routes>
         </BrowserRouter>
         <Toaster />
       </AuthProvider>
+      </BulkJobContext.Provider>
     </div>
   );
 }

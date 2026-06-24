@@ -20,11 +20,19 @@ import {
   Tag,
   Layers,
   CircleDot,
+  Store,
 } from 'lucide-react';
 import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
 import { getCategoryIcon } from '../../utils/categoryIcons';
 import BranchBulkEditModal from './BranchBulkEditModal';
+
+const _BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+const driveToProxyUrl = (url) => {
+  if (!url || !url.includes('drive.google.com')) return url;
+  const m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  return m ? `${_BACKEND_URL}/api/drive-image?file_id=${m[1]}` : url;
+};
 
 const BranchManagementView = ({
   loading,
@@ -136,6 +144,11 @@ const BranchManagementView = ({
   onUpdateBranchBulkEditItem,
   onHandleBranchBulkEditSave,
   tieneMultiSucursal = true,
+  tieneTienda = false,
+  togglingTiendaId = null,
+  bulkTiendaLoading = false,
+  onToggleMostrarEnTienda,
+  onBulkSetMostrarEnTienda,
 }) => {
   const [focusedIdx, setFocusedIdx] = React.useState(-1);
   const [showCategoryFilter, setShowCategoryFilter] = React.useState(false);
@@ -443,6 +456,34 @@ const BranchManagementView = ({
                 <Package className="w-4 h-4" />
                 Stock
               </button>
+              {tieneTienda && (
+                <>
+                  <button
+                    onClick={() => onBulkSetMostrarEnTienda(true)}
+                    disabled={bulkTiendaLoading}
+                    className="btn btn-sm bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {bulkTiendaLoading ? (
+                      <div className="animate-spin rounded-full w-4 h-4" style={{ border: '2px solid #ddd6fe', borderTopColor: '#9333ea' }} />
+                    ) : (
+                      <Store className="w-4 h-4" />
+                    )}
+                    Mostrar en tienda
+                  </button>
+                  <button
+                    onClick={() => onBulkSetMostrarEnTienda(false)}
+                    disabled={bulkTiendaLoading}
+                    className="btn btn-sm bg-purple-50 text-purple-600 border border-purple-200 hover:bg-purple-100 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {bulkTiendaLoading ? (
+                      <div className="animate-spin rounded-full w-4 h-4" style={{ border: '2px solid #ddd6fe', borderTopColor: '#9333ea' }} />
+                    ) : (
+                      <EyeOff className="w-4 h-4" />
+                    )}
+                    Ocultar de tienda
+                  </button>
+                </>
+              )}
               <button
                 onClick={() => onSetShowBulkDeleteModal(true)}
                 className="btn btn-sm bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
@@ -509,6 +550,7 @@ const BranchManagementView = ({
                   <th className="text-center cursor-pointer select-none bg-yellow-100 hover:bg-yellow-200" onClick={() => requestSort('precio_sucursal')}>Precio Sucursal <SortIcon columnKey="precio_sucursal" sortConfig={sortConfig} /></th>
                   <th className="text-center cursor-pointer select-none bg-yellow-100 hover:bg-yellow-200" onClick={() => requestSort('stock_sucursal')}>Stock Sucursal <SortIcon columnKey="stock_sucursal" sortConfig={sortConfig} /></th>
                   <th className="text-center cursor-pointer select-none hover:bg-gray-50" onClick={() => requestSort('stock_minimo_sucursal')}>Stock Mínimo <SortIcon columnKey="stock_minimo_sucursal" sortConfig={sortConfig} /></th>
+                  {tieneTienda && <th className="text-center">En Tienda</th>}
                   <th className="text-center">Activo</th>
                 </tr>
               </thead>
@@ -546,6 +588,13 @@ const BranchManagementView = ({
                       <td data-mobile="title" onClick={() => toggleRowExpanded(product.product_id)} className="md:cursor-default cursor-pointer">
                         <div className="flex items-center gap-3 flex-1 min-w-0">
                           {(() => {
+                            if (product.imagen_url) {
+                              return (
+                                <div className="w-9 h-9 rounded-full bg-gray-100 flex-shrink-0 overflow-hidden">
+                                  <img src={driveToProxyUrl(product.imagen_url)} alt="" className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none'; e.target.parentNode.classList.add('flex','items-center','justify-center'); }} />
+                                </div>
+                              );
+                            }
                             const cat = categories.find(c => c.id === product.categoria_id);
                             const CatIcon = getCategoryIcon(cat?.nombre, cat?.icono);
                             return (
@@ -652,6 +701,32 @@ const BranchManagementView = ({
                           onChange={(e) => onProductFieldChange(product.product_id, 'stock_minimo', parseInt(e.target.value) || 0)}
                         />
                       </td>
+                      {tieneTienda && (
+                        <td data-label="En Tienda" className="text-center">
+                          {togglingTiendaId === product.branch_product_id ? (
+                            <div className="inline-flex items-center justify-center" style={{ width: 36, height: 20 }}>
+                              <div
+                                className="animate-spin rounded-full"
+                                style={{ width: 16, height: 16, border: '2.5px solid #e9d5ff', borderTopColor: '#9333ea' }}
+                              />
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={!product.branch_product_id}
+                              onClick={() => onToggleMostrarEnTienda(product)}
+                              title={!product.branch_product_id ? 'Guarda cambios primero' : product.mostrar_en_tienda_sucursal ? 'Visible en tienda — clic para ocultar' : 'Oculto de tienda — clic para mostrar'}
+                              className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-40"
+                              style={{ background: product.mostrar_en_tienda_sucursal ? '#9333ea' : '#d1d5db' }}
+                            >
+                              <span
+                                className="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform"
+                                style={{ transform: product.mostrar_en_tienda_sucursal ? 'translateX(1.1rem)' : 'translateX(0.2rem)' }}
+                              />
+                            </button>
+                          )}
+                        </td>
+                      )}
                       <td data-label="Activo" className="text-center">
                         <button
                           type="button"

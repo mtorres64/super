@@ -11,6 +11,7 @@ import {
   Building2,
   ShoppingBag,
   Users,
+  Store,
 } from 'lucide-react';
 import SidebarView from './SidebarView';
 
@@ -71,9 +72,16 @@ const menuItems = [
     roles: ['admin'],
     modulo: 'inventario',
   },
+  {
+    path: '/tienda-admin',
+    label: 'Tienda',
+    icon: Store,
+    roles: ['admin'],
+    modulo: 'tienda',
+  },
 ];
 
-const Sidebar = ({ isOpen, onClose, stockAlertCount = 0, notifCount = 0 }) => {
+const Sidebar = ({ isOpen, onClose, stockAlertCount = 0, notifCount = 0, tiendaPendingCount = 0 }) => {
   const { user, logout, modulosActivos, activeBranch, userBranches, openBranchSelector, isImpersonating, impersonationEmpresa, stopImpersonation } = useContext(AuthContext);
   const location = useLocation();
   const [config, setConfig] = useState(null);
@@ -126,6 +134,7 @@ const Sidebar = ({ isOpen, onClose, stockAlertCount = 0, notifCount = 0 }) => {
       allowedItems={allowedItems}
       notifCount={notifCount}
       stockAlertCount={stockAlertCount}
+      tiendaPendingCount={tiendaPendingCount}
       isActive={isActive}
       onClose={onClose}
       onLogout={handleLogout}

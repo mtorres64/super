@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useContext } from 'react';
 import axios from 'axios';
-import { API, AuthContext } from '../../App';
+import { API, AuthContext, BulkJobContext } from '../../App';
 import { useSortableData } from '../../hooks/useSortableData';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -10,9 +10,16 @@ import ProductManagementView from './ProductManagementView';
 const normalize = (str) =>
   str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w\s]/g, '').toLowerCase();
 
+export const driveToProxyUrl = (url) => {
+  if (!url || !url.includes('drive.google.com')) return url;
+  const m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  return m ? `${API}/drive-image?file_id=${m[1]}` : url;
+};
+
 const ProductManagement = () => {
   const navigate = useNavigate();
   const { user, activeBranch } = useContext(AuthContext);
+  const { bulkImageProgress, setBulkImageProgress, importJob, setImportJob } = useContext(BulkJobContext);
   const [products, setProducts] = useState([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -23,6 +30,8 @@ const ProductManagement = () => {
   const [loading, setLoading] = useState(true);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const searchTimerRef = useRef(null);
+  const cancelBulkRef = useRef(false);
+  const importAbortRef = useRef(null);
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -35,10 +44,10 @@ const ProductManagement = () => {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFile, setImportFile] = useState(null);
-  const [importLoading, setImportLoading] = useState(false);
-  const [importProgress, setImportProgress] = useState(0);
   const [templateLoading, setTemplateLoading] = useState(false);
-  const [importResult, setImportResult] = useState(null);
+  const importLoading = importJob?.loading ?? false;
+  const importProgress = importJob?.progress ?? 0;
+  const importResult = importJob?.result ?? null;
   const fileInputRef = useRef(null);
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [selectAllGlobal, setSelectAllGlobal] = useState(false);
@@ -62,9 +71,14 @@ const ProductManagement = () => {
     stock: '',
     stock_minimo: 10,
     control_stock: true,
-    combo_items: []
+    combo_items: [],
+    imagen_url: '',
+    drive_file_id: ''
   });
   const [comboItemInput, setComboItemInput] = useState({ product_id: '', cantidad: 1 });
+  const [suggestingImage, setSuggestingImage] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [savingProduct, setSavingProduct] = useState(false);
   const [comboSearch, setComboSearch] = useState('');
   const [showComboDropdown, setShowComboDropdown] = useState(false);
   const comboSearchRef = useRef(null);
@@ -118,10 +132,15 @@ const ProductManagement = () => {
     }
   };
 
+
   useEffect(() => {
     fetchCategories();
     fetchConfiguration();
-  }, []);
+    // Si hay una importación activa (minimizada o no), reabrir el modal al volver
+    if (importJob && !importJob.minimized) {
+      setShowImportModal(true);
+    }
+  }, []); // eslint-disable-line
 
   // Auto-search while typing (from 2nd character), with debounce
   useEffect(() => {
@@ -176,6 +195,104 @@ const ProductManagement = () => {
     }
   }, [showModal, formData.kind]);
 
+  const uploadImage = async (file) => {
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const token = localStorage.getItem('token');
+      const body = new FormData();
+      body.append('file', file);
+      const res = await axios.post(
+        `${API}/products/upload-image`,
+        body,
+        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' } }
+      );
+      if (res.data?.url) {
+        setFormData(prev => ({
+          ...prev,
+          imagen_url: res.data.url,
+          drive_file_id: res.data.drive_file_id || ''
+        }));
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Error al subir la imagen');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const suggestImage = async () => {
+    const nombre = formData.nombre.trim();
+    if (!nombre) return;
+    setSuggestingImage(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get(`${API}/products/suggest-image`, {
+        params: { q: nombre, ...(formData.codigo_barras && { barcode: formData.codigo_barras }) },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.data?.url) {
+        setFormData(prev => ({ ...prev, imagen_url: res.data.url, drive_file_id: '' }));
+      } else {
+        toast.warning('No se encontró imagen para ese producto');
+      }
+    } catch {
+      toast.error('No se encontró imagen para ese producto');
+    } finally {
+      setSuggestingImage(false);
+    }
+  };
+
+  const cancelBulkImages = () => { cancelBulkRef.current = true; };
+
+  const handleBulkSuggestImages = async () => {
+    const token = localStorage.getItem('token');
+    cancelBulkRef.current = false;
+    let targets = [];
+    if (selectAllGlobal) {
+      // Traer todos los productos sin paginar
+      try {
+        const res = await axios.get(`${API}/products`, { params: { page: 1, per_page: 10000, ...(debouncedSearch && { search: debouncedSearch }) } });
+        targets = res.data.items;
+      } catch { toast.error('Error al obtener productos'); return; }
+    } else {
+      targets = products.filter(p => selectedRows.has(p.id));
+    }
+
+    targets = targets.filter(p => !p.imagen_url);
+
+    const startTime = Date.now();
+    setBulkImageProgress({ current: 0, total: targets.length, results: [], running: true, startTime, secsRemaining: null });
+
+    for (let i = 0; i < targets.length; i++) {
+      if (cancelBulkRef.current) break;
+      const p = targets[i];
+      let ok = false;
+      try {
+        const res = await axios.get(`${API}/products/suggest-image`, {
+          params: { q: p.nombre, ...(p.codigo_barras && { barcode: p.codigo_barras }) },
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.data?.url) {
+          await axios.put(`${API}/products/${p.id}`, { imagen_url: res.data.url }, { headers: { Authorization: `Bearer ${token}` } });
+          ok = true;
+        }
+      } catch { /* no-op */ }
+      const done = i + 1;
+      const elapsed = (Date.now() - startTime) / 1000;
+      const secsRemaining = Math.round((elapsed / done) * (targets.length - done));
+      setBulkImageProgress(prev => ({
+        ...prev,
+        current: done,
+        secsRemaining,
+        results: [...prev.results, { nombre: p.nombre, ok }],
+      }));
+    }
+
+    setBulkImageProgress(prev => ({ ...prev, running: false, minimized: false }));
+    loadProducts(currentPage, debouncedSearch, config?.items_per_page || 50);
+  };
+
   const resetForm = () => {
     setFormData({
       nombre: '',
@@ -188,7 +305,9 @@ const ProductManagement = () => {
       stock: '',
       stock_minimo: 10,
       control_stock: true,
-      combo_items: []
+      combo_items: [],
+      imagen_url: '',
+      drive_file_id: ''
     });
     setComboItemInput({ product_id: '', cantidad: 1 });
     setComboSearch('');
@@ -209,7 +328,9 @@ const ProductManagement = () => {
         stock: product.stock.toString(),
         stock_minimo: product.stock_minimo.toString(),
         control_stock: product.control_stock !== undefined ? product.control_stock : true,
-        combo_items: product.combo_items || []
+        combo_items: product.combo_items || [],
+        imagen_url: product.imagen_url || '',
+        drive_file_id: product.drive_file_id || ''
       });
       setComboItemInput({ product_id: '', cantidad: 1 });
       setComboSearch('');
@@ -262,6 +383,7 @@ const ProductManagement = () => {
       return;
     }
 
+    setSavingProduct(true);
     try {
       const productData = {
         ...formData,
@@ -290,6 +412,8 @@ const ProductManagement = () => {
           ? detail.map(d => d.msg).join(', ')
           : 'Error al guardar el producto';
       toast.error(msg);
+    } finally {
+      setSavingProduct(false);
     }
   };
 
@@ -378,9 +502,8 @@ const ProductManagement = () => {
       toast.error('Selecciona un archivo');
       return;
     }
-    setImportLoading(true);
-    setImportProgress(0);
-    setImportResult(null);
+    importAbortRef.current = new AbortController();
+    setImportJob({ loading: true, progress: 0, result: null, minimized: false });
     try {
       const token = localStorage.getItem('token');
       const formDataFile = new FormData();
@@ -390,6 +513,7 @@ const ProductManagement = () => {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formDataFile,
+        signal: importAbortRef.current.signal,
       });
 
       if (!response.ok) {
@@ -412,10 +536,10 @@ const ProductManagement = () => {
           try {
             const data = JSON.parse(line.slice(6));
             if (data.progress !== undefined) {
-              setImportProgress(data.progress);
+              setImportJob(prev => ({ ...prev, progress: data.progress }));
             }
             if (data.done) {
-              setImportResult(data);
+              setImportJob(prev => ({ ...prev, loading: false, result: data }));
               setCurrentPage(1);
               setSearchTerm('');
               setDebouncedSearch('');
@@ -426,14 +550,23 @@ const ProductManagement = () => {
         }
       }
     } catch (error) {
-      toast.error(error.message || 'Error al importar productos');
+      if (error.name === 'AbortError') {
+        setImportJob(null);
+        toast.info('Importación cancelada');
+      } else {
+        toast.error(error.message || 'Error al importar productos');
+        setImportJob(null);
+      }
     } finally {
-      setImportLoading(false);
+      setImportJob(prev => prev ? { ...prev, loading: false } : null);
+      importAbortRef.current = null;
     }
   };
 
+  const cancelImport = () => { importAbortRef.current?.abort(); };
+
   const [productModalClosing, closeProductModal] = useModalClose(closeModal);
-  const [importModalClosing, closeImportModalAnim] = useModalClose(() => { setShowImportModal(false); setImportFile(null); setImportResult(null); setImportProgress(0); });
+  const [importModalClosing, closeImportModalAnim] = useModalClose(() => { setShowImportModal(false); setImportFile(null); if (!importJob?.loading) setImportJob(null); });
   const [categoryModalClosing, closeCategoryModal] = useModalClose(() => setShowCategoryModal(false));
   const [bulkDeleteModalClosing, closeBulkDeleteModal] = useModalClose(() => setShowBulkDeleteModal(false));
   const [bulkEditModalClosing, closeBulkEditModal] = useModalClose(() => { setShowBulkEditModal(false); setBulkEditItems([]); });
@@ -654,6 +787,7 @@ const ProductManagement = () => {
       importProgress={importProgress}
       templateLoading={templateLoading}
       importResult={importResult}
+      setImportJob={setImportJob}
       fileInputRef={fileInputRef}
       selectedRows={selectedRows}
       setSelectedRows={setSelectedRows}
@@ -701,6 +835,11 @@ const ProductManagement = () => {
       handleExport={handleExport}
       handleImport={handleImport}
       handleBulkDelete={handleBulkDelete}
+      handleBulkSuggestImages={handleBulkSuggestImages}
+      bulkImageProgress={bulkImageProgress}
+      setBulkImageProgress={setBulkImageProgress}
+      cancelBulkImages={cancelBulkImages}
+      cancelImport={cancelImport}
       handleBulkSetControlStock={handleBulkSetControlStock}
       handleToggleControlStock={handleToggleControlStock}
       showBulkEditModal={showBulkEditModal}
@@ -722,6 +861,13 @@ const ProductManagement = () => {
       getProductName={getProductName}
       getLowStockProducts={getLowStockProducts}
       normalize={normalize}
+      suggestingImage={suggestingImage}
+      suggestImage={suggestImage}
+      uploadingImage={uploadingImage}
+      uploadImage={uploadImage}
+      savingProduct={savingProduct}
+      driveToProxyUrl={driveToProxyUrl}
+      config={config}
     />
   );
 };

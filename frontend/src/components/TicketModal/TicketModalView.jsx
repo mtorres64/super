@@ -29,6 +29,7 @@ const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, t
 
   const isAfipFactura  = sale.afip_estado === 'autorizado' && sale.tipo_comprobante;
   const letraComp      = TIPO_CBTE_LETRA[sale.tipo_comprobante] || '';
+  const isTienda       = sale.numero_factura?.startsWith('T-');
 
   return (
     <div className={`ticket-modal-overlay${closing ? ' closing' : ''}`}>
@@ -164,8 +165,14 @@ const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, t
             </>
           ) : (
             <div className="ticket-info-row">
-              <span>Comprobante:</span>
-              <span>{sale.numero_factura}</span>
+              <span>{isTienda ? 'Pedido tienda:' : 'Comprobante:'}</span>
+              <span>{isTienda ? `#${sale.numero_factura}` : sale.numero_factura}</span>
+            </div>
+          )}
+          {isAfipFactura && isTienda && (
+            <div className="ticket-info-row">
+              <span>Ref. pedido:</span>
+              <span>#{sale.numero_factura}</span>
             </div>
           )}
 

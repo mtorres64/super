@@ -135,6 +135,8 @@ const POSView = ({
   modifyingSaleId,
   modifyingInvoiceNum,
   cancelModification,
+  tiendaPedido,
+  dismissTiendaPedido,
 }) => {
   const [slideDir, setSlideDir] = useState('right');
   const handleTabSwitch = (tabId) => {
@@ -651,7 +653,7 @@ const POSView = ({
           </div>
 
           <div key={activeTabId} className={`tab-slide-${slideDir}`}>
-          {modifyingSaleId && (
+          {modifyingSaleId && !tiendaPedido && (
             <div style={{
               background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
               border: '2px solid #f59e0b',
@@ -678,6 +680,62 @@ const POSView = ({
               </button>
             </div>
           )}
+
+          {tiendaPedido && (
+            <div style={{ border: '2px solid #10b981', borderRadius: '8px', overflow: 'hidden', marginBottom: '2px' }}>
+              {/* Header */}
+              <div style={{ background: 'linear-gradient(135deg, #166534 0%, #15803d 100%)', padding: '0.45rem 0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Package style={{ width: '0.85rem', height: '0.85rem', color: '#bbf7d0', flexShrink: 0 }} />
+                  <span style={{ fontWeight: 700, color: '#fff', fontSize: '0.8rem' }}>
+                    Pedido tienda #{tiendaPedido.numero_factura}
+                  </span>
+                  <span style={{ fontSize: '0.7rem', color: '#bbf7d0', fontWeight: 400 }}>
+                    — referencia original
+                  </span>
+                </div>
+                <button onClick={dismissTiendaPedido} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#bbf7d0', padding: '0', lineHeight: 1 }} title="Cerrar panel">
+                  <X style={{ width: '0.9rem', height: '0.9rem' }} />
+                </button>
+              </div>
+              {/* Info cliente + entrega */}
+              <div style={{ background: '#f0fdf4', padding: '0.45rem 0.75rem', borderBottom: '1px solid #bbf7d0', display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div>
+                  <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.04em' }}>Cliente</span>
+                  <p style={{ fontSize: '0.78rem', fontWeight: 600, color: '#111827', margin: 0 }}>
+                    {tiendaPedido.tienda_customer_nombre}
+                    {tiendaPedido.tienda_customer_telefono && <span style={{ fontWeight: 400, color: '#6b7280' }}> · {tiendaPedido.tienda_customer_telefono}</span>}
+                  </p>
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.04em' }}>Entrega</span>
+                  <p style={{ fontSize: '0.78rem', fontWeight: 600, color: '#111827', margin: 0 }}>
+                    {tiendaPedido.tipo_entrega === 'domicilio' ? (tiendaPedido.direccion_entrega || 'Domicilio') : 'Retiro en local'}
+                  </p>
+                </div>
+                {tiendaPedido.observaciones_tienda && (
+                  <div style={{ width: '100%' }}>
+                    <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.04em' }}>Obs.</span>
+                    <p style={{ fontSize: '0.78rem', color: '#374151', fontStyle: 'italic', margin: 0 }}>"{tiendaPedido.observaciones_tienda}"</p>
+                  </div>
+                )}
+              </div>
+              {/* Items originales */}
+              <div style={{ background: '#fff', padding: '0.35rem 0.75rem 0.45rem' }}>
+                {(tiendaPedido.items || []).map((item, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', padding: '0.18rem 0', borderBottom: i < tiendaPedido.items.length - 1 ? '1px dashed #e5e7eb' : 'none' }}>
+                    <span style={{ color: '#374151' }}>{item.nombre} <span style={{ color: '#9ca3af' }}>×{item.cantidad}</span></span>
+                    <span style={{ fontWeight: 600, color: '#111827' }}>${(item.precio_unitario * item.cantidad).toFixed(2)}</span>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 700, color: '#111827', marginTop: '0.3rem', paddingTop: '0.3rem', borderTop: '1.5px solid #166534' }}>
+                  <span>Total original</span>
+                  <span>${tiendaPedido.total?.toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="cart-items" ref={cartItemsRef}>
             {cart.length === 0 ? (
               <div className="text-center py-8 text-gray-500">

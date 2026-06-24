@@ -4,7 +4,7 @@ import {
   AlertTriangle, Clock, Ban, ChevronRight, ChevronDown,
   ArrowLeft, Plus, Edit3, ToggleLeft, ToggleRight,
   DollarSign, Shield, Settings, Bell, TrendingUp,
-  CreditCard, Search, Zap, ZapOff, CheckCircle2, LogIn, X, Eye, EyeOff, Trash2,
+  CreditCard, Search, Zap, ZapOff, CheckCircle2, LogIn, X, Eye, EyeOff, Trash2, Package, Save,
 } from 'lucide-react';
 import { ownerAxios, formatDate, formatMoney } from './index';
 import SortIcon from '../ui/SortIcon';
@@ -1452,6 +1452,494 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
   );
 };
 
+// ─── CatalogoView ─────────────────────────────────────────────────────────────
+
+// ─── UploadProductImage ───────────────────────────────────────────────────────
+
+const resizeToJpeg = (file, maxPx = 400) =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxPx || height > maxPx) {
+        const ratio = Math.min(maxPx / width, maxPx / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Canvas error')), 'image/jpeg', 0.85);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Imagen inválida')); };
+    img.src = url;
+  });
+
+const UploadProductImage = ({ productId, token, onUploaded }) => {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState(null);
+  const fileRef = React.useRef(null);
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const blob = await resizeToJpeg(file, 400);
+      const formData = new FormData();
+      formData.append('file', blob, 'image.jpg');
+      const res = await ownerAxios.post(
+        `/global-products/${productId}/upload-image`,
+        formData,
+        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' } }
+      );
+      onUploaded(res.data.url);
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || 'Error al subir la imagen');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className="border border-dashed border-gray-600 rounded-lg p-3 space-y-2">
+      <p className="text-xs text-gray-500">Subir foto · se redimensiona automáticamente a 400×400 px</p>
+      <label className={`flex items-center justify-center gap-2 w-full py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${uploading ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-700 hover:bg-gray-600 text-gray-200'}`}>
+        {uploading
+          ? <><div className="w-4 h-4 border-2 border-gray-500 border-t-white rounded-full animate-spin" /> Subiendo...</>
+          : '📷 Seleccionar foto'}
+        <input ref={fileRef} type="file" accept="image/*" className="hidden" disabled={uploading} onChange={handleFile} />
+      </label>
+      {error && <p className="text-xs text-red-400">{error}</p>}
+    </div>
+  );
+};
+
+// ─── CatalogoView ─────────────────────────────────────────────────────────────
+
+const EMPTY_FORM = { nombre: '', codigo_barras: '', imagen_url: '' };
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+const driveToProxyUrl = (url) => {
+  if (!url || !url.includes('drive.google.com')) return url;
+  const m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  return m ? `${BACKEND_URL}/api/drive-image?file_id=${m[1]}` : url;
+};
+
+const CatalogoView = ({ token }) => {
+  const authHeader = { headers: { Authorization: `Bearer ${token}` } };
+  const [items, setItems] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(null); // null | { mode: 'create'|'edit', data: {} }
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [importJob, setImportJob] = useState(null); // null | { loading, progress, result }
+  const importFileRef = React.useRef(null);
+  const importAbortRef = React.useRef(null);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [selectAllGlobal, setSelectAllGlobal] = useState(false);
+  const [imageJob, setImageJob] = useState(null); // null | { current, total, running }
+  const cancelImageRef = React.useRef(false);
+  const [previewImgLoading, setPreviewImgLoading] = useState(false);
+  useEffect(() => { if (form.imagen_url) setPreviewImgLoading(true); }, [form.imagen_url]);
+
+  const fetchItems = useCallback(async (p, q) => {
+    setLoading(true);
+    try {
+      const params = { page: p, per_page: 50 };
+      if (q) params.search = q;
+      const res = await ownerAxios.get('/global-products', { params, headers: { Authorization: `Bearer ${token}` } });
+      setItems(res.data.items);
+      setTotal(res.data.total);
+      setTotalPages(res.data.total_pages);
+    } catch { /* silent */ } finally { setLoading(false); }
+  }, [token]);
+
+  useEffect(() => { fetchItems(page, search); }, [page, search, fetchItems]);
+
+  const load = (p = page, q = search) => fetchItems(p, q);
+
+  const openCreate = () => { setForm(EMPTY_FORM); setModal({ mode: 'create' }); };
+  const openEdit = (item) => { setForm({ nombre: item.nombre, codigo_barras: item.codigo_barras || '', imagen_url: item.imagen_url || '' }); setModal({ mode: 'edit', id: item.id }); };
+  const closeModal = () => setModal(null);
+
+  const handleSearch = (e) => {
+    setSearch(e.target.value);
+    setPage(1);
+  };
+
+  const handleSave = async () => {
+    if (!form.nombre.trim()) return;
+    setSaving(true);
+    try {
+      const body = { nombre: form.nombre.trim(), codigo_barras: form.codigo_barras.trim() || null, imagen_url: form.imagen_url.trim() || null };
+      if (modal.mode === 'create') {
+        const res = await ownerAxios.post('/global-products', body, authHeader);
+        setItems(prev => [res.data, ...prev]);
+        setTotal(t => t + 1);
+      } else {
+        const res = await ownerAxios.put(`/global-products/${modal.id}`, body, authHeader);
+        setItems(prev => prev.map(p => p.id === modal.id ? res.data : p));
+      }
+      closeModal();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Error al guardar');
+    } finally { setSaving(false); }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('¿Eliminar este producto del catálogo global?')) return;
+    try {
+      await ownerAxios.delete(`/global-products/${id}`, authHeader);
+      setItems(prev => prev.filter(p => p.id !== id));
+      setTotal(t => t - 1);
+    } catch { alert('Error al eliminar'); }
+  };
+
+  const toggleSelect = (id) => {
+    setSelectAllGlobal(false);
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectAllGlobal(false);
+    if (selectedIds.size === items.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(items.map(p => p.id)));
+    }
+  };
+
+  const handleBulkImages = async () => {
+    let targets;
+    if (selectAllGlobal) {
+      try {
+        const params = { page: 1, per_page: 100000 };
+        if (search) params.search = search;
+        const res = await ownerAxios.get('/global-products', { params, ...authHeader });
+        targets = (res.data.items || []).filter(p => !p.imagen_url);
+      } catch { alert('Error al obtener productos'); return; }
+    } else {
+      targets = items.filter(p => selectedIds.has(p.id) && !p.imagen_url);
+    }
+
+    if (targets.length === 0) {
+      alert('Los productos seleccionados ya tienen imagen.');
+      return;
+    }
+    cancelImageRef.current = false;
+    setImageJob({ current: 0, total: targets.length, running: true, found: 0, notFound: 0 });
+
+    for (let i = 0; i < targets.length; i++) {
+      if (cancelImageRef.current) break;
+      const p = targets[i];
+      try {
+        const params = new URLSearchParams({ q: p.nombre });
+        if (p.codigo_barras) params.append('barcode', p.codigo_barras);
+        const res = await ownerAxios.get(`/global-products/suggest-image?${params}`, authHeader);
+        if (res.data?.url) {
+          await ownerAxios.put(`/global-products/${p.id}`, { imagen_url: res.data.url }, authHeader);
+          setItems(prev => prev.map(x => x.id === p.id ? { ...x, imagen_url: res.data.url } : x));
+          setImageJob(prev => ({ ...prev, current: i + 1, found: prev.found + 1 }));
+        } else {
+          setImageJob(prev => ({ ...prev, current: i + 1, notFound: prev.notFound + 1 }));
+        }
+      } catch {
+        setImageJob(prev => ({ ...prev, current: i + 1, notFound: prev.notFound + 1 }));
+      }
+    }
+    setImageJob(prev => ({ ...prev, running: false }));
+  };
+
+  const handleImportFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    importAbortRef.current = new AbortController();
+    setImportJob({ loading: true, progress: 0, result: null });
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await fetch(`${BACKEND_URL}/owner/global-products/import`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+        signal: importAbortRef.current.signal,
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || 'Error al importar');
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.progress !== undefined) setImportJob(prev => ({ ...prev, progress: data.progress }));
+            if (data.done) {
+              setImportJob(prev => ({ ...prev, loading: false, result: data }));
+              setPage(1);
+              fetchItems(1, search);
+            }
+          } catch { /* ignore */ }
+        }
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        alert(err.message || 'Error al importar');
+        setImportJob(null);
+      }
+    } finally {
+      importAbortRef.current = null;
+      if (importFileRef.current) importFileRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className="p-4 md:p-6 space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-white">Catálogo Global</h2>
+          <p className="text-sm text-gray-500">{total} productos · fuente compartida para todos los clientes</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {(selectedIds.size > 0 || selectAllGlobal) && (
+            <button onClick={handleBulkImages} disabled={imageJob?.running}
+              className="flex items-center gap-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+              🖼 Generar imágenes {selectAllGlobal ? `(${total} productos)` : `(${items.filter(p => selectedIds.has(p.id) && !p.imagen_url).length} sin foto)`}
+            </button>
+          )}
+          <label className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-medium px-4 py-2 rounded-lg transition-colors cursor-pointer border border-gray-700">
+            <Plus className="w-4 h-4" /> Importar CSV/XLSX
+            <input ref={importFileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleImportFile} />
+          </label>
+          <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+            <Plus className="w-4 h-4" /> Agregar producto
+          </button>
+        </div>
+      </div>
+
+      {imageJob && (
+        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-2">
+          {imageJob.running ? (
+            <>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-300">Buscando imágenes... {imageJob.current}/{imageJob.total}</span>
+                <button onClick={() => { cancelImageRef.current = true; }} className="text-gray-500 hover:text-red-400 text-xs">Cancelar</button>
+              </div>
+              <div className="w-full bg-gray-700 rounded-full h-1.5">
+                <div className="bg-amber-500 h-1.5 rounded-full transition-all" style={{ width: `${Math.round((imageJob.current / imageJob.total) * 100)}%` }} />
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-300">
+                Listo: <span className="text-green-400 font-medium">{imageJob.found} encontradas</span>
+                {imageJob.notFound > 0 && <span className="text-gray-500 ml-1">· {imageJob.notFound} sin resultado</span>}
+              </span>
+              <button onClick={() => setImageJob(null)} className="text-gray-500 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {importJob && (
+        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-2">
+          {importJob.loading ? (
+            <>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-300">Importando...</span>
+                <span className="text-gray-500">{importJob.progress}%</span>
+              </div>
+              <div className="w-full bg-gray-700 rounded-full h-1.5">
+                <div className="bg-indigo-500 h-1.5 rounded-full transition-all" style={{ width: `${importJob.progress}%` }} />
+              </div>
+            </>
+          ) : importJob.result ? (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-300">
+                Listo: <span className="text-green-400 font-medium">{importJob.result.created} creados</span>, <span className="text-indigo-400 font-medium">{importJob.result.updated} actualizados</span>
+                {importJob.result.errors?.length > 0 && <span className="text-red-400 ml-1">· {importJob.result.errors.length} errores</span>}
+              </span>
+              <button onClick={() => setImportJob(null)} className="text-gray-500 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+        <input
+          value={search} onChange={handleSearch} placeholder="Buscar por nombre o código de barras..."
+          className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-9 pr-4 py-2 text-sm text-white placeholder-gray-500 outline-none focus:border-indigo-500"
+        />
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-7 w-7 border-2 border-gray-700 border-t-indigo-500" /></div>
+      ) : items.length === 0 ? (
+        <div className="text-center py-12 text-gray-600">{search ? 'Sin resultados' : 'No hay productos en el catálogo aún'}</div>
+      ) : (
+        <>
+        {!selectAllGlobal && items.length > 0 && selectedIds.size === items.length && total > items.length && (
+          <div className="px-4 py-2 bg-indigo-950 border border-indigo-800 rounded-lg text-sm text-indigo-300 flex items-center gap-3">
+            <span>Solo están seleccionados los {items.length} productos de esta página.</span>
+            <button onClick={() => setSelectAllGlobal(true)} className="font-semibold text-indigo-200 underline hover:text-white whitespace-nowrap">
+              Seleccionar los {total} productos
+            </button>
+          </div>
+        )}
+        {selectAllGlobal && (
+          <div className="px-4 py-2 bg-indigo-950 border border-indigo-800 rounded-lg text-sm text-indigo-300 flex items-center gap-3">
+            <span>Los {total} productos del catálogo están seleccionados.</span>
+            <button onClick={() => { setSelectAllGlobal(false); setSelectedIds(new Set()); }} className="font-semibold text-indigo-200 underline hover:text-white whitespace-nowrap">
+              Limpiar selección
+            </button>
+          </div>
+        )}
+
+        <div className="overflow-x-auto rounded-xl border border-gray-800">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-800 text-gray-500 text-left">
+                <th className="py-2 px-3 w-8">
+                  <input type="checkbox" checked={items.length > 0 && selectedIds.size === items.length} onChange={toggleSelectAll}
+                    className="rounded border-gray-600 bg-gray-800 accent-indigo-500" />
+                </th>
+                <th className="py-2 px-3 font-medium w-16">Foto</th>
+                <th className="py-2 px-3 font-medium">Nombre</th>
+                <th className="py-2 px-3 font-medium">Código de barras</th>
+                <th className="py-2 px-3 font-medium w-20"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(item => (
+                <tr key={item.id} className={`border-b border-gray-800/60 hover:bg-gray-800/30 ${selectedIds.has(item.id) ? 'bg-indigo-900/10' : ''}`}>
+                  <td className="py-2 px-3">
+                    <input type="checkbox" checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)}
+                      className="rounded border-gray-600 bg-gray-800 accent-indigo-500" />
+                  </td>
+                  <td className="py-2 px-3">
+                    {item.imagen_url ? (
+                      <img src={driveToProxyUrl(item.imagen_url)} alt="" className="w-10 h-10 object-contain rounded bg-gray-800" />
+                    ) : (
+                      <div className="w-10 h-10 bg-gray-800 rounded flex items-center justify-center">
+                        <Package className="w-4 h-4 text-gray-600" />
+                      </div>
+                    )}
+                  </td>
+                  <td className="py-2 px-3 text-white font-medium">{item.nombre}</td>
+                  <td className="py-2 px-3 text-gray-400 font-mono text-xs">{item.codigo_barras || <span className="text-gray-700">—</span>}</td>
+                  <td className="py-2 px-3">
+                    <div className="flex items-center gap-2 justify-end">
+                      <button onClick={() => openEdit(item)} className="text-gray-500 hover:text-indigo-400 transition-colors"><Edit3 className="w-4 h-4" /></button>
+                      <button onClick={() => handleDelete(item.id)} className="text-gray-500 hover:text-red-400 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        </>
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="px-3 py-1 rounded bg-gray-800 text-gray-400 disabled:opacity-40 text-sm hover:bg-gray-700">←</button>
+          <span className="text-gray-500 text-sm">{page} / {totalPages}</span>
+          <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="px-3 py-1 rounded bg-gray-800 text-gray-400 disabled:opacity-40 text-sm hover:bg-gray-700">→</button>
+        </div>
+      )}
+
+      {modal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-white font-semibold">{modal.mode === 'create' ? 'Agregar producto' : 'Editar producto'}</h3>
+              <button onClick={closeModal} className="text-gray-500 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Nombre *</label>
+                <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
+                  placeholder="Ej: Coca-Cola 500ml"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-indigo-500" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Código de barras</label>
+                <input value={form.codigo_barras} onChange={e => setForm(f => ({ ...f, codigo_barras: e.target.value }))}
+                  placeholder="Ej: 7790895000016"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm font-mono outline-none focus:border-indigo-500" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">URL de imagen</label>
+                <input value={form.imagen_url} onChange={e => setForm(f => ({ ...f, imagen_url: e.target.value }))}
+                  placeholder="https://..."
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-indigo-500" />
+                {form.imagen_url && (
+                  <div className="mt-2 flex items-center justify-center h-20 bg-gray-800 rounded relative">
+                    {previewImgLoading && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-6 h-6 border-2 border-gray-600 border-t-indigo-400 rounded-full animate-spin" />
+                      </div>
+                    )}
+                    <img
+                      src={driveToProxyUrl(form.imagen_url)}
+                      alt=""
+                      className="h-full object-contain rounded"
+                      style={{ display: previewImgLoading ? 'none' : 'block' }}
+                      onLoad={() => setPreviewImgLoading(false)}
+                      onError={e => { setPreviewImgLoading(false); e.target.style.display = 'none'; }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {modal?.mode === 'edit' && (
+                <UploadProductImage
+                  productId={modal.id}
+                  token={token}
+                  onUploaded={(url) => setForm(f => ({ ...f, imagen_url: url }))}
+                />
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button onClick={closeModal} className="flex-1 py-2 rounded-lg border border-gray-700 text-gray-400 hover:text-white text-sm transition-colors">Cancelar</button>
+              <button onClick={handleSave} disabled={saving || !form.nombre.trim()}
+                className="flex-1 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                {saving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── CobrosView ───────────────────────────────────────────────────────────────
 
 const CobrosView = ({ token }) => {
@@ -2270,6 +2758,7 @@ const OwnerPanelView = ({
     { key: 'clientes', icon: Users, label: 'Clientes', badge: clientes.length > 0 ? clientes.length : null },
     { key: 'cobros', icon: CreditCard, label: 'Cobros' },
     { key: 'alertas', icon: Bell, label: 'Alertas', badge: stats?.alertas_sin_leer > 0 ? stats.alertas_sin_leer : null, urgentBadge: true },
+    { key: 'catalogo', icon: Package, label: 'Catálogo' },
     { key: 'config', icon: Settings, label: 'Configuración' },
   ];
 
@@ -2381,6 +2870,8 @@ const OwnerPanelView = ({
           <CobrosView token={token} />
         ) : view === 'alertas' ? (
           <AlertasView token={token} onSelectCliente={selectCliente} onAlertsChanged={loadStats} />
+        ) : view === 'catalogo' ? (
+          <CatalogoView token={token} />
         ) : view === 'config' ? (
           <ConfigView token={token} />
         ) : null}

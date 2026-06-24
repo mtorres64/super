@@ -1,5 +1,6 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, UploadFile, File, Query, Request, Body
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -28,6 +29,8 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from afip import AfipService, encrypt_private_key, decrypt_private_key, extract_p12
+from barcode_validator import is_valid_barcode
+import drive_service as _drive
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -337,6 +340,22 @@ def _send_email_otp_sync(destinatario: str, codigo: str, saas_nombre: str = "PUL
     )
     _smtp_send(destinatario, f"Tu código de verificación {saas_nombre}: {codigo}", html, smtp_cfg=smtp_cfg)
 
+def _send_tienda_email_otp_sync(destinatario: str, codigo: str, empresa_nombre: str, saas_nombre: str = "PULS", smtp_cfg: dict = None):
+    html = _build_email_html(
+        titulo="Verificá tu correo",
+        subtitulo=f"Usá el siguiente código para crear tu cuenta en el sistema de pedidos de <strong style=\"color:#111827;\">{empresa_nombre}</strong>.<br>"
+                  "Válido por <strong style=\"color:#111827;\">10 minutos</strong>.",
+        codigo=codigo,
+        nota_pie="Si no solicitaste este código, podés ignorar este mensaje.",
+        saas_nombre=saas_nombre,
+    )
+    _smtp_send(destinatario, f"Tu código de verificación - {empresa_nombre}: {codigo}", html, smtp_cfg=smtp_cfg)
+
+async def send_tienda_email_otp(destinatario: str, codigo: str, empresa_nombre: str):
+    saas_nombre = await get_saas_nombre()
+    smtp_cfg = await get_smtp_config()
+    await asyncio.to_thread(_send_tienda_email_otp_sync, destinatario, codigo, empresa_nombre, saas_nombre, smtp_cfg)
+
 def _send_password_reset_sync(destinatario: str, codigo: str, saas_nombre: str = "PULS", smtp_cfg: dict = None):
     html = _build_email_html(
         titulo="Recuperar contrase\u00f1a",
@@ -400,6 +419,7 @@ MODULES: dict[str, str] = {
     "multi_sucursal":"Multi-sucursal",
     "configuracion": "Configuración",
     "notificaciones":"Notificaciones",
+    "tienda":        "Tienda Online",
 }
 
 PLAN_MODULES: dict[str, list[str]] = {
@@ -408,11 +428,11 @@ PLAN_MODULES: dict[str, list[str]] = {
     ],
     "profesional": [
         "pos", "caja", "inventario", "clientes", "facturacion", "reportes", "compras",
-        "alertas_stock", "usuarios", "configuracion", "notificaciones",
+        "alertas_stock", "usuarios", "configuracion", "notificaciones", "tienda",
     ],
     "empresarial": [
         "pos", "caja", "inventario", "clientes", "facturacion", "reportes", "compras",
-        "alertas_stock", "usuarios", "multi_sucursal", "configuracion", "notificaciones",
+        "alertas_stock", "usuarios", "multi_sucursal", "configuracion", "notificaciones", "tienda",
     ],
 }
 
@@ -586,6 +606,7 @@ class BranchProduct(BaseModel):
     margen: Optional[float] = None
     costo: Optional[float] = None
     activo: bool = True
+    mostrar_en_tienda: bool = True
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class BranchProductCreate(BaseModel):
@@ -606,12 +627,20 @@ class BranchProductUpdate(BaseModel):
     margen: Optional[float] = None
     costo: Optional[float] = None
     activo: Optional[bool] = None
+    mostrar_en_tienda: Optional[bool] = None
 
 class BranchProductBulkDeleteRequest(BaseModel):
     ids: Optional[List[str]] = None
     branch_id: Optional[str] = None
     delete_all: bool = False
     search: Optional[str] = None
+
+class BranchProductBulkTiendaRequest(BaseModel):
+    ids: Optional[List[str]] = None
+    branch_id: Optional[str] = None
+    delete_all: bool = False
+    search: Optional[str] = None
+    mostrar_en_tienda: bool = True
 
 class Configuration(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -674,6 +703,15 @@ class Configuration(BaseModel):
         "transferencia": 0.0
     })
 
+    # Tienda Settings
+    tienda_activa: bool = True
+    tienda_descripcion: str = ""
+    tienda_horario: str = ""
+    tienda_envio_activo: bool = True
+    tienda_costo_envio: float = 0.0
+    tienda_retiro_activo: bool = True
+    tienda_monto_minimo: float = 0.0
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -710,6 +748,14 @@ class ConfigurationUpdate(BaseModel):
     secondary_color: Optional[str] = None
     tertiary_color: Optional[str] = None
     payment_method_adjustments: Optional[dict] = None
+    # Tienda pública
+    tienda_activa: Optional[bool] = None
+    tienda_descripcion: Optional[str] = None
+    tienda_horario: Optional[str] = None
+    tienda_envio_activo: Optional[bool] = None
+    tienda_costo_envio: Optional[float] = None
+    tienda_retiro_activo: Optional[bool] = None
+    tienda_monto_minimo: Optional[float] = None
 
 class User(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -798,6 +844,8 @@ class Product(BaseModel):
     stock_minimo: int = 10
     control_stock: bool = True
     combo_items: List[ComboItem] = []
+    imagen_url: Optional[str] = None
+    drive_file_id: Optional[str] = None
     activo: bool = True
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -813,6 +861,8 @@ class ProductCreate(BaseModel):
     stock_minimo: int = 10
     control_stock: bool = True
     combo_items: List[ComboItem] = []
+    imagen_url: Optional[str] = None
+    drive_file_id: Optional[str] = None
     precio_costo: Optional[float] = None
 
 class ProductUpdate(BaseModel):
@@ -827,6 +877,8 @@ class ProductUpdate(BaseModel):
     stock_minimo: Optional[int] = None
     control_stock: Optional[bool] = None
     combo_items: Optional[List[ComboItem]] = None
+    imagen_url: Optional[str] = None
+    drive_file_id: Optional[str] = None
     activo: Optional[bool] = None
     precio_costo: Optional[float] = None
 
@@ -1291,6 +1343,7 @@ async def get_branch_products_admin(
             "codigo_barras": product.get("codigo_barras"),
             "tipo": product.get("tipo"),
             "categoria_id": product.get("categoria_id"),
+            "imagen_url": product.get("imagen_url"),
             "precio_global": product.get("precio"),
             "stock_global": product.get("stock", 0),
             "branch_product_id": bp.get("id") if bp else None,
@@ -1301,6 +1354,7 @@ async def get_branch_products_admin(
             "margen_sucursal": bp.get("margen") if bp else None,
             "costo_sucursal": bp.get("costo") if bp else None,
             "activo_sucursal": bp.get("activo", True) if bp else True,
+            "mostrar_en_tienda_sucursal": bp.get("mostrar_en_tienda", True) if bp else True,
         })
     return {
         "items": result,
@@ -1958,6 +2012,59 @@ async def bulk_deactivate_branch_products(data: BranchProductBulkDeleteRequest, 
 
     return {"updated": updated}
 
+@api_router.post("/branch-products/bulk-set-tienda")
+async def bulk_set_tienda_branch_products(data: BranchProductBulkTiendaRequest, user: User = Depends(require_role([UserRole.ADMIN]))):
+    branch_id = data.branch_id
+    if not branch_id:
+        return {"updated": 0}
+
+    if data.delete_all:
+        if data.search:
+            regex = {"$regex": re.escape(data.search), "$options": "i"}
+            matching = await db.products.find(
+                {"empresa_id": user.empresa_id, "$or": [{"nombre": regex}, {"codigo_barras": regex}]},
+                {"id": 1}
+            ).to_list(None)
+            product_ids = [p["id"] for p in matching]
+        else:
+            all_products = await db.products.find({"empresa_id": user.empresa_id}, {"id": 1}).to_list(None)
+            product_ids = [p["id"] for p in all_products]
+    else:
+        product_ids = data.ids or []
+
+    if not product_ids:
+        return {"updated": 0}
+
+    existing_bps = await db.branch_products.find(
+        {"product_id": {"$in": product_ids}, "branch_id": branch_id, "empresa_id": user.empresa_id}
+    ).to_list(None)
+    existing_map = {bp["product_id"]: bp for bp in existing_bps}
+
+    updated = 0
+    for pid in product_ids:
+        if pid in existing_map:
+            await db.branch_products.update_one(
+                {"id": existing_map[pid]["id"]},
+                {"$set": {"mostrar_en_tienda": data.mostrar_en_tienda}}
+            )
+            updated += 1
+        else:
+            global_product = await db.products.find_one({"id": pid, "empresa_id": user.empresa_id})
+            if global_product:
+                bp = BranchProduct(
+                    product_id=pid,
+                    branch_id=branch_id,
+                    empresa_id=user.empresa_id,
+                    precio=global_product.get("precio", 0),
+                    stock=global_product.get("stock", 0),
+                    stock_minimo=global_product.get("stock_minimo", 10),
+                    mostrar_en_tienda=data.mostrar_en_tienda
+                )
+                await db.branch_products.insert_one(bp.dict())
+                updated += 1
+
+    return {"updated": updated}
+
 @api_router.delete("/branch-products/bulk")
 async def bulk_delete_branch_products(data: BranchProductBulkDeleteRequest, user: User = Depends(require_role([UserRole.ADMIN]))):
     if data.delete_all and data.branch_id:
@@ -2027,6 +2134,40 @@ async def get_branch_products(
         "total_pages": max(1, -(-total // per_page))
     }
 
+async def _sync_global_product(barcode: str, nombre: str) -> Optional[str]:
+    """
+    Busca el barcode en global_products.
+    Si no existe y el barcode es válido, busca en Open Food Facts, agrega a global y devuelve la imagen_url.
+    Si ya existe, devuelve su imagen_url directamente.
+    """
+    existing = await db.global_products.find_one({"codigo_barras": barcode})
+    if existing:
+        return existing.get("imagen_url")
+
+    # No existe en global — buscar en Open Food Facts
+    imagen_url = None
+    try:
+        off_auth = (os.environ.get("OFF_USER", ""), os.environ.get("OFF_PASS", ""))
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True, auth=off_auth) as client:
+            r = await client.get(f"https://world.openfoodfacts.org/api/v0/product/{barcode}.json")
+            if r.status_code == 200:
+                data = r.json()
+                if data.get("status") == 1:
+                    p = data.get("product", {})
+                    imagen_url = p.get("image_front_url") or p.get("image_url") or p.get("image_thumb_url")
+    except Exception:
+        pass
+
+    await db.global_products.insert_one({
+        "id": str(uuid.uuid4()),
+        "nombre": nombre,
+        "codigo_barras": barcode,
+        "imagen_url": imagen_url,
+        "created_at": datetime.now(timezone.utc),
+    })
+    return imagen_url
+
+
 # Product routes
 @api_router.post("/products", response_model=Product)
 async def create_product(product_data: ProductCreate, user: User = Depends(require_role([UserRole.ADMIN]))):
@@ -2040,6 +2181,12 @@ async def create_product(product_data: ProductCreate, user: User = Depends(requi
         existing_product = await db.products.find_one({"codigo_barras": product_data.codigo_barras, "empresa_id": user.empresa_id})
         if existing_product:
             raise HTTPException(status_code=400, detail="Barcode already exists")
+
+    # Sync with global catalog if barcode is valid (EAN-8/12/13/14)
+    if product_data.codigo_barras and is_valid_barcode(product_data.codigo_barras):
+        global_imagen = await _sync_global_product(product_data.codigo_barras, product_data.nombre)
+        if global_imagen and not product_data.imagen_url:
+            product_data = product_data.model_copy(update={"imagen_url": global_imagen})
 
     product_dict = product_data.dict()
     precio_costo = product_dict.pop("precio_costo", None)
@@ -2388,6 +2535,11 @@ async def import_products(
                     )
                     updated += 1
                 else:
+                    # Sync with global catalog for valid barcodes
+                    if not codigo_barras.startswith("INT-") and is_valid_barcode(codigo_barras):
+                        global_imagen = await _sync_global_product(codigo_barras, str(row["nombre"]).strip())
+                        if global_imagen and not product_data.get("imagen_url"):
+                            product_data["imagen_url"] = global_imagen
                     product_data['codigo_barras'] = codigo_barras
                     product = Product(**product_data, empresa_id=empresa_id)
                     _pdoc = {k: v for k, v in product.model_dump().items() if v is not None}
@@ -2426,6 +2578,88 @@ async def import_products(
         yield f"data: {json.dumps({'done': True, 'created': created, 'updated': updated, 'errors': errors, 'total_procesado': created + updated + len(errors), 'new_categories': new_categories})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+@api_router.get("/drive-image")
+async def proxy_drive_image(file_id: str = Query(...)):
+    """Proxy para imágenes de Google Drive. Evita restricciones de embed del browser."""
+    from fastapi.responses import Response as _Resp
+    url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
+            r = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            ct = r.headers.get("content-type", "image/jpeg")
+            if r.status_code == 200 and "image" in ct:
+                return _Resp(content=r.content, media_type=ct,
+                             headers={"Cache-Control": "public, max-age=86400"})
+    except Exception as e:
+        logger.warning(f"Error proxy Drive image {file_id}: {e}")
+    raise HTTPException(status_code=404, detail="Imagen no disponible")
+
+
+@api_router.get("/products/suggest-image")
+async def suggest_product_image(
+    q: str = Query(..., min_length=1),
+    barcode: Optional[str] = Query(None),
+    user: User = Depends(get_current_user)
+):
+    # 1. Consultar catálogo global primero (foto del owner tiene prioridad)
+    if barcode:
+        global_prod = await db.global_products.find_one({"codigo_barras": barcode})
+        if global_prod and global_prod.get("imagen_url"):
+            return {"url": global_prod["imagen_url"]}
+
+    off_auth = (os.environ.get("OFF_USER", ""), os.environ.get("OFF_PASS", ""))
+
+    def extract_image(product: dict) -> Optional[str]:
+        return product.get("image_front_url") or product.get("image_url") or product.get("image_thumb_url")
+
+    async with httpx.AsyncClient(timeout=10, follow_redirects=True, auth=off_auth) as client:
+        # 2. Búsqueda por nombre en Open Food Facts
+        try:
+            r = await client.get(
+                "https://world.openfoodfacts.org/cgi/search.pl",
+                params={"search_terms": q, "json": "1", "page_size": "5"},
+            )
+            if r.status_code == 200:
+                for product in r.json().get("products", []):
+                    url = extract_image(product)
+                    if url:
+                        return {"url": url}
+        except Exception:
+            pass
+
+        # Fallback: búsqueda por código de barras
+        if barcode:
+            try:
+                r = await client.get(f"https://world.openfoodfacts.org/api/v0/product/{barcode}.json")
+                if r.status_code == 200:
+                    data = r.json()
+                    if data.get("status") == 1:
+                        url = extract_image(data.get("product", {}))
+                        if url:
+                            return {"url": url}
+            except Exception:
+                pass
+
+    raise HTTPException(status_code=404, detail="No se encontró imagen para ese producto")
+
+@api_router.post("/products/upload-image")
+async def upload_product_image(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user)
+):
+    content = await file.read()
+    filename = f"{user.empresa_id}_{uuid.uuid4().hex}.jpg"
+    try:
+        loop = asyncio.get_event_loop()
+        url, file_id = await loop.run_in_executor(
+            None,
+            lambda: _drive.upload_image(content, filename),
+        )
+    except Exception as e:
+        logger.error(f"Error subiendo imagen a Google Drive: {e}")
+        raise HTTPException(status_code=502, detail="Error al subir la imagen")
+    return {"url": url, "drive_file_id": file_id}
 
 @api_router.get("/products/{product_id}", response_model=Product)
 async def get_product(product_id: str, user: User = Depends(get_current_user)):
@@ -2477,6 +2711,26 @@ async def update_product(product_id: str, product_data: ProductUpdate, user: Use
         update_data['activo'] = product_data.activo
     if product_data.combo_items is not None:
         update_data['combo_items'] = [ci.dict() for ci in product_data.combo_items]
+
+    # Si cambia la imagen y la anterior era un archivo del cliente en Drive, borrarlo
+    old_imagen_url = existing_product.get("imagen_url")
+    old_drive_file_id = (
+        existing_product.get("drive_file_id")
+        or _drive.extract_drive_file_id(old_imagen_url or "")
+    )
+    new_imagen_url = update_data.get("imagen_url")
+    if old_drive_file_id and new_imagen_url is not None and new_imagen_url != old_imagen_url:
+        new_file_id = product_data.drive_file_id or ""
+        if new_file_id != old_drive_file_id:
+            try:
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, lambda: _drive.delete_file(old_drive_file_id))
+            except Exception as e:
+                logger.warning(f"No se pudo borrar imagen Drive {old_drive_file_id}: {e}")
+
+    # Manejar drive_file_id explícitamente (puede llegar vacío para limpiarlo)
+    if product_data.drive_file_id is not None:
+        update_data['drive_file_id'] = product_data.drive_file_id or None
 
     # Determine final kind (could be updated or existing)
     final_kind = update_data.get("kind") or existing_product.get("kind", "normal")
@@ -2983,7 +3237,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
         # Always fetch global product to know kind/control_stock
         global_product = await db.products.find_one({"id": item.producto_id, "empresa_id": user.empresa_id, "activo": True})
         if not global_product:
-            raise HTTPException(status_code=400, detail="Producto no encontrado")
+            raise HTTPException(status_code=400, detail=f"Producto no encontrado: {item.producto_id}")
 
         product_kind = global_product.get('kind', 'normal')
         control_stock = global_product.get('control_stock', True)
@@ -3214,8 +3468,8 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
     tax_rate = config['tax_rate'] if config else 0.12
     auto_update_inventory = config.get('auto_update_inventory', True) if config else True
 
-    # Restore stock from original items
-    if auto_update_inventory:
+    # Restore stock from original items (omitir para pedidos de tienda: nunca descontaron stock)
+    if auto_update_inventory and original_sale.get('origen') != 'tienda':
         for orig_item in original_sale.get('items', []):
             prod_id = orig_item['producto_id']
             cantidad = orig_item['cantidad']
@@ -3253,11 +3507,29 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
     # Process new items (same validation + stock deduction as create_sale)
     total_amount = 0
     validated_items = []
+    # Índice de los ítems originales por producto_id (para fallback en pedidos de tienda)
+    orig_items_map = {i["producto_id"]: i for i in original_sale.get("items", [])}
+    is_tienda_order = original_sale.get("origen") == "tienda"
+
     for item in sale_data.items:
         precio_unitario = None
         product_nombre = None
-        global_product = await db.products.find_one({"id": item.producto_id, "empresa_id": user.empresa_id, "activo": True})
+        # No filtramos por activo: los pedidos de tienda pueden incluir productos
+        # que fueron desactivados después de creado el pedido.
+        global_product = await db.products.find_one({"id": item.producto_id, "empresa_id": user.empresa_id})
         if not global_product:
+            if is_tienda_order and item.producto_id in orig_items_map:
+                # Producto eliminado del catálogo: usar datos del pedido original
+                orig = orig_items_map[item.producto_id]
+                validated_items.append(SaleItem(
+                    producto_id=item.producto_id,
+                    nombre=orig.get("nombre", item.producto_id),
+                    cantidad=item.cantidad,
+                    precio_unitario=item.precio_unitario or orig.get("precio_unitario", 0),
+                    subtotal=item.cantidad * (item.precio_unitario or orig.get("precio_unitario", 0)),
+                ))
+                total_amount += item.cantidad * (item.precio_unitario or orig.get("precio_unitario", 0))
+                continue
             raise HTTPException(status_code=400, detail="Producto no encontrado")
         product_kind = global_product.get('kind', 'normal')
         control_stock = global_product.get('control_stock', True)
@@ -5975,6 +6247,232 @@ async def owner_get_pagos(_=Depends(verify_owner_token)):
         result.append(pago_dict)
     return result
 
+# ─── Owner: Catálogo global de productos ──────────────────────────────────────
+
+class GlobalProductCreate(BaseModel):
+    nombre: str
+    codigo_barras: Optional[str] = None
+    imagen_url: Optional[str] = None
+
+class GlobalProductUpdate(BaseModel):
+    nombre: Optional[str] = None
+    codigo_barras: Optional[str] = None
+    imagen_url: Optional[str] = None
+
+@owner_router.get("/global-products")
+async def owner_get_global_products(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=100000),
+    search: Optional[str] = Query(None),
+    _=Depends(verify_owner_token),
+):
+    query: dict = {}
+    if search:
+        query["$or"] = [
+            {"nombre": {"$regex": search, "$options": "i"}},
+            {"codigo_barras": {"$regex": search, "$options": "i"}},
+        ]
+    total = await db.global_products.count_documents(query)
+    skip = (page - 1) * per_page
+    items = await db.global_products.find(query, {"_id": 0}).sort("nombre", 1).skip(skip).limit(per_page).to_list(per_page)
+    return {"items": items, "total": total, "page": page, "per_page": per_page, "total_pages": max(1, -(-total // per_page))}
+
+@owner_router.post("/global-products")
+async def owner_create_global_product(data: GlobalProductCreate, _=Depends(verify_owner_token)):
+    if data.codigo_barras:
+        existing = await db.global_products.find_one({"codigo_barras": data.codigo_barras})
+        if existing:
+            raise HTTPException(status_code=400, detail="Ya existe un producto con ese código de barras")
+    product = {
+        "id": str(uuid.uuid4()),
+        "nombre": data.nombre.strip(),
+        "codigo_barras": data.codigo_barras.strip() if data.codigo_barras else None,
+        "imagen_url": data.imagen_url or None,
+        "created_at": datetime.now(timezone.utc),
+    }
+    await db.global_products.insert_one(product)
+    return {k: v for k, v in product.items() if k != "_id"}
+
+@owner_router.put("/global-products/{product_id}")
+async def owner_update_global_product(product_id: str, data: GlobalProductUpdate, _=Depends(verify_owner_token)):
+    product = await db.global_products.find_one({"id": product_id})
+    if not product:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    update: dict = {}
+    if data.nombre is not None:
+        update["nombre"] = data.nombre.strip()
+    if data.codigo_barras is not None:
+        cb = data.codigo_barras.strip()
+        if cb:
+            existing = await db.global_products.find_one({"codigo_barras": cb, "id": {"$ne": product_id}})
+            if existing:
+                raise HTTPException(status_code=400, detail="Ya existe un producto con ese código de barras")
+        update["codigo_barras"] = cb or None
+    if data.imagen_url is not None:
+        update["imagen_url"] = data.imagen_url or None
+    if update:
+        await db.global_products.update_one({"id": product_id}, {"$set": update})
+    updated = await db.global_products.find_one({"id": product_id}, {"_id": 0})
+    return updated
+
+@owner_router.delete("/global-products/{product_id}")
+async def owner_delete_global_product(product_id: str, _=Depends(verify_owner_token)):
+    result = await db.global_products.delete_one({"id": product_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    return {"ok": True}
+
+@owner_router.post("/global-products/import")
+async def owner_import_global_products(file: UploadFile = File(...), _=Depends(verify_owner_token)):
+    content = await file.read()
+    filename = file.filename or ""
+    try:
+        if filename.endswith(".xlsx") or filename.endswith(".xls"):
+            df = pd.read_excel(io.BytesIO(content))
+        elif filename.endswith(".csv"):
+            df = pd.read_csv(io.StringIO(content.decode("utf-8-sig")))
+        else:
+            raise HTTPException(status_code=400, detail="Formato no soportado. Use CSV o XLSX.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error al leer el archivo: {str(e)}")
+
+    df.columns = df.columns.str.strip().str.lower()
+    if "nombre" not in df.columns:
+        raise HTTPException(status_code=400, detail="Columna 'nombre' requerida")
+
+    total_rows = len(df)
+
+    async def generate():
+        created = 0
+        updated = 0
+        errors = []
+        for idx, row in df.iterrows():
+            try:
+                nombre = str(row.get("nombre", "")).strip()
+                if not nombre:
+                    errors.append(f"Fila {idx + 2}: nombre vacío")
+                    continue
+
+                raw_barcode = row.get("codigo_barras")
+                codigo_barras = None
+                if pd.notna(raw_barcode) and str(raw_barcode).strip() not in ("", "nan"):
+                    try:
+                        codigo_barras = str(int(float(str(raw_barcode).strip())))
+                    except (ValueError, OverflowError):
+                        codigo_barras = str(raw_barcode).strip()
+
+                raw_imagen = row.get("imagen_url")
+                imagen_url = str(raw_imagen).strip() if pd.notna(raw_imagen) and str(raw_imagen).strip() not in ("", "nan") else None
+
+                existing = None
+                if codigo_barras:
+                    existing = await db.global_products.find_one({"codigo_barras": codigo_barras})
+
+                if existing:
+                    update = {"nombre": nombre}
+                    if imagen_url:
+                        update["imagen_url"] = imagen_url
+                    await db.global_products.update_one({"id": existing["id"]}, {"$set": update})
+                    updated += 1
+                else:
+                    await db.global_products.insert_one({
+                        "id": str(uuid.uuid4()),
+                        "nombre": nombre,
+                        "codigo_barras": codigo_barras,
+                        "imagen_url": imagen_url,
+                        "created_at": datetime.now(timezone.utc),
+                    })
+                    created += 1
+            except Exception as e:
+                errors.append(f"Fila {idx + 2}: {str(e)}")
+
+            progress = int(((idx + 1) / total_rows) * 100)
+            yield f"data: {json.dumps({'progress': progress, 'processed': idx + 1, 'total': total_rows})}\n\n"
+            await asyncio.sleep(0)
+
+        yield f"data: {json.dumps({'done': True, 'created': created, 'updated': updated, 'errors': errors})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+@owner_router.post("/global-products/{product_id}/upload-image")
+async def owner_upload_global_image(
+    product_id: str,
+    file: UploadFile = File(...),
+    _=Depends(verify_owner_token),
+):
+    product = await db.global_products.find_one({"id": product_id})
+    if not product:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Archivo vacío")
+
+    # Si ya tenía una imagen en Drive, borrarla
+    old_url = product.get("imagen_url", "")
+    old_file_id = _drive.extract_drive_file_id(old_url)
+    if old_file_id:
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, lambda: _drive.delete_file(old_file_id))
+        except Exception as e:
+            logger.warning(f"No se pudo borrar imagen global Drive {old_file_id}: {e}")
+
+    filename = f"global_{product_id}.jpg"
+    try:
+        loop = asyncio.get_event_loop()
+        url, _ = await loop.run_in_executor(
+            None,
+            lambda: _drive.upload_image(content, filename),
+        )
+    except Exception as e:
+        logger.error(f"Error subiendo imagen global a Drive: {e}")
+        raise HTTPException(status_code=502, detail="Error al subir la imagen")
+
+    await db.global_products.update_one({"id": product_id}, {"$set": {"imagen_url": url}})
+    return {"url": url}
+
+@owner_router.get("/global-products/suggest-image")
+async def owner_suggest_global_image(
+    q: str = Query(..., min_length=1),
+    barcode: Optional[str] = Query(None),
+    _=Depends(verify_owner_token),
+):
+    off_auth = (os.environ.get("OFF_USER", ""), os.environ.get("OFF_PASS", ""))
+
+    def extract_image(product: dict) -> Optional[str]:
+        return product.get("image_front_url") or product.get("image_url") or product.get("image_thumb_url")
+
+    async with httpx.AsyncClient(timeout=10, follow_redirects=True, auth=off_auth) as client:
+        try:
+            r = await client.get(
+                "https://world.openfoodfacts.org/cgi/search.pl",
+                params={"search_terms": q, "json": "1", "page_size": "5"},
+            )
+            if r.status_code == 200:
+                for product in r.json().get("products", []):
+                    url = extract_image(product)
+                    if url:
+                        return {"url": url}
+        except Exception:
+            pass
+
+        if barcode:
+            try:
+                r = await client.get(f"https://world.openfoodfacts.org/api/v0/product/{barcode}.json")
+                if r.status_code == 200:
+                    data = r.json()
+                    if data.get("status") == 1:
+                        url = extract_image(data.get("product", {}))
+                        if url:
+                            return {"url": url}
+            except Exception:
+                pass
+
+    raise HTTPException(status_code=404, detail="No se encontró imagen")
+
 # ─── Router AFIP/ARCA ─────────────────────────────────────────────────────────
 
 afip_router = APIRouter(prefix="/api/afip")
@@ -6203,10 +6701,675 @@ async def reintentar_cae_nc(
         )
         raise HTTPException(status_code=503, detail=f"Error al obtener CAE para NC: {e}")
 
+# ─── TIENDA PÚBLICA ────────────────────────────────────────────────────────────
+
+# In-memory pub/sub para SSE de pedidos en tiempo real
+_tienda_subscribers: dict[str, set] = {}
+
+async def publish_tienda_event(empresa_id: str, payload: dict):
+    for q in list(_tienda_subscribers.get(empresa_id, set())):
+        try:
+            q.put_nowait(payload)
+        except asyncio.QueueFull:
+            pass
+
+tienda_router = APIRouter()
+
+# --- Modelos tienda ---
+
+class TiendaOTPEnviar(BaseModel):
+    email: str
+
+class TiendaOTPVerificar(BaseModel):
+    email: str
+    codigo: str
+
+class TiendaRegister(BaseModel):
+    nombre: str
+    email: str
+    telefono: str = ""
+    password: str
+    otp_token: str
+    sucursal_id: Optional[str] = None
+
+class TiendaCambiarSucursal(BaseModel):
+    sucursal_id: str
+
+class TiendaLoginRequest(BaseModel):
+    email: str
+    password: str
+
+class TiendaResetPassword(BaseModel):
+    email: str
+    otp_token: str
+    nueva_password: str
+
+class TiendaPedidoItem(BaseModel):
+    producto_id: str
+    cantidad: float
+    precio_unitario: float
+
+class TiendaCreatePedido(BaseModel):
+    items: List[TiendaPedidoItem]
+    tipo_entrega: str  # "domicilio" | "retiro"
+    direccion_entrega: Optional[str] = None
+    observaciones: Optional[str] = None
+
+class TiendaUpdateEstado(BaseModel):
+    estado_pedido: str
+
+# --- Helpers tienda ---
+
+TIENDA_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 días
+
+def create_tienda_token(customer_id: str, empresa_id: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(minutes=TIENDA_TOKEN_EXPIRE_MINUTES)
+    return jwt.encode(
+        {"type": "tienda_customer", "customer_id": customer_id, "empresa_id": empresa_id, "exp": expire},
+        SECRET_KEY, algorithm=ALGORITHM,
+    )
+
+async def get_tienda_customer_token(
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()),
+) -> dict:
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "tienda_customer":
+            raise HTTPException(status_code=401, detail="Token inválido")
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Sesión expirada. Volvé a iniciar sesión.")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Token inválido")
+    customer = await db.tienda_customers.find_one({
+        "id": payload["customer_id"], "empresa_id": payload["empresa_id"], "activo": True
+    })
+    if not customer:
+        raise HTTPException(status_code=401, detail="Cliente no encontrado")
+    return customer
+
+async def _get_empresa_tienda(empresa_id: str) -> dict:
+    empresa = await db.empresas.find_one({"id": empresa_id, "activo": True})
+    if not empresa:
+        raise HTTPException(status_code=404, detail="Tienda no encontrada")
+    return empresa
+
+async def _get_tienda_cfg(empresa_id: str) -> dict:
+    return await db.configuration.find_one({"empresa_id": empresa_id}) or {}
+
+def _fmt_producto(p: dict, bp: dict = None) -> dict:
+    return {
+        "id": p["id"],
+        "nombre": p.get("nombre", ""),
+        "precio": bp["precio"] if bp else p.get("precio", 0),
+        "categoria_id": p.get("categoria_id"),
+        "tipo": p.get("tipo", "UNIDAD"),
+        "imagen": p.get("imagen_url") or p.get("imagen"),
+        "stock": bp["stock"] if bp else p.get("stock"),
+        "control_stock": p.get("control_stock", False),
+    }
+
+async def _get_branch_product(product_id: str, sucursal_id: Optional[str], empresa_id: str) -> Optional[dict]:
+    if not sucursal_id:
+        return None
+    return await db.branch_products.find_one({"product_id": product_id, "branch_id": sucursal_id, "empresa_id": empresa_id, "activo": True})
+
+# --- Endpoints públicos ---
+
+@tienda_router.get("/api/tienda/{empresa_id}/config")
+async def tienda_config(empresa_id: str):
+    empresa = await db.empresas.find_one({"id": empresa_id, "activo": True})
+    if not empresa:
+        raise HTTPException(status_code=404, detail="Tienda no encontrada")
+    cfg = await _get_tienda_cfg(empresa_id)
+    return {
+        "empresa_id": empresa_id,
+        "empresa_nombre": empresa.get("nombre", ""),
+        "company_name": cfg.get("company_name", empresa.get("nombre", "")),
+        "company_address": cfg.get("company_address", ""),
+        "company_phone": cfg.get("company_phone", ""),
+        "company_logo": cfg.get("company_logo"),
+        "primary_color": cfg.get("primary_color"),
+        "secondary_color": cfg.get("secondary_color"),
+        "tertiary_color": cfg.get("tertiary_color"),
+        "currency_symbol": cfg.get("currency_symbol", "$"),
+        "tienda_activa": cfg.get("tienda_activa", True),
+        "tienda_descripcion": cfg.get("tienda_descripcion", ""),
+        "tienda_horario": cfg.get("tienda_horario", ""),
+        "tienda_envio_activo": cfg.get("tienda_envio_activo", True),
+        "tienda_costo_envio": cfg.get("tienda_costo_envio", 0.0),
+        "tienda_retiro_activo": cfg.get("tienda_retiro_activo", True),
+        "tienda_monto_minimo": cfg.get("tienda_monto_minimo", 0.0),
+    }
+
+@tienda_router.get("/api/tienda/{empresa_id}/sucursales")
+async def tienda_sucursales(empresa_id: str):
+    await _get_empresa_tienda(empresa_id)
+    branches = await db.branches.find({"empresa_id": empresa_id, "activo": True}, {"id": 1, "nombre": 1, "direccion": 1}).to_list(100)
+    return [{"id": b["id"], "nombre": b["nombre"], "direccion": b.get("direccion", "")} for b in branches]
+
+@tienda_router.get("/api/tienda/{empresa_id}/categorias")
+async def tienda_categorias(empresa_id: str, sucursal_id: Optional[str] = Query(None)):
+    await _get_empresa_tienda(empresa_id)
+    allowed_ids = None
+    if sucursal_id:
+        bp_ids = await db.branch_products.find(
+            {"branch_id": sucursal_id, "empresa_id": empresa_id, "activo": True, "mostrar_en_tienda": {"$ne": False}},
+            {"product_id": 1}
+        ).to_list(None)
+        allowed_ids = [b["product_id"] for b in bp_ids]
+    cats = await db.categories.find({"empresa_id": empresa_id}).to_list(500)
+    result = []
+    for cat in cats:
+        q = {"empresa_id": empresa_id, "categoria_id": cat["id"], "activo": True}
+        if allowed_ids is not None:
+            q["id"] = {"$in": allowed_ids}
+        count = await db.products.count_documents(q)
+        if count > 0:
+            result.append({"id": cat["id"], "nombre": cat.get("nombre", ""), "color": cat.get("color"), "icono": cat.get("icono"), "count": count})
+    return result
+
+@tienda_router.get("/api/tienda/{empresa_id}/productos")
+async def tienda_productos(
+    empresa_id: str,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(12, ge=1, le=100),
+    search: Optional[str] = Query(None),
+    category_id: Optional[str] = Query(None),
+    sucursal_id: Optional[str] = Query(None),
+):
+    await _get_empresa_tienda(empresa_id)
+    query: dict = {"empresa_id": empresa_id, "activo": True}
+    if search:
+        query["nombre"] = {"$regex": search, "$options": "i"}
+    if category_id:
+        query["categoria_id"] = category_id
+    # Si hay sucursal, filtrar solo productos que existan en esa sucursal como activos
+    if sucursal_id:
+        bp_ids = await db.branch_products.find(
+            {"branch_id": sucursal_id, "empresa_id": empresa_id, "activo": True, "mostrar_en_tienda": {"$ne": False}},
+            {"product_id": 1}
+        ).to_list(None)
+        allowed_ids = [b["product_id"] for b in bp_ids]
+        query["id"] = {"$in": allowed_ids}
+    total = await db.products.count_documents(query)
+    skip = (page - 1) * per_page
+    prods = await db.products.find(query).sort("nombre", 1).skip(skip).limit(per_page).to_list(per_page)
+    items = []
+    for p in prods:
+        bp = await _get_branch_product(p["id"], sucursal_id, empresa_id)
+        items.append(_fmt_producto(p, bp))
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, -(-total // per_page)),
+    }
+
+@tienda_router.get("/api/tienda/{empresa_id}/mas-vendidos")
+async def tienda_mas_vendidos(empresa_id: str, sucursal_id: Optional[str] = Query(None)):
+    await _get_empresa_tienda(empresa_id)
+    hace_30d = datetime.now(timezone.utc) - timedelta(days=30)
+    match = {"empresa_id": empresa_id, "fecha": {"$gte": hace_30d}, "estado": {"$ne": "anulado"}}
+    if sucursal_id:
+        match["branch_id"] = sucursal_id
+    pipeline = [
+        {"$match": match},
+        {"$unwind": "$items"},
+        {"$group": {"_id": "$items.producto_id", "total_vendido": {"$sum": "$items.cantidad"}}},
+        {"$sort": {"total_vendido": -1}},
+        {"$limit": 12},
+    ]
+    top = await db.sales.aggregate(pipeline).to_list(12)
+    result = []
+    for entry in top:
+        p = await db.products.find_one({"id": entry["_id"], "empresa_id": empresa_id, "activo": True})
+        if not p:
+            continue
+        bp = await _get_branch_product(p["id"], sucursal_id, empresa_id)
+        if sucursal_id:
+            if not bp:
+                continue
+            if bp.get("mostrar_en_tienda") is False:
+                continue
+        item = _fmt_producto(p, bp)
+        item["total_vendido"] = entry["total_vendido"]
+        result.append(item)
+        if len(result) >= 8:
+            break
+    return result
+
+# --- Auth tienda ---
+
+@tienda_router.post("/api/tienda/{empresa_id}/auth/otp/enviar")
+async def tienda_otp_enviar(empresa_id: str, data: TiendaOTPEnviar):
+    empresa = await _get_empresa_tienda(empresa_id)
+    empresa_nombre = empresa.get("nombre") or empresa.get("nombre_empresa") or "la tienda"
+    email = data.email.strip().lower()
+    recientes = await db.tienda_otps.count_documents({
+        "email": email, "empresa_id": empresa_id,
+        "expires_at": {"$gt": datetime.now(timezone.utc)}, "usado": False,
+    })
+    if recientes >= 3:
+        raise HTTPException(status_code=429, detail="Demasiados intentos. Esperá unos minutos.")
+    codigo = str(random.randint(1000, 9999))
+    await db.tienda_otps.insert_one({
+        "email": email, "empresa_id": empresa_id,
+        "codigo": codigo, "expires_at": datetime.now(timezone.utc) + timedelta(minutes=10), "usado": False,
+    })
+    try:
+        await send_tienda_email_otp(email, codigo, empresa_nombre)
+    except Exception:
+        logging.exception("Error enviando OTP tienda")
+        raise HTTPException(status_code=500, detail="No se pudo enviar el código. Intentá de nuevo.")
+    return {"ok": True, "mensaje": "Código enviado al correo"}
+
+@tienda_router.post("/api/tienda/{empresa_id}/auth/otp/verificar")
+async def tienda_otp_verificar(empresa_id: str, data: TiendaOTPVerificar):
+    await _get_empresa_tienda(empresa_id)
+    email = data.email.strip().lower()
+    otp = await db.tienda_otps.find_one({
+        "email": email, "empresa_id": empresa_id, "codigo": data.codigo,
+        "usado": False, "expires_at": {"$gt": datetime.now(timezone.utc)},
+    })
+    if not otp:
+        raise HTTPException(status_code=400, detail="Código inválido o expirado")
+    await db.tienda_otps.update_one({"_id": otp["_id"]}, {"$set": {"usado": True}})
+    token = jwt.encode(
+        {"type": "email_otp_tienda", "email": email, "empresa_id": empresa_id,
+         "exp": datetime.now(timezone.utc) + timedelta(minutes=15)},
+        SECRET_KEY, algorithm=ALGORITHM,
+    )
+    return {"ok": True, "verificacion_token": token}
+
+@tienda_router.post("/api/tienda/{empresa_id}/auth/register")
+async def tienda_register(empresa_id: str, data: TiendaRegister):
+    await _get_empresa_tienda(empresa_id)
+    email = data.email.strip().lower()
+    try:
+        payload = jwt.decode(data.otp_token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "email_otp_tienda" or payload.get("email") != email or payload.get("empresa_id") != empresa_id:
+            raise ValueError()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Token de verificación inválido o expirado")
+    if await db.tienda_customers.find_one({"email": email, "empresa_id": empresa_id}):
+        raise HTTPException(status_code=400, detail="El email ya está registrado en esta tienda")
+    # Validar sucursal si fue enviada
+    sucursal_id = None
+    if data.sucursal_id:
+        branch = await db.branches.find_one({"id": data.sucursal_id, "empresa_id": empresa_id, "activo": True})
+        if branch:
+            sucursal_id = branch["id"]
+    # Si no vino sucursal o era inválida, tomar la primera activa
+    if not sucursal_id:
+        first = await db.branches.find_one({"empresa_id": empresa_id, "activo": True})
+        if first:
+            sucursal_id = first["id"]
+    customer = {
+        "id": str(uuid.uuid4()),
+        "empresa_id": empresa_id,
+        "nombre": data.nombre.strip(),
+        "email": email,
+        "telefono": data.telefono.strip() if data.telefono else "",
+        "password": bcrypt.hash(data.password),
+        "sucursal_id": sucursal_id,
+        "activo": True,
+        "created_at": datetime.now(timezone.utc),
+    }
+    await db.tienda_customers.insert_one(customer)
+    token = create_tienda_token(customer["id"], empresa_id)
+    return {"access_token": token, "customer": {"id": customer["id"], "nombre": customer["nombre"], "email": customer["email"], "telefono": customer["telefono"], "sucursal_id": customer.get("sucursal_id"), "direcciones_por_sucursal": customer.get("direcciones_por_sucursal", {})}}
+
+@tienda_router.post("/api/tienda/{empresa_id}/auth/login")
+async def tienda_login(empresa_id: str, data: TiendaLoginRequest):
+    await _get_empresa_tienda(empresa_id)
+    email = data.email.strip().lower()
+    customer = await db.tienda_customers.find_one({"email": email, "empresa_id": empresa_id, "activo": True})
+    if not customer or not bcrypt.verify(data.password, customer["password"]):
+        raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
+    # Si el customer no tiene sucursal asignada aún, asignar la primera activa
+    if not customer.get("sucursal_id"):
+        first = await db.branches.find_one({"empresa_id": empresa_id, "activo": True})
+        if first:
+            await db.tienda_customers.update_one({"id": customer["id"]}, {"$set": {"sucursal_id": first["id"]}})
+            customer["sucursal_id"] = first["id"]
+    token = create_tienda_token(customer["id"], empresa_id)
+    return {"access_token": token, "customer": {"id": customer["id"], "nombre": customer["nombre"], "email": customer["email"], "telefono": customer.get("telefono", ""), "sucursal_id": customer.get("sucursal_id"), "direcciones_por_sucursal": customer.get("direcciones_por_sucursal", {})}}
+
+@tienda_router.post("/api/tienda/{empresa_id}/auth/reset-password")
+async def tienda_reset_password(empresa_id: str, data: TiendaResetPassword):
+    await _get_empresa_tienda(empresa_id)
+    email = data.email.strip().lower()
+    try:
+        payload = jwt.decode(data.otp_token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "email_otp_tienda" or payload.get("email") != email or payload.get("empresa_id") != empresa_id:
+            raise ValueError()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Token de verificación inválido o expirado")
+    if len(data.nueva_password) < 6:
+        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 6 caracteres")
+    customer = await db.tienda_customers.find_one({"email": email, "empresa_id": empresa_id, "activo": True})
+    if not customer:
+        raise HTTPException(status_code=404, detail="No existe una cuenta con ese email")
+    await db.tienda_customers.update_one(
+        {"email": email, "empresa_id": empresa_id},
+        {"$set": {"password": bcrypt.hash(data.nueva_password)}}
+    )
+    return {"ok": True}
+
+@tienda_router.get("/api/tienda/{empresa_id}/auth/me")
+async def tienda_me(empresa_id: str, customer: dict = Depends(get_tienda_customer_token)):
+    if customer["empresa_id"] != empresa_id:
+        raise HTTPException(status_code=403, detail="Acceso denegado")
+    return {"id": customer["id"], "nombre": customer["nombre"], "email": customer["email"], "telefono": customer.get("telefono", ""), "sucursal_id": customer.get("sucursal_id"), "direcciones_por_sucursal": customer.get("direcciones_por_sucursal", {})}
+
+@tienda_router.patch("/api/tienda/{empresa_id}/auth/sucursal")
+async def tienda_cambiar_sucursal(empresa_id: str, data: TiendaCambiarSucursal, customer: dict = Depends(get_tienda_customer_token)):
+    if customer["empresa_id"] != empresa_id:
+        raise HTTPException(status_code=403, detail="Acceso denegado")
+    branch = await db.branches.find_one({"id": data.sucursal_id, "empresa_id": empresa_id, "activo": True})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Sucursal no encontrada")
+    await db.tienda_customers.update_one({"id": customer["id"]}, {"$set": {"sucursal_id": data.sucursal_id}})
+    return {"ok": True, "sucursal_id": data.sucursal_id}
+
+@tienda_router.post("/api/tienda/{empresa_id}/carrito/precios")
+async def tienda_carrito_precios(empresa_id: str, data: dict):
+    await _get_empresa_tienda(empresa_id)
+    sucursal_id = data.get("sucursal_id")
+    producto_ids = data.get("producto_ids", [])
+    result = {}
+    for pid in producto_ids:
+        bp = None
+        if sucursal_id:
+            bp = await db.branch_products.find_one({"product_id": pid, "branch_id": sucursal_id, "empresa_id": empresa_id, "activo": True})
+        if not bp:
+            p = await db.products.find_one({"id": pid, "empresa_id": empresa_id, "activo": True})
+            result[pid] = p.get("precio", 0) if p else None
+        else:
+            result[pid] = bp.get("precio", 0)
+    return result
+
+# --- Pedidos ---
+
+@tienda_router.post("/api/tienda/{empresa_id}/pedidos")
+async def tienda_crear_pedido(empresa_id: str, data: TiendaCreatePedido, customer: dict = Depends(get_tienda_customer_token)):
+    if customer["empresa_id"] != empresa_id:
+        raise HTTPException(status_code=403, detail="Acceso denegado")
+    cfg = await _get_tienda_cfg(empresa_id)
+    if not cfg.get("tienda_activa", True):
+        raise HTTPException(status_code=503, detail="Tienda temporalmente cerrada")
+    if data.tipo_entrega == "domicilio" and not data.direccion_entrega:
+        raise HTTPException(status_code=400, detail="La dirección de entrega es requerida")
+    monto_minimo = cfg.get("tienda_monto_minimo", 0.0)
+    items_doc = []
+    subtotal = 0.0
+    for item in data.items:
+        product = await db.products.find_one({"id": item.producto_id, "empresa_id": empresa_id, "activo": True})
+        if not product:
+            raise HTTPException(status_code=400, detail=f"Producto no disponible: {item.producto_id}")
+        precio = product.get("precio", 0)
+        items_doc.append({"producto_id": item.producto_id, "nombre": product.get("nombre", ""), "cantidad": item.cantidad, "precio_unitario": precio, "subtotal": round(precio * item.cantidad, 2)})
+        subtotal += precio * item.cantidad
+    subtotal = round(subtotal, 2)
+    if monto_minimo > 0 and subtotal < monto_minimo:
+        raise HTTPException(status_code=400, detail=f"El monto mínimo de pedido es ${monto_minimo:.0f}")
+    costo_envio = cfg.get("tienda_costo_envio", 0.0) if data.tipo_entrega == "domicilio" else 0.0
+    total = round(subtotal + costo_envio, 2)
+    branch = await db.branches.find_one({"empresa_id": empresa_id})
+    branch_id = branch["id"] if branch else empresa_id
+    count = await db.sales.count_documents({"empresa_id": empresa_id, "origen": "tienda"})
+    numero_pedido = f"T-{count + 1:05d}"
+    pedido_id = str(uuid.uuid4())
+    sale_doc = {
+        "id": pedido_id, "empresa_id": empresa_id,
+        "cajero_id": customer["id"], "branch_id": branch_id, "session_id": None,
+        "items": items_doc, "subtotal": subtotal, "impuestos": 0.0, "total": total,
+        "metodo_pago": "efectivo", "fecha": datetime.now(timezone.utc),
+        "numero_factura": numero_pedido, "estado": "activo", "afip_estado": "no_configurado",
+        "descuento": 0.0, "impuestos_extra_total": costo_envio,
+        "origen": "tienda",
+        "tienda_customer_id": customer["id"],
+        "tienda_customer_nombre": customer["nombre"],
+        "tienda_customer_email": customer["email"],
+        "tienda_customer_telefono": customer.get("telefono", ""),
+        "tipo_entrega": data.tipo_entrega,
+        "direccion_entrega": data.direccion_entrega or "",
+        "observaciones_tienda": data.observaciones or "",
+        "estado_pedido": "pendiente",
+        "costo_envio": costo_envio,
+    }
+    await db.sales.insert_one(sale_doc)
+    # Guardar dirección por sucursal para futuros pedidos
+    if data.tipo_entrega == "domicilio" and data.direccion_entrega:
+        sucursal_key = customer.get("sucursal_id", "default")
+        await db.tienda_customers.update_one(
+            {"id": customer["id"]},
+            {"$set": {f"direcciones_por_sucursal.{sucursal_key}": data.direccion_entrega.strip()}}
+        )
+    # Notificar en tiempo real a admins conectados via SSE
+    await publish_tienda_event(empresa_id, {
+        "type": "pedido_nuevo",
+        "numero_pedido": numero_pedido,
+        "cliente": customer["nombre"],
+        "total": total,
+        "tipo_entrega": data.tipo_entrega,
+    })
+    return {"ok": True, "pedido_id": pedido_id, "numero_pedido": numero_pedido, "total": total}
+
+@tienda_router.get("/api/tienda/{empresa_id}/pedidos")
+async def tienda_mis_pedidos(empresa_id: str, customer: dict = Depends(get_tienda_customer_token)):
+    if customer["empresa_id"] != empresa_id:
+        raise HTTPException(status_code=403, detail="Acceso denegado")
+    pedidos = await db.sales.find(
+        {"empresa_id": empresa_id, "origen": "tienda", "tienda_customer_id": customer["id"]},
+        {"_id": 0}
+    ).sort("fecha", -1).to_list(50)
+    return [{"id": p["id"], "numero_pedido": p.get("numero_factura", ""), "fecha": p.get("fecha"), "items": p.get("items", []), "subtotal": p.get("subtotal", 0), "total": p.get("total", 0), "tipo_entrega": p.get("tipo_entrega", ""), "direccion_entrega": p.get("direccion_entrega", ""), "estado_pedido": p.get("estado_pedido", "pendiente"), "observaciones_tienda": p.get("observaciones_tienda", "")} for p in pedidos]
+
+# --- Admin: gestión de pedidos ---
+
+@api_router.get("/pedidos")
+async def admin_get_pedidos(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    estado: Optional[str] = Query(None),
+    user: User = Depends(require_role([UserRole.ADMIN])),
+):
+    query: dict = {"empresa_id": user.empresa_id, "origen": "tienda"}
+    if estado:
+        query["estado_pedido"] = estado
+    total = await db.sales.count_documents(query)
+    skip = (page - 1) * per_page
+    pedidos = await db.sales.find(query, {"_id": 0}).sort("fecha", -1).skip(skip).limit(per_page).to_list(per_page)
+    return {"items": pedidos, "total": total, "page": page, "per_page": per_page, "total_pages": max(1, -(-total // per_page))}
+
+@api_router.get("/pedidos/pendientes/count")
+async def admin_pedidos_pendientes_count(user: User = Depends(require_role([UserRole.ADMIN]))):
+    count = await db.sales.count_documents({"empresa_id": user.empresa_id, "origen": "tienda", "estado_pedido": "pendiente"})
+    return {"pendientes": count}
+
+@api_router.get("/pedidos/eventos")
+async def tienda_pedidos_sse(token: str = Query(...)):
+    """SSE — el cliente se suscribe y recibe eventos en tiempo real al crear pedidos."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        empresa_id = payload.get("empresa_id")
+        if not user_id or not empresa_id:
+            raise HTTPException(status_code=401)
+        user_doc = await db.users.find_one({"id": user_id, "empresa_id": empresa_id, "rol": "admin"})
+        if not user_doc:
+            raise HTTPException(status_code=403)
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401)
+
+    q: asyncio.Queue = asyncio.Queue(maxsize=20)
+    _tienda_subscribers.setdefault(empresa_id, set()).add(q)
+
+    async def generate():
+        try:
+            yield f"data: {json.dumps({'type': 'connected'})}\n\n"
+            while True:
+                try:
+                    event = await asyncio.wait_for(q.get(), timeout=25)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"
+        finally:
+            _tienda_subscribers.get(empresa_id, set()).discard(q)
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
+
+@api_router.patch("/pedidos/{sale_id}/estado")
+async def admin_update_estado_pedido(sale_id: str, data: TiendaUpdateEstado, user: User = Depends(require_role([UserRole.ADMIN]))):
+    ESTADOS_VALIDOS = ["pendiente", "aceptado", "en_preparacion", "listo", "entregado", "cancelado"]
+    if data.estado_pedido not in ESTADOS_VALIDOS:
+        raise HTTPException(status_code=400, detail="Estado inválido")
+
+    pedido = await db.sales.find_one({"id": sale_id, "empresa_id": user.empresa_id, "origen": "tienda"})
+    if not pedido:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+
+    estado_actual = pedido.get("estado_pedido", "pendiente")
+    nuevo_estado = data.estado_pedido
+
+    # Stock was already decremented in these states
+    ESTADOS_CON_STOCK = {"en_preparacion", "listo", "entregado"}
+    ESTADOS_SIN_STOCK = {"pendiente", "aceptado"}
+
+    config = await db.configuration.find_one({"empresa_id": user.empresa_id})
+    auto_update_inventory = config.get("auto_update_inventory", True) if config else True
+
+    items = pedido.get("items", [])
+    branch_id = pedido.get("branch_id")
+
+    # Going forward to en_preparacion from a state without stock → decrement
+    should_decrement = (
+        nuevo_estado == "en_preparacion"
+        and estado_actual in ESTADOS_SIN_STOCK
+        and auto_update_inventory
+    )
+
+    # Going back to en_preparacion (from listo/entregado), to any earlier state, or cancelling
+    # from a state where stock was already decremented → restore
+    going_back_to_en_preparacion = (nuevo_estado == "en_preparacion" and estado_actual in {"listo", "entregado"})
+    going_to_earlier = (nuevo_estado in ESTADOS_SIN_STOCK and estado_actual in ESTADOS_CON_STOCK)
+    cancelling = (nuevo_estado == "cancelado" and estado_actual in ESTADOS_CON_STOCK)
+    should_restore = (going_back_to_en_preparacion or going_to_earlier or cancelling) and auto_update_inventory
+
+    if should_decrement:
+        for item in items:
+            pid = item["producto_id"]
+            qty = int(item["cantidad"])
+            gp = await db.products.find_one({"id": pid, "empresa_id": user.empresa_id})
+            if not gp or not gp.get("control_stock", True):
+                continue
+            await db.products.update_one(
+                {"id": pid, "empresa_id": user.empresa_id},
+                {"$inc": {"stock": -qty}}
+            )
+            if branch_id and branch_id != "global":
+                await db.branch_products.update_one(
+                    {"product_id": pid, "branch_id": branch_id, "empresa_id": user.empresa_id},
+                    {"$inc": {"stock": qty * -1}}
+                )
+
+    if should_restore:
+        # Restore stock for all items
+        return_items_docs = []
+        total_return = 0.0
+        for item in items:
+            pid = item["producto_id"]
+            qty = item["cantidad"]
+            precio = item.get("precio_unitario", 0)
+            subtotal = round(precio * qty, 2)
+            total_return += subtotal
+            gp = await db.products.find_one({"id": pid, "empresa_id": user.empresa_id})
+            if not gp or not gp.get("control_stock", True):
+                pass  # still create ticket entry even if no stock control
+            else:
+                await db.products.update_one(
+                    {"id": pid, "empresa_id": user.empresa_id},
+                    {"$inc": {"stock": int(qty)}}
+                )
+                if branch_id and branch_id != "global":
+                    await db.branch_products.update_one(
+                        {"product_id": pid, "branch_id": branch_id, "empresa_id": user.empresa_id},
+                        {"$inc": {"stock": int(qty)}}
+                    )
+            return_items_docs.append({
+                "producto_id": pid,
+                "nombre": item.get("nombre", ""),
+                "cantidad": qty,
+                "precio_unitario": precio,
+                "subtotal": subtotal,
+            })
+
+        motivo = f"Cambio de estado del pedido: {estado_actual} → {nuevo_estado}"
+
+        # SaleReturn ticket (DEV-XXXXXX)
+        dev_count = await db.sale_returns.count_documents({"empresa_id": user.empresa_id})
+        numero_devolucion = f"DEV-{str(dev_count + 1).zfill(6)}"
+        sale_return_id = str(uuid.uuid4())
+        sale_return_doc = {
+            "id": sale_return_id,
+            "empresa_id": user.empresa_id,
+            "sale_id": sale_id,
+            "cajero_id": user.id,
+            "items": return_items_docs,
+            "total": round(total_return, 2),
+            "motivo": motivo,
+            "fecha": datetime.now(timezone.utc),
+            "numero_devolucion": numero_devolucion,
+        }
+        await db.sale_returns.insert_one(sale_return_doc)
+
+        # Credit note (NC-XXXXXX)
+        cn_count = await db.credit_notes.count_documents({"empresa_id": user.empresa_id})
+        numero_nota_credito = f"NC-{str(cn_count + 1).zfill(6)}"
+        credit_note_doc = {
+            "id": str(uuid.uuid4()),
+            "empresa_id": user.empresa_id,
+            "sale_id": sale_id,
+            "return_id": sale_return_id,
+            "cajero_id": user.id,
+            "numero_nota_credito": numero_nota_credito,
+            "numero_factura_original": pedido.get("numero_factura", ""),
+            "items": return_items_docs,
+            "total": round(total_return, 2),
+            "motivo": motivo,
+            "fecha": datetime.now(timezone.utc),
+            "tipo": "total",
+            "afip_estado": "no_aplica",
+        }
+        await db.credit_notes.insert_one(credit_note_doc)
+
+    sale_update = {"estado_pedido": nuevo_estado}
+    if nuevo_estado == "cancelado":
+        sale_update["estado"] = "cancelado"
+
+    await db.sales.update_one(
+        {"id": sale_id, "empresa_id": user.empresa_id, "origen": "tienda"},
+        {"$set": sale_update},
+    )
+    return {"ok": True}
+
 # Include the router in the main app
 app.include_router(api_router)
 app.include_router(owner_router)
 app.include_router(afip_router)
+app.include_router(tienda_router)
+
+import pathlib as _pathlib
+_uploads_dir = _pathlib.Path(__file__).parent / "uploads"
+_uploads_dir.mkdir(exist_ok=True)
+(_uploads_dir / "global_products").mkdir(exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(_uploads_dir)), name="uploads")
 
 origins = os.environ.get("CORS_ORIGINS", "")
 allow_origins = [o.strip() for o in origins.split(",") if o.strip()]

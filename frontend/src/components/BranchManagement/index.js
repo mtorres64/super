@@ -11,6 +11,7 @@ const BranchManagement = () => {
   const location = useLocation();
   const { modulosActivos } = useContext(AuthContext);
   const tieneMultiSucursal = modulosActivos.includes('multi_sucursal');
+  const tieneTienda = true;
   const [branches, setBranches] = useState([]);
   const [users, setUsers] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -656,6 +657,49 @@ const BranchManagement = () => {
     }
   };
 
+  const [togglingTiendaId, setTogglingTiendaId] = useState(null);
+  const [bulkTiendaLoading, setBulkTiendaLoading] = useState(false);
+
+  const toggleMostrarEnTienda = async (product) => {
+    if (!product.branch_product_id || togglingTiendaId) return;
+    setTogglingTiendaId(product.branch_product_id);
+    try {
+      await axios.put(`${API}/branch-products/${product.branch_product_id}`, {
+        mostrar_en_tienda: !product.mostrar_en_tienda_sucursal
+      });
+      toast.success(product.mostrar_en_tienda_sucursal ? 'Ocultado de la tienda' : 'Visible en la tienda');
+      reloadBranchProducts();
+    } catch {
+      toast.error('Error al actualizar visibilidad en tienda');
+    } finally {
+      setTogglingTiendaId(null);
+    }
+  };
+
+  const bulkSetMostrarEnTienda = async (value) => {
+    setBulkTiendaLoading(true);
+    try {
+      if (selectAllGlobal) {
+        const res = await axios.post(`${API}/branch-products/bulk-set-tienda`, {
+          branch_id: selectedBranch.id, delete_all: true, search: debouncedSearch || null, mostrar_en_tienda: value
+        });
+        toast.success(`${res.data.updated} producto(s) ${value ? 'visibles en' : 'ocultos de'} la tienda`);
+      } else {
+        const productIds = [...selectedRows];
+        const res = await axios.post(`${API}/branch-products/bulk-set-tienda`, {
+          ids: productIds, branch_id: selectedBranch.id, mostrar_en_tienda: value
+        });
+        toast.success(`${res.data.updated} producto(s) ${value ? 'visibles en' : 'ocultos de'} la tienda`);
+      }
+      handleClearSelection();
+      await reloadBranchProducts();
+    } catch {
+      toast.error('Error al actualizar visibilidad en tienda');
+    } finally {
+      setBulkTiendaLoading(false);
+    }
+  };
+
   const handleExportBranch = async (format) => {
     setShowExportMenu(false);
     try {
@@ -884,6 +928,11 @@ const BranchManagement = () => {
       onUpdateBranchBulkEditItem={updateBranchBulkEditItem}
       onHandleBranchBulkEditSave={handleBranchBulkEditSave}
       tieneMultiSucursal={tieneMultiSucursal}
+      tieneTienda={tieneTienda}
+      togglingTiendaId={togglingTiendaId}
+      bulkTiendaLoading={bulkTiendaLoading}
+      onToggleMostrarEnTienda={toggleMostrarEnTienda}
+      onBulkSetMostrarEnTienda={bulkSetMostrarEnTienda}
     />
   );
 };

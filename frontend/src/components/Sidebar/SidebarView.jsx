@@ -10,6 +10,7 @@ const SidebarView = ({
   allowedItems,
   notifCount,
   stockAlertCount,
+  tiendaPendingCount,
   isActive,
   onClose,
   onLogout,
@@ -66,6 +67,11 @@ const SidebarView = ({
             {path === '/dashboard' && notifCount > 0 && (
               <span className="nav-stock-badge">
                 {notifCount > 99 ? '99+' : notifCount}
+              </span>
+            )}
+            {path === '/tienda-admin' && tiendaPendingCount > 0 && (
+              <span className="nav-stock-badge" style={{ background: '#f59e0b', color: 'white' }}>
+                {tiendaPendingCount > 99 ? '99+' : tiendaPendingCount}
               </span>
             )}
           </Link>

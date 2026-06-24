@@ -151,7 +151,7 @@ const BulkEditModal = ({ items, onItemChange, categories, closing, onClose, onSa
 
         <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-gray-100">
           <button type="button" onClick={onClose} disabled={saving} className="btn btn-secondary">
-            Cancelar
+            Cerrar
           </button>
           <button type="button" onClick={onSave} disabled={saving} className="btn btn-primary">
             {saving ? (

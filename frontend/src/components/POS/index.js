@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import { API, AuthContext } from '../../App';
 import { toast } from 'sonner';
 import useModalClose from '../../useModalClose';
@@ -73,16 +74,24 @@ const POS = () => {
   const [afipConfig, setAfipConfig] = useState(null);
   const [returnModal, setReturnModal] = useState(null);
   const [infoPanelVisible, setInfoPanelVisible] = useState(() => localStorage.getItem('pos_info_visible') !== 'false');
+  const [tiendaPedido, setTiendaPedido] = useState(null);
   const toggleInfoPanel = () => setInfoPanelVisible(prev => {
     const next = !prev;
     localStorage.setItem('pos_info_visible', String(next));
     return next;
   });
+  const dismissTiendaPedido = () => {
+    setTiendaPedido(null);
+    setTabs(prev => prev.map(t =>
+      t.id === activeTabId ? { ...t, modifyingSaleId: null, modifyingInvoiceNum: null } : t
+    ));
+  };
   const [showPriceCheck, setShowPriceCheck] = useState(false);
   const [priceCheckQuery, setPriceCheckQuery] = useState('');
   const [priceCheckResult, setPriceCheckResult] = useState(null);
   const [branchCount, setBranchCount] = useState(0);
   const [receiptClosing, setReceiptClosing] = useState(false);
+  const navigate = useNavigate();
   const { user, activeBranch, modulosActivos } = useContext(AuthContext);
   const tieneFacturacion = modulosActivos.includes('facturacion');
   const tieneClientes = modulosActivos.includes('clientes');
@@ -202,8 +211,32 @@ const POS = () => {
     fetchAfipConfig();
     fetchCurrentSession();
     fetchLastSaleAfipStatus();
-
     focusSearch();
+
+    const raw = sessionStorage.getItem('tienda_pedido_en_pos');
+    if (raw) {
+      try {
+        const p = JSON.parse(raw);
+        sessionStorage.removeItem('tienda_pedido_en_pos');
+        const cartItems = (p.items || []).map(item => ({
+          id: item.producto_id,
+          product_id: item.producto_id,
+          nombre: item.nombre || item.producto_id,
+          precio: item.precio_unitario,
+          precio_unitario: item.precio_unitario,
+          quantity: item.cantidad,
+          control_stock: false,
+        }));
+        setTabs(prev => prev.map(t => t.id === 1 ? {
+          ...t,
+          cart: cartItems,
+          modifyingSaleId: p.id,
+          modifyingInvoiceNum: p.numero_factura,
+        } : t));
+        setTiendaPedido(p);
+        toast.success(`Pedido ${p.numero_factura} cargado en el carrito`);
+      } catch (_) {}
+    }
   }, []);
 
   // Auto-search while typing (from 2nd character), with debounce
@@ -723,6 +756,14 @@ const POS = () => {
           setTimeout(() => window.print(), 300);
         }
       }
+
+      if (tiendaPedido) {
+        try {
+          await axios.patch(`${API}/pedidos/${tiendaPedido.id}/estado`, { estado_pedido: 'listo' });
+        } catch (_) {}
+        setTiendaPedido(null);
+        navigate('/tienda-admin', { state: { expandPedidoId: tiendaPedido.id } });
+      }
     } catch (error) {
       playErrorSound();
       const detail = error.response?.data?.detail;
@@ -1036,6 +1077,8 @@ const POS = () => {
       calculateImpuestosExtra={calculateImpuestosExtra}
       tieneFacturacion={tieneFacturacion}
       tieneClientes={tieneClientes}
+      tiendaPedido={tiendaPedido}
+      dismissTiendaPedido={dismissTiendaPedido}
     />
   );
 };

@@ -25,6 +25,7 @@ export function printDocumentA4(sale, {
   const sym          = config.currency_symbol || '$';
   const isAfipFact   = sale.afip_estado === 'autorizado' && sale.tipo_comprobante;
   const letraComp    = TIPO_CBTE_LETRA[sale.tipo_comprobante] || '';
+  const isTienda     = sale.numero_factura?.startsWith('T-');
   const totalReturns = returns.reduce((s, r) => s + r.total, 0);
   const netSubtotal  = sale.subtotal - totalReturns;
   const pct          = (config.payment_method_adjustments || {})[sale.metodo_pago] ?? 0;
@@ -140,6 +141,9 @@ export function printDocumentA4(sale, {
   const metodoPagoLabel = sale.metodo_pago === 'efectivo' ? 'Efectivo'
     : sale.metodo_pago === 'tarjeta' ? 'Tarjeta' : 'Transferencia';
   infoR('Método de pago:', metodoPagoLabel, margin, midX - 2);
+  if (isTienda) {
+    infoR('Pedido tienda:', `#${sale.numero_factura}`, midX + 2, right);
+  }
   y += 8;
 
   // ── DATOS DEL CLIENTE ────────────────────────────────────────────
