@@ -89,7 +89,7 @@ const TIER_CONFIG = [
     label: 'Empresarial',
     badgeStyle: { background: '#ede9fe', color: '#5b21b6' },
     features: ['Todo Profesional', 'Multi-sucursal'],
-    limits: { usuarios: 'Usuarios ilimitados', sucursales: 'Sucursales ilimitadas' },
+    limits: { usuarios: 'Hasta 15 usuarios', sucursales: 'Hasta 3 sucursales' },
     popular: false,
   },
 ];

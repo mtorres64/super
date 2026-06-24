@@ -140,6 +140,7 @@ const UserManagement = () => {
     <UserManagementView
       users={sortedUsers}
       branches={branches}
+      limiteAlcanzado={users.length >= 15}
       sortConfig={sortConfig}
       requestSort={requestSort}
       loading={loading}

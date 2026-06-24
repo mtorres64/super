@@ -7,8 +7,8 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
 const PLAN_FEATURES_BASE = [
-  'Sucursales ilimitadas',
-  'Usuarios ilimitados',
+  'Hasta 3 sucursales',
+  'Hasta 15 usuarios',
   'Punto de venta con escáner y cámara',
   'Gestión de inventario con alertas',
   'Devoluciones parciales y totales',

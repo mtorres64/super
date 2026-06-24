@@ -884,6 +884,7 @@ const BranchManagement = () => {
       onUpdateBranchBulkEditItem={updateBranchBulkEditItem}
       onHandleBranchBulkEditSave={handleBranchBulkEditSave}
       tieneMultiSucursal={tieneMultiSucursal}
+      limiteAlcanzado={branches.length >= 3}
     />
   );
 };

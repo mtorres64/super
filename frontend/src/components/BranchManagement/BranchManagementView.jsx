@@ -136,6 +136,7 @@ const BranchManagementView = ({
   onUpdateBranchBulkEditItem,
   onHandleBranchBulkEditSave,
   tieneMultiSucursal = true,
+  limiteAlcanzado = false,
 }) => {
   const [focusedIdx, setFocusedIdx] = React.useState(-1);
   const [showCategoryFilter, setShowCategoryFilter] = React.useState(false);
@@ -1068,10 +1069,19 @@ const BranchManagementView = ({
           )}
         </div>
         {tieneMultiSucursal && (
-          <button onClick={() => onOpenModal()} className="btn btn-primary">
-            <Plus className="w-4 h-4" />
-            Nueva Sucursal
-          </button>
+          <div className="flex flex-col items-end gap-1">
+            <button
+              onClick={() => !limiteAlcanzado && onOpenModal()}
+              disabled={limiteAlcanzado}
+              className={`btn btn-primary ${limiteAlcanzado ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <Plus className="w-4 h-4" />
+              Nueva Sucursal
+            </button>
+            {limiteAlcanzado && (
+              <span className="text-xs text-amber-600">Límite de 3 sucursales alcanzado</span>
+            )}
+          </div>
         )}
       </div>
 
