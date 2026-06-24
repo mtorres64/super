@@ -933,6 +933,7 @@ const BranchManagement = () => {
       bulkTiendaLoading={bulkTiendaLoading}
       onToggleMostrarEnTienda={toggleMostrarEnTienda}
       onBulkSetMostrarEnTienda={bulkSetMostrarEnTienda}
+      limiteAlcanzado={branches.length >= 3}
     />
   );
 };

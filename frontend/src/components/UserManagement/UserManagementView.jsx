@@ -29,6 +29,7 @@ const UserManagementView = ({
   getBranchNames,
   sortConfig,
   requestSort,
+  limiteAlcanzado = false,
 }) => {
   if (loading) {
     return (
@@ -47,10 +48,19 @@ const UserManagementView = ({
           </h1>
           <p className="text-gray-600">{users.length} usuario(s) registrado(s)</p>
         </div>
-        <button onClick={() => openModal()} className="btn btn-primary">
-          <Plus className="w-4 h-4" />
-          Nuevo Usuario
-        </button>
+        <div className="flex flex-col items-end gap-1">
+          <button
+            onClick={() => !limiteAlcanzado && openModal()}
+            disabled={limiteAlcanzado}
+            className={`btn btn-primary ${limiteAlcanzado ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <Plus className="w-4 h-4" />
+            Nuevo Usuario
+          </button>
+          {limiteAlcanzado && (
+            <span className="text-xs text-amber-600">Límite de 15 usuarios alcanzado</span>
+          )}
+        </div>
       </div>
 
       <div className="table-container">

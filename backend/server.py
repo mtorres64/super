@@ -1167,6 +1167,12 @@ def require_role(required_roles: List[UserRole]):
 # Branch routes
 @api_router.post("/branches", response_model=Branch)
 async def create_branch(branch_data: BranchCreate, user: User = Depends(require_role([UserRole.ADMIN]))):
+    empresa = await db.empresas.find_one({"id": user.empresa_id})
+    plan = (empresa or {}).get("plan", "emprendedor")
+    limite_sucursales = {"empresarial": 3, "profesional": 1, "emprendedor": 1}.get(plan, 1)
+    count = await db.branches.count_documents({"empresa_id": user.empresa_id, "activo": True})
+    if count >= limite_sucursales:
+        raise HTTPException(status_code=400, detail=f"Tu plan permite hasta {limite_sucursales} sucursal(es). Actualizá tu plan para agregar más.")
     branch = Branch(**branch_data.dict(), empresa_id=user.empresa_id)
     await db.branches.insert_one(branch.dict())
 
@@ -1724,6 +1730,12 @@ async def register_empresa(data: EmpresaRegister):
 
 @api_router.post("/auth/register", response_model=User)
 async def register(user_data: UserCreate, current_user: User = Depends(require_role([UserRole.ADMIN]))):
+    empresa = await db.empresas.find_one({"id": current_user.empresa_id})
+    plan = (empresa or {}).get("plan", "emprendedor")
+    limite_usuarios = {"empresarial": 15, "profesional": 5, "emprendedor": 2}.get(plan, 2)
+    count = await db.users.count_documents({"empresa_id": current_user.empresa_id, "activo": True})
+    if count >= limite_usuarios:
+        raise HTTPException(status_code=400, detail=f"Tu plan permite hasta {limite_usuarios} usuario(s). Actualizá tu plan para agregar más.")
     # Check if email already exists within this empresa
     existing_user = await db.users.find_one({"email": user_data.email, "empresa_id": current_user.empresa_id})
     if existing_user:
