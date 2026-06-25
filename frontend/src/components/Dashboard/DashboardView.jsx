@@ -148,7 +148,7 @@ const DashboardView = ({
       {/* Stats Cards - Solo para admin y supervisor */}
       {showStats && (
         <div className="dashboard-grid fade-in">
-          <div className="stat-card" style={{ background: 'rgba(var(--primary-rgb, 16, 185, 129), 0.1)' }}>
+          <div className="stat-card">
             <div className="stat-header">
               <div className="stat-title">Ventas de Hoy</div>
               <div className="stat-icon">
@@ -173,7 +173,7 @@ const DashboardView = ({
             )}
           </div>
 
-          <Link to="/stock-alerts" className={`stat-card border-l-4 hover:shadow-md transition-shadow cursor-pointer ${stats.productos.bajo_stock > 0 ? 'border-red-400' : 'border-gray-200'}`} style={{ background: 'rgba(var(--primary-rgb, 16, 185, 129), 0.1)' }}>
+          <Link to="/stock-alerts" className={`stat-card border-l-4 hover:shadow-md transition-shadow cursor-pointer ${stats.productos.bajo_stock > 0 ? 'border-red-400' : 'border-gray-200'}`}>
             <div className="stat-header">
               <div className="stat-title">Stock Bajo</div>
               <div className={`stat-icon ${stats.productos.bajo_stock > 0 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-400'}`}>
@@ -188,7 +188,7 @@ const DashboardView = ({
             </p>
           </Link>
 
-          <Link to="/notificaciones" className="stat-card border-l-4 border-indigo-400 hover:shadow-md transition-shadow cursor-pointer" style={{ background: 'rgba(var(--primary-rgb, 16, 185, 129), 0.1)' }}>
+          <Link to="/notificaciones" className="stat-card border-l-4 border-indigo-400 hover:shadow-md transition-shadow cursor-pointer">
             <div className="stat-header">
               <div className="stat-title">Notificaciones</div>
               <div className={`stat-icon ${noLeidas > 0 ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-400'}`}>

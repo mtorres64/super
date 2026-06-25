@@ -561,7 +561,7 @@ body {
   background: rgba(var(--primary-rgb, 16, 185, 129), 0.01);
   border-radius: var(--radius-lg);
   padding: 1.25rem 1.5rem;
-  border: 1px solid rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--primary);
   transition: border-color var(--transition-base), box-shadow var(--transition-base);
 }
 
