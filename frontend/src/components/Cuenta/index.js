@@ -468,11 +468,17 @@ window.addEventListener('load', async () => {
     doc.close();
   };
 
-  const handlePagar = async (planTipo = 'mensual', planTier = 'profesional') => {
+  const handlePagar = async (planTipo = 'mensual', planTier = 'profesional', addons = {}) => {
     const key = `${planTier}-${planTipo}`;
     try {
       setCreandoPago(key);
-      const resp = await axios.post(`${API}/cuenta/pago/crear`, { plan_tipo: planTipo, plan_tier: planTier });
+      const resp = await axios.post(`${API}/cuenta/pago/crear`, {
+        plan_tipo: planTipo,
+        plan_tier: planTier,
+        addon_tienda: addons.addonTienda || false,
+        sucursales_extra: addons.sucursalesExtra || 0,
+        usuarios_extra_packs: addons.usuariosExtraPacks || 0,
+      });
       const url = resp.data.init_point || resp.data.sandbox_init_point;
       if (url) {
         window.location.href = url;
@@ -534,6 +540,11 @@ window.addEventListener('load', async () => {
       onCancelarSuscripcionAuto={handleCancelarSuscripcionAuto}
       onDescargarRecibo={handleDescargarRecibo}
       descargandoRecibo={descargandoRecibo}
+      suscripcionAddons={{
+        addon_tienda: suscripcion?.addon_tienda || false,
+        sucursales_extra: suscripcion?.sucursales_extra || 0,
+        usuarios_extra_packs: suscripcion?.usuarios_extra_packs || 0,
+      }}
     />
   );
 };
