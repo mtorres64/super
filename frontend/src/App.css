@@ -558,10 +558,10 @@ body {
 }
 
 .stat-card {
-  background: #ffffff;
+  background: rgba(var(--primary-rgb, 16, 185, 129), 0.01);
   border-radius: var(--radius-lg);
   padding: 1.25rem 1.5rem;
-  border: 1px solid var(--border-color);
+  border: 1px solid rgba(0, 0, 0, 0.2);
   transition: border-color var(--transition-base), box-shadow var(--transition-base);
 }
 
@@ -578,11 +578,17 @@ body {
 }
 
 .stat-title {
-  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  font-size: 0.7rem;
   font-weight: 600;
-  color: var(--gray-500);
+  color: var(--primary-text, #ffffff);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  background: var(--primary);
+  padding: 0.25rem 0.6rem 0.2rem;
+  border-radius: 999px;
 }
 
 .stat-icon {
@@ -667,6 +673,7 @@ body {
   border-radius: var(--radius-md);
   padding: 0.875rem;
   cursor: pointer;
+  background: rgba(var(--primary-rgb, 16, 185, 129), 0.01);
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform 0.18s ease;
 }
 

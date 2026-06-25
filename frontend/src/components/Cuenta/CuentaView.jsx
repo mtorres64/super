@@ -52,9 +52,36 @@ const TIER_CONFIG = [
   },
 ];
 
-const PlanSelector = ({ planes, suscripcion, creandoPago, whatsappNumero, accionLabel, formatCurrency, onPagar }) => {
+const PlanSelector = ({ planes, suscripcion, suscripcionAddons, creandoPago, whatsappNumero, accionLabel, formatCurrency, onPagar }) => {
   const [modalTier, setModalTier] = useState(null);
+  const [addonTienda, setAddonTienda] = useState(false);
+  const [sucursalesExtra, setSucursalesExtra] = useState(0);
+  const [usuariosExtraPacks, setUsuariosExtraPacks] = useState(0);
+
   const tierData = modalTier ? planes?.tiers?.[modalTier.key] : null;
+  const addonPrecios = planes?.addon_precios || {};
+
+  const openModal = (tier) => {
+    setAddonTienda(suscripcionAddons?.addon_tienda || false);
+    setSucursalesExtra(suscripcionAddons?.sucursales_extra || 0);
+    setUsuariosExtraPacks(suscripcionAddons?.usuarios_extra_packs || 0);
+    setModalTier(tier);
+  };
+
+  const priceMensualBase = tierData?.precio_mensual || 0;
+  const precioAddonsMensual =
+    (addonTienda ? (addonPrecios.tienda || 0) : 0) +
+    sucursalesExtra * (addonPrecios.sucursal_extra || 0) +
+    usuariosExtraPacks * (addonPrecios.pack_usuarios || 0);
+  const totalMensual = priceMensualBase + precioAddonsMensual;
+  const totalAnual = totalMensual * 11;
+
+  const handlePagar = (planTipo) => {
+    onPagar(planTipo, modalTier.key, { addonTienda, sucursalesExtra, usuariosExtraPacks });
+    setModalTier(null);
+  };
+
+  const isEmpresarial = modalTier?.key === 'empresarial';
 
   return (
     <>
@@ -68,15 +95,16 @@ const PlanSelector = ({ planes, suscripcion, creandoPago, whatsappNumero, accion
             return (
               <div
                 key={key}
-                className="border rounded-xl overflow-hidden flex flex-col"
+                className="border rounded-xl overflow-hidden flex flex-col relative"
                 style={isCurrentTier ? { borderColor: 'var(--primary)', boxShadow: '0 0 0 1px var(--primary)' } : {}}
               >
+                <div className="absolute inset-0 rounded-xl" style={{ background: 'rgba(var(--primary-rgb, 16, 185, 129), 0.01)' }} />
                 {isCurrentTier && (
-                  <div className="px-4 py-1 text-center" style={{ background: 'var(--primary)' }}>
+                  <div className="px-4 py-1 text-center relative z-10" style={{ background: 'var(--primary)' }}>
                     <span className="text-xs font-semibold tracking-wide" style={{ color: 'var(--primary-text)' }}>Plan actual</span>
                   </div>
                 )}
-                <div className="p-4 flex flex-col gap-3 flex-1">
+                <div className="p-4 flex flex-col gap-3 flex-1 relative z-10">
                   <div>
                     <p className="text-2xl font-bold text-gray-900">{label}</p>
                     <ul className="mt-2 space-y-0.5">
@@ -98,13 +126,22 @@ const PlanSelector = ({ planes, suscripcion, creandoPago, whatsappNumero, accion
                       </p>
                     </div>
                   </div>
+                  {false && key === 'profesional' && <svg xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink" viewBox="0 0 799.379 568.073" className="absolute right-8 top-1/2 -translate-y-1/2 w-auto opacity-70 pointer-events-none select-none" style={{ height: '35%' }} aria-hidden="true">
+                      <g transform="translate(-443 -359.703)"><rect width="7.229" height="6.024" transform="translate(511.027 677.177)" fill="#f0f0f0"/><path d="M761.821,545.582h-11.67v-6.024h11.67Zm-23.34,0H726.81v-6.024h11.671Zm-23.341,0H703.47v-6.024h11.67Zm-23.34,0H680.13v-6.024H691.8Zm-23.341,0H656.79v-6.024h11.67Zm-23.341,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.341,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024H575.1Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.341,0h-11.67v-6.024H458.4Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.341,0h-11.67v-6.024H341.7Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0H260v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Z" transform="translate(319.178 137.618)" fill="#e6e6e6"/><rect width="7.229" height="6.024" transform="translate(511.027 524.163)" fill="#f0f0f0"/><path d="M761.821,418.582h-11.67v-6.024h11.67Zm-23.34,0H726.81v-6.024h11.671Zm-23.341,0H703.47v-6.024h11.67Zm-23.34,0H680.13v-6.024H691.8Zm-23.341,0H656.79v-6.024h11.67Zm-23.341,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.341,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024H575.1Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.341,0h-11.67v-6.024H458.4Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.341,0h-11.67v-6.024H341.7Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0H260v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Z" transform="translate(319.178 111.604)" fill="#e6e6e6"/><rect width="7.229" height="6.024" transform="translate(511.027 371.149)" fill="#f0f0f0"/><path d="M761.821,291.582h-11.67v-6.024h11.67Zm-23.34,0H726.81v-6.024h11.671Zm-23.341,0H703.47v-6.024h11.67Zm-23.34,0H680.13v-6.024H691.8Zm-23.341,0H656.79v-6.024h11.67Zm-23.341,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.341,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024H575.1Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.341,0h-11.67v-6.024H458.4Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.341,0h-11.67v-6.024H341.7Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0H260v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Zm-23.34,0h-11.67v-6.024h11.67Z" transform="translate(319.178 85.59)" fill="#e6e6e6"/><rect width="59.037" height="216.87" rx="8" transform="translate(650.806 678.984)" fill="#090814"/><rect width="59.037" height="216.87" rx="8" transform="translate(661.649 678.984)" fill="var(--primary)"/><rect width="59.037" height="369.884" rx="8" transform="translate(790.566 525.97)" fill="#090814"/><rect width="59.037" height="369.884" rx="8" transform="translate(801.41 525.97)" fill="var(--primary)"/><rect width="59.037" height="522.898" rx="8" transform="translate(930.327 372.956)" fill="#090814"/><rect width="59.037" height="522.898" rx="8" transform="translate(941.171 372.956)" fill="var(--primary)"/><circle cx="14.458" cy="14.458" r="14.458" transform="translate(497.172 359.703)" fill="var(--primary)"/><circle cx="14.458" cy="14.458" r="14.458" transform="translate(497.172 512.717)" fill="var(--primary)"/><circle cx="14.458" cy="14.458" r="14.458" transform="translate(497.172 665.731)" fill="var(--primary)"/><rect width="799.379" height="2.7" transform="translate(443 894.506)" fill="#e6e6e6"/><g transform="translate(1000.207 371.149)"><path d="M703.433,58.277,713.1,85.664l-16.111,32.221L669.6,71.165Z" transform="translate(-602.611 -5.919)" fill="#ed9da0"/><path d="M940.927,558.348c-5.3,7.427-46.172,50.409-73.512,78.957-7.588,7.91-14.129,14.725-18.575,19.349-3.9,4.044-6.186,6.412-6.186,6.412L830.3,637.224l-5.365-11.213.081-.1,3.367-4.3,32.108-41.082L894.207,537.4l-27.388-54.775,33.832-4.833,22.49,1.321,4.9.29S948.982,547.071,940.927,558.348Z" transform="translate(-758.748 -174.92)" fill="#2f2e41"/><path d="M848.889,665.272c-2.094,2.094-5.735-.58-9.682-5.155-8.168-9.473-17.705-27.065-17.705-27.065l-11.277-24.166c1.208-7.218,12.26-8.136,17.8-8.152,1.885,0,3.142.1,3.142.1l.934,1.385,19.751,29.256S855.333,658.827,848.889,665.272Z" transform="translate(-761.761 -149.738)" fill="#090814"/><path d="M708.032,279.7l-4.334-8.668L737.53,266.2l22.491,1.322.064.289Z" transform="translate(-595.627 36.671)" opacity="0.2"/><path d="M673.524,209.254H662.246l3.223,106.329,22.554,183.659h37.054l-16.11-132.106,8.056-74.107,56.386-12.889L757.3,206.032Z" transform="translate(-604.118 24.346)" fill="#2f2e41"/><path d="M842.666,656.974s-3.222,22.555-1.611,24.165,3.222,3.222,3.222,6.444,19.333,11.277,29,4.833,3.222-16.11,3.222-16.11l-9.666-19.332Z" transform="translate(-755.538 -138.219)" fill="#090814"/><circle cx="27.388" cy="27.388" r="27.388" transform="translate(53.296 17.72)" fill="#ed9da0"/><path d="M700.09,91.644,679.018,83.18l-12.76,158.29,88.607,6.445L724.255,85.2,710.562,72.343Z" transform="translate(-603.296 -3.038)" fill="#e6e6e6"/><path d="M838.515,289l-16.4,13.245-30.61,16.11,11.277,101.5,1.611,58s-20.943,51.553-4.833,64.442,33.832,8.055,30.61-19.333-9.666-46.72,20.944-75.719S854.916,282.2,838.515,289Z" transform="translate(-765.595 -213.641)" fill="#2f2e41"/><path d="M857.722,281.109l20.192,13.041,27.388,14.5,20.943,231.99-46.72,14.5S853.641,287.4,857.722,281.109Z" transform="translate(-752.121 -215.208)" fill="#2f2e41"/><path d="M820.985,440.356s24.166,37.054,6.444,37.054-22.555-30.61-22.555-30.61Z" transform="translate(-762.856 -182.589)" fill="#ed9da0"/><path d="M844.877,231.245l-8.055-4.833,1.611,3.222-6.444-1.611,1.611,1.611-8.055-1.611,3.222,3.222s-12.888,0-14.5,12.888l-8.055,1.611,3.222,4.833v4.833l3.222,3.222v4.833l3.222,8.055,3.222-11.277s14.5,3.222,20.943-9.666c0,0,1.611,4.833,9.666,3.222L862.6,276.354s1.611-10,7.25-11.444,2.417-14.333,2.417-14.333-4.833-4.833-4.833-8.055-4.833-6.444-8.055-6.444-11.277-6.444-11.277-6.444Z" transform="translate(-762.582 -226.412)" fill="#090814"/><path d="M808.8,315.42l-7.5-4.447-5.389,2.836s-6.444,3.222-8.055,14.5-17.721,80.552-17.721,80.552-1.611,11.277,6.444,30.61,38.665,53.164,38.665,53.164l29-24.166-43.5-53.164,11.277-43.5Z" transform="translate(-770 -209.091)" fill="#2f2e41"/><g transform="matrix(0.966, 0.259, -0.259, 0.966, 127.243, 256.462)"><path d="M42.164,20.331l-.062-.005c-11.558-1.909-24.4-1.908-39.254,0H2.842A2.809,2.809,0,0,1,0,17.531V4.078a2.8,2.8,0,0,1,2.8-2.8,152.323,152.323,0,0,1,39.411,0h.005a2.789,2.789,0,0,1,2.747,2.8V17.531A2.8,2.8,0,0,1,42.164,20.331Z" transform="translate(2.315 18.314)" fill="#fff"/><path d="M42.164,20.331l-.062-.005c-11.558-1.909-24.4-1.908-39.254,0H2.842A2.809,2.809,0,0,1,0,17.531V4.078a2.8,2.8,0,0,1,2.8-2.8,152.323,152.323,0,0,1,39.411,0h.005a2.789,2.789,0,0,1,2.747,2.8V17.531A2.8,2.8,0,0,1,42.164,20.331ZM21.982.764A140.606,140.606,0,0,0,2.851,2.037,2.057,2.057,0,0,0,.762,4.078V17.531A2.04,2.04,0,0,0,2.8,19.569c14.868-1.915,27.77-1.915,39.394,0A2.039,2.039,0,0,0,44.2,17.531V4.078a2.04,2.04,0,0,0-2.037-2.037A164.241,164.241,0,0,0,21.982.764Z" transform="translate(2.315 18.314)" fill="var(--primary)"/><circle cx="5.335" cy="5.335" r="5.335" transform="translate(19.461 23.143)" fill="var(--primary)"/><path d="M5.716,3.81H1.143A1.144,1.144,0,0,1,0,2.667V1.143A1.144,1.144,0,0,1,1.143,0H5.716A1.144,1.144,0,0,1,6.859,1.143V2.667A1.144,1.144,0,0,1,5.716,3.81Z" transform="translate(5.363 21.879)" fill="var(--primary)"/><path d="M5.716,3.81H1.143A1.144,1.144,0,0,1,0,2.667V1.143A1.145,1.145,0,0,1,1.143,0H5.716A1.144,1.144,0,0,1,6.859,1.143V2.667A1.144,1.144,0,0,1,5.716,3.81Z" transform="translate(37.371 32.548)" fill="var(--primary)"/><path d="M37.973,33.081l-.055-.029C28.011,26.8,16.182,21.806,1.753,17.789l-.006,0A2.809,2.809,0,0,1,.216,14.1L5.448,1.711A2.8,2.8,0,0,1,9.116.22,152.319,152.319,0,0,1,45.424,15.549l0,0A2.789,2.789,0,0,1,46.872,19.2L41.64,31.59A2.8,2.8,0,0,1,37.973,33.081Z" transform="translate(0 0)" fill="#fff"/><path d="M37.973,33.081l-.055-.029C28.011,26.8,16.182,21.806,1.753,17.789l-.006,0A2.809,2.809,0,0,1,.216,14.1L5.448,1.711A2.8,2.8,0,0,1,9.116.22,152.319,152.319,0,0,1,45.424,15.549l0,0A2.789,2.789,0,0,1,46.872,19.2L41.64,31.59A2.8,2.8,0,0,1,37.973,33.081ZM26.989,7.206A140.6,140.6,0,0,0,8.869.939,2.057,2.057,0,0,0,6.15,2.007L.919,14.4A2.04,2.04,0,0,0,2,17.07C16.445,21.088,28.332,26.105,38.3,32.39a2.04,2.04,0,0,0,2.642-1.1L46.17,18.9a2.04,2.04,0,0,0-1.085-2.669,164.249,164.249,0,0,0-18.1-9.025Z" transform="translate(0 0)" fill="var(--primary)"/><circle cx="5.335" cy="5.335" r="5.335" transform="translate(18.459 10.725)" fill="var(--primary)"/><path d="M4.911,5.379.7,3.6A1.144,1.144,0,0,1,.09,2.1L.683.7A1.144,1.144,0,0,1,2.18.09L6.393,1.868A1.144,1.144,0,0,1,7,3.366l-.593,1.4A1.144,1.144,0,0,1,4.911,5.379Z" transform="translate(7.329 2.778)" fill="var(--primary)"/><path d="M4.911,5.379.7,3.6A1.144,1.144,0,0,1,.09,2.1L.682.7A1.144,1.144,0,0,1,2.18.09L6.393,1.868A1.144,1.144,0,0,1,7,3.366l-.593,1.4A1.144,1.144,0,0,1,4.911,5.379Z" transform="translate(32.668 25.055)" fill="var(--primary)"/></g><path d="M903.349,440.356s-24.166,37.054-6.444,37.054S919.46,446.8,919.46,446.8Z" transform="translate(-745.336 -182.589)" fill="#ed9da0"/><path d="M730.441,92.374h12.888l20.944,78.941,6.445,98.273-30.61-11.277V187.426Z" transform="translate(-590.149 1.065)" fill="#2f2e41"/></g></g>
+                    </svg>}
+                  {false && key === 'empresarial' && <svg xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink" viewBox="0 0 800.321 622.137" className="absolute right-8 top-1/2 -translate-y-1/2 w-auto opacity-70 pointer-events-none select-none" style={{ height: '38%' }} aria-hidden="true">
+                      <g transform="translate(-821.753 -211.925)"><g transform="translate(821.753 250.156)"><path d="M354.039,190.979c.864,2.014,27.513,1.8,28.734,3.592,9.41,13.846-24.512,72.758-15.1,86.622l1.311,1.562c-3.07-1.415-20.331-14.554-29.721-20.185a58.9,58.9,0,0,0-13.014-10.713Z" transform="translate(-243.015 -151.626)" fill="#090814"/><path d="M191.017,311.21a22.071,22.071,0,0,1,33.438,13.056l40.5,105.519,69.61-39.519A21.551,21.551,0,1,1,348.007,411.7c-14.659,15.646-78.212,79.793-104.523,54.729-22.115-21.067-54.03-102.716-61.713-130.911a22.074,22.074,0,0,1,9.245-24.307Z" transform="translate(-99.344 -158.38)" fill="#ed9da0"/><path d="M34.528.994,0,0V49.931H39.688Z" transform="translate(70.066 96.724)" fill="#ed9da0"/><path d="M232.158,349.883l-12.78,57.762L125.929,416.1,117.341,365.8Z" transform="translate(-64.443 -37.413)" fill="#ed9da0"/><path d="M232.564,631.391c.043.828.094,1.648.154,2.476.9,11.968,1.921,25.772,3.031,40.9,1.75,24.005,3.7,51.339,5.677,79.937h196.01L399.42,640.443s-15.349-8.451-7.535-22.647-7.562-2.883-7.7-23.158-13.921-41.844-13.921-41.844L368,522.1l-1.289.026-102,1.7-1.861.034-3.133,26.353A116.508,116.508,0,0,0,232.564,631.391Z" transform="translate(-207.593 -170.797)" fill="#090814"/><path d="M399.235,281.569l-46.514-2.4-21.6,34.138s-40.649,6.8-37.832,54.7,49.458,89.933,49.458,89.933L344.212,461l-.444,5.555-1.025,21.595h0a5.5,5.5,0,0,0,5.216,8.385c68.739-10.945,71.048,7.477,108.75-10.76v-6.317c1.784-6.5-.32-33.109-6.6-42.414,0,0,30.577-45.938-4.525-80.539L431.5,332.554l-15.764-19.232Z" transform="translate(-289.845 -156.732)" fill="var(--primary)"/><ellipse cx="44.108" cy="44.108" rx="44.108" ry="44.108" transform="translate(53.706 16.468)" fill="#ed9da0"/><path d="M351.855,278.317s4.705,3.5,6.9,5.046c1.659-4.266,13.272,8.732,16.342,10.147l-1.311-1.562c-9.41-13.864,14.942-39.383,5.531-53.229-2.64-3.879,9.285-34.534,18.372-35.917,8.081-1.221,7.74,1.113,15.57,2.82a39.183,39.183,0,0,1,3.753-9.716,32.1,32.1,0,0,0,.305,10.236c2.784.108,4.974-1.666,7.938-2.119,18.911-2.891,16.989-23.346,11.727-29.829-5.28-6.465-22.807-8.4-30.889-10.506-.736-.718-2.406-.269-3.143-.952-15.487-14.174-36.2-16.521-54.841-10.239-19.878,6.7-32.272,19.666-38.633,39.655l-1.824,16c-1.637,5.143.422,29.075,1.824,34.288C314.923,262.7,351.855,278.317,351.855,278.317Z" transform="translate(-281.059 -149.207)" fill="#090814"/><path d="M422.492,493.136,424.229,357.9a21.831,21.831,0,0,1,21.828-21.486h0a21.831,21.831,0,0,1,21.8,22.989l-6.11,140.427-.116,85.485a19.051,19.051,0,1,1-23.389,7.123Z" transform="translate(-422.492 -160.046)" fill="#ed9da0"/></g><g transform="translate(1133.993 211.925)"><path d="M782.963,183.6,299.428,241.767a.291.291,0,0,1-.164-.028.376.376,0,0,1-.134-.113.574.574,0,0,1-.09-.18.786.786,0,0,1-.033-.23.871.871,0,0,1,.033-.238.759.759,0,0,1,.092-.2.54.54,0,0,1,.134-.145.352.352,0,0,1,.164-.067L782.963,181.6a1.282,1.282,0,0,1,.455.023,1.037,1.037,0,0,1,.372.17.849.849,0,0,1,.251.288.809.809,0,0,1,.092.377.949.949,0,0,1-.092.4,1.2,1.2,0,0,1-.251.349,1.415,1.415,0,0,1-.372.26A1.446,1.446,0,0,1,782.963,183.6Z" transform="translate(-299.008 -154.058)" fill="#cacaca"/><path d="M783.834,740.467,299.318,691.146a.293.293,0,0,1-.154-.063.376.376,0,0,1-.106-.14.574.574,0,0,1-.049-.2.788.788,0,0,1,.019-.231.87.87,0,0,1,.085-.225.757.757,0,0,1,.134-.177.537.537,0,0,1,.162-.112.352.352,0,0,1,.175-.03l484.69,48.538a1.282,1.282,0,0,1,.439.123,1.036,1.036,0,0,1,.326.247.848.848,0,0,1,.182.336.809.809,0,0,1,.007.388.95.95,0,0,1-.178.372,1.2,1.2,0,0,1-.322.286,1.41,1.41,0,0,1-.42.172A1.445,1.445,0,0,1,783.834,740.467Z" transform="translate(-297.168 -352.104)" fill="#cacaca"/><path d="M310.292,227.477a3.3,3.3,0,0,1,1.855.251,4.1,4.1,0,0,1,1.522,1.215,6.178,6.178,0,0,1,1.03,1.993,8.569,8.569,0,0,1,.377,2.575,9.661,9.661,0,0,1-.377,2.68,8.584,8.584,0,0,1-1.03,2.284,6.2,6.2,0,0,1-1.522,1.646,4.061,4.061,0,0,1-1.855.769,3.3,3.3,0,0,1-1.846-.282,4.14,4.14,0,0,1-1.5-1.232,6.225,6.225,0,0,1-1.009-1.982,8.587,8.587,0,0,1-.369-2.544,9.666,9.666,0,0,1,.37-2.649,8.623,8.623,0,0,1,1.008-2.266,6.271,6.271,0,0,1,1.5-1.655,4.11,4.11,0,0,1,1.846-.8Z" transform="translate(-300.269 -162.874)" fill="var(--primary)"/><path d="M331.041,224.355a3.517,3.517,0,0,1,1.941.251,4.252,4.252,0,0,1,1.6,1.235,6.246,6.246,0,0,1,1.078,2.035,8.573,8.573,0,0,1,.394,2.633,9.687,9.687,0,0,1-.4,2.743,8.717,8.717,0,0,1-1.076,2.336,6.431,6.431,0,0,1-1.593,1.688,4.315,4.315,0,0,1-1.941.8,3.517,3.517,0,0,1-1.931-.283,4.294,4.294,0,0,1-1.57-1.256,6.291,6.291,0,0,1-1.057-2.024,8.588,8.588,0,0,1-.386-2.6,9.688,9.688,0,0,1,.386-2.708,8.753,8.753,0,0,1,1.055-2.324,6.5,6.5,0,0,1,1.57-1.7,4.365,4.365,0,0,1,1.931-.828Z" transform="translate(-304.216 -162.273)" fill="#3f3d56"/><path d="M352.759,221.083a3.76,3.76,0,0,1,2.034.248,4.421,4.421,0,0,1,1.669,1.262,6.319,6.319,0,0,1,1.131,2.079,8.577,8.577,0,0,1,.415,2.692,9.712,9.712,0,0,1-.415,2.807,8.861,8.861,0,0,1-1.131,2.4,6.68,6.68,0,0,1-1.669,1.733,4.593,4.593,0,0,1-2.034.82,3.756,3.756,0,0,1-2.023-.283,4.459,4.459,0,0,1-1.645-1.279,6.365,6.365,0,0,1-1.1-2.069,8.593,8.593,0,0,1-.4-2.656,9.721,9.721,0,0,1,.4-2.777,8.893,8.893,0,0,1,1.1-2.379,6.748,6.748,0,0,1,1.646-1.743A4.648,4.648,0,0,1,352.759,221.083Z" transform="translate(-308.347 -161.643)" fill="#3f3d56"/><path d="M858.376,151.459l-29.484,4.263a2.223,2.223,0,0,1-.828-.031,1.8,1.8,0,0,1-.676-.314,1.555,1.555,0,0,1-.455-.541,1.584,1.584,0,0,1-.167-.717,1.908,1.908,0,0,1,.167-.768,2.355,2.355,0,0,1,.455-.674,2.643,2.643,0,0,1,.676-.509,2.586,2.586,0,0,1,.828-.273l29.483-4.361a2.4,2.4,0,0,1,.872.025,1.915,1.915,0,0,1,.713.314,1.57,1.57,0,0,1,.657,1.3,1.922,1.922,0,0,1-.176.791,2.429,2.429,0,0,1-.48.7,2.806,2.806,0,0,1-1.586.805Z" transform="translate(-400.48 -147.505)" fill="#3f3d56"/><path d="M858.376,160.572l-29.483,4.082a2.224,2.224,0,0,1-.828-.036,1.818,1.818,0,0,1-.676-.314,1.571,1.571,0,0,1-.455-.544,1.593,1.593,0,0,1-.167-.726,1.9,1.9,0,0,1,.167-.767,2.334,2.334,0,0,1,.455-.671,2.618,2.618,0,0,1,.676-.5,2.576,2.576,0,0,1,.828-.268l29.483-4.18a2.4,2.4,0,0,1,.872.031,1.929,1.929,0,0,1,.713.32,1.612,1.612,0,0,1,.482.557,1.6,1.6,0,0,1,.175.74,1.915,1.915,0,0,1-.177.79,2.4,2.4,0,0,1-.482.691,2.783,2.783,0,0,1-1.586.8Z" transform="translate(-400.48 -149.258)" fill="#3f3d56"/><path d="M858.376,169.685l-29.484,3.894a2.226,2.226,0,0,1-.828-.041,1.83,1.83,0,0,1-.676-.32,1.572,1.572,0,0,1-.622-1.266,1.894,1.894,0,0,1,.166-.766,2.315,2.315,0,0,1,.455-.669,2.6,2.6,0,0,1,.676-.5,2.558,2.558,0,0,1,.828-.262l29.483-3.992a2.4,2.4,0,0,1,.872.036,1.942,1.942,0,0,1,.714.325,1.626,1.626,0,0,1,.482.56,1.6,1.6,0,0,1,.175.741,1.906,1.906,0,0,1-.177.789,2.385,2.385,0,0,1-.482.691,2.764,2.764,0,0,1-1.586.785Z" transform="translate(-400.48 -151.01)" fill="#3f3d56"/><path d="M692.359,251.9l142.417-12.062v84.893l-142.417,1.858Z" transform="translate(-374.637 -165.257)" fill="var(--primary)"/><path d="M808.748,390.339l-84.579-1.681a3.8,3.8,0,0,1-2.6-1.1,3.666,3.666,0,0,1-.787-1.149,3.508,3.508,0,0,1-.288-1.394,3.439,3.439,0,0,1,.288-1.382,3.5,3.5,0,0,1,.787-1.125,3.623,3.623,0,0,1,1.169-.75,3.744,3.744,0,0,1,1.435-.262l84.579,1.114a4.75,4.75,0,0,1,1.676.326,4.46,4.46,0,0,1,1.372.849,3.97,3.97,0,0,1,.927,1.243,3.553,3.553,0,0,1,.341,1.514,3.481,3.481,0,0,1-.341,1.5,3.787,3.787,0,0,1-.927,1.215,4.269,4.269,0,0,1-1.372.8,4.669,4.669,0,0,1-1.676.271Z" transform="translate(-380.046 -192.495)" fill="#e4e4e4"/><path d="M797.24,374.081l-57.259-.481a3.921,3.921,0,0,1-1.47-.3,3.825,3.825,0,0,1-1.2-.784,3.652,3.652,0,0,1-.806-1.154,3.5,3.5,0,0,1,0-2.811,3.6,3.6,0,0,1,.806-1.146,3.77,3.77,0,0,1,1.2-.772,3.9,3.9,0,0,1,1.47-.282l57.26.1a4.552,4.552,0,0,1,1.633.3,4.273,4.273,0,0,1,1.337.822,3.852,3.852,0,0,1,.9,1.22,3.511,3.511,0,0,1,0,2.979,3.8,3.8,0,0,1-.9,1.21,4.218,4.218,0,0,1-1.338.809,4.529,4.529,0,0,1-1.633.286Z" transform="translate(-383.069 -189.583)" fill="#e4e4e4"/><path d="M692.359,422.913l142.417,6.493V514.3L692.359,497.6Z" transform="translate(-374.637 -200.458)" fill="var(--primary)"/><path d="M808.748,573.755l-84.579-12.7a4.216,4.216,0,0,1-1.435-.5,4.557,4.557,0,0,1-1.169-.942,4.376,4.376,0,0,1-.787-1.25,3.782,3.782,0,0,1-.288-1.431,3.181,3.181,0,0,1,.288-1.347,2.913,2.913,0,0,1,.787-1.021,3.07,3.07,0,0,1,1.169-.6,3.58,3.58,0,0,1,1.435-.075l84.579,12.134a5.219,5.219,0,0,1,1.676.545,5.341,5.341,0,0,1,1.372,1.027,4.762,4.762,0,0,1,.927,1.366,3.855,3.855,0,0,1,.34,1.559,3.2,3.2,0,0,1-.34,1.459,3.141,3.141,0,0,1-.927,1.094,3.648,3.648,0,0,1-1.372.624,4.5,4.5,0,0,1-1.676.052Z" transform="translate(-380.046 -225.634)" fill="#e4e4e4"/><path d="M797.24,556l-57.259-7.942a4.317,4.317,0,0,1-1.47-.488,4.592,4.592,0,0,1-1.2-.942,4.358,4.358,0,0,1-.806-1.256,3.769,3.769,0,0,1-.3-1.446,3.2,3.2,0,0,1,.3-1.365,3,3,0,0,1,.806-1.041,3.191,3.191,0,0,1,1.2-.616,3.713,3.713,0,0,1,1.47-.09l57.259,7.558a4.985,4.985,0,0,1,1.633.516,5.117,5.117,0,0,1,1.338,1,4.623,4.623,0,0,1,.9,1.336,3.817,3.817,0,0,1,.332,1.534,3.22,3.22,0,0,1-.332,1.445,3.152,3.152,0,0,1-.9,1.092,3.589,3.589,0,0,1-1.338.634,4.338,4.338,0,0,1-1.633.074Z" transform="translate(-383.069 -223.12)" fill="#e4e4e4"/><path d="M535.608,468.22,311.692,439.552a3.666,3.666,0,0,1-1.68-.695,5.533,5.533,0,0,1-1.367-1.474,7.656,7.656,0,0,1-.919-2.042,8.7,8.7,0,0,1-.337-2.4V291.533a8.541,8.541,0,0,1,.337-2.387,7.267,7.267,0,0,1,.919-2,5.168,5.168,0,0,1,1.366-1.412,3.5,3.5,0,0,1,1.68-.617l223.917-18.334a6.587,6.587,0,0,1,5.232,1.915,7.269,7.269,0,0,1,1.6,2.417,8.148,8.148,0,0,1,.59,3.072V461.155a7.94,7.94,0,0,1-.59,3.045,6.824,6.824,0,0,1-1.6,2.344,6.265,6.265,0,0,1-2.359,1.413A6.527,6.527,0,0,1,535.608,468.22Z" transform="translate(-300.619 -170.435)" fill="#fff"/><path d="M450.072,385.841a14.835,14.835,0,0,0-2.021-2.147,13.255,13.255,0,0,0-2.3-1.607,11.962,11.962,0,0,0-2.5-1.029,11.125,11.125,0,0,0-2.623-.416,10.85,10.85,0,0,0-2.616.22,11.173,11.173,0,0,0-2.481.832,12.02,12.02,0,0,0-2.277,1.4,13.31,13.31,0,0,0-2,1.94l-60.25,72a6.841,6.841,0,0,1-2.6,1.961,5.841,5.841,0,0,1-2.935.412,6.794,6.794,0,0,1-2.915-1.08,9.365,9.365,0,0,1-2.549-2.518l-7.981-11.474a12.48,12.48,0,0,0-3.464-3.43,8.754,8.754,0,0,0-3.9-1.4,7.537,7.537,0,0,0-3.864.653,9.155,9.155,0,0,0-3.364,2.718L322.993,461.2l201.85,25.484V483.1Z" transform="translate(-303.619 -192.329)" fill="var(--primary)"/><path d="M535.262,470.276l-223.916-29.3a4.922,4.922,0,0,1-2.25-.937,7.427,7.427,0,0,1-1.828-1.979,10.268,10.268,0,0,1-1.227-2.734,11.667,11.667,0,0,1-.451-3.21V290.992a11.448,11.448,0,0,1,.451-3.189,9.749,9.749,0,0,1,1.227-2.677,6.937,6.937,0,0,1,1.827-1.895,4.7,4.7,0,0,1,2.25-.833l223.916-18.967a8.83,8.83,0,0,1,7.027,2.555,9.74,9.74,0,0,1,2.151,3.243,10.919,10.919,0,0,1,.794,4.128V460.813a10.643,10.643,0,0,1-.794,4.091,9.141,9.141,0,0,1-2.151,3.144,8.4,8.4,0,0,1-3.172,1.889,8.754,8.754,0,0,1-3.855.34ZM311.346,286.548a2.308,2.308,0,0,0-1.109.4,3.4,3.4,0,0,0-.9.931,4.789,4.789,0,0,0-.608,1.319,5.632,5.632,0,0,0-.224,1.576V432.464a5.741,5.741,0,0,0,.223,1.585,5.045,5.045,0,0,0,.608,1.349,3.643,3.643,0,0,0,.9.977,2.415,2.415,0,0,0,1.109.455l223.916,28.034a4.305,4.305,0,0,0,1.894-.178,4.135,4.135,0,0,0,1.552-.935,4.5,4.5,0,0,0,1.05-1.545,5.238,5.238,0,0,0,.387-2V273.731a5.373,5.373,0,0,0-.387-2.022,4.8,4.8,0,0,0-1.05-1.593,4.345,4.345,0,0,0-3.445-1.271Z" transform="translate(-300.273 -169.787)" fill="#cbcbcb"/><circle cx="12.924" cy="12.924" r="12.924" transform="translate(42.079 150.283)" fill="#2f2e41"/></g></g>
+                    </svg>}
+                  {false && key === 'emprendedor' && <svg xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink" viewBox="0 0 582.834 640.76" className="absolute right-2 md:right-16 top-1/2 -translate-y-1/2 w-auto opacity-70 pointer-events-none select-none" style={{ height: '40%' }} aria-hidden="true">
+                      <g transform="translate(-730.163 -282.736)"><path d="M966.953,643.379C874.023,685.635,754.34,682.64,754.34,682.64H624.821V657.91c52.779-14.733,125.755-23.84,206.421-23.84a945.777,945.777,0,0,1,135.712,9.309Z" transform="translate(190.339 127.527)" opacity="0.1"/><path d="M1186.656,708.006c0,44.725-130.49,80.95-291.417,80.95s-291.417-36.225-291.417-80.95c0-22.3,32.461-42.5,85-57.11v24.73H818.337s119.683,2.995,212.613-39.261C1123.515,649.884,1186.656,676.881,1186.656,708.006Z" transform="translate(126.342 134.54)" opacity="0.1"/><rect width="123.994" height="124.215" transform="translate(934.806 338.513)" fill="#090814"/><path d="M694.753,561.941s10.263,35.921-7.7,38.487a70.111,70.111,0,0,0-30.79,12.829l33.356,43.619H751.2l38.487-38.487s-51.316-38.487-41.053-61.58S694.753,561.941,694.753,561.941Z" transform="translate(286.165 -135.584)" fill="#ed9da0"/><path d="M536.239,554.651l59.016,20.525,41.049,2.566-2.566-35.921-84.669-25.042Z" transform="translate(460.072 318.157)" fill="#ed9da0"/><path d="M688.28,685.3s0,35.921,5.132,35.921,74.408-7.7,94.935,0S839.663,700.7,824.268,685.3s-40.506-38.487-56.175-33.356-79.814,17.961-79.814,17.961Z" transform="translate(383.726 179.807)" fill="#2f2e41"/><path d="M654.726,651.4s-30.79,61.58-10.263,66.711,43.619-2.566,46.185-5.132,38.487-12.829,43.619-7.7,5.131-20.527,5.131-20.527Z" transform="translate(228.692 180.356)" fill="#2f2e41"/><path d="M667.627,630.48s-48.751,66.712-12.829,84.672,207.831,17.961,220.66,0,17.961-74.409,0-79.541S667.627,630.48,667.627,630.48Z" transform="translate(241.449 116.604)" fill="#2f2e41"/><path d="M667.627,630.48s-48.751,66.712-12.829,84.672,207.831,17.961,220.66,0,17.961-74.409,0-79.541S667.627,630.48,667.627,630.48Z" transform="translate(241.449 116.604)" opacity="0.2"/><ellipse cx="59.014" cy="59.014" rx="59.014" ry="59.014" transform="translate(942.43 326.284)" fill="#ed9da0"/><path d="M648.025,571.644l51.316-10.263s12.829,41.053,53.882,33.356,51.316-33.356,51.316-33.356,30.79,12.829,33.356,12.829,35.922,12.829,35.922,20.527-38.487,84.672-38.487,84.672l5.131,138.555-189.871-5.132L663.42,676.844Z" transform="translate(261.051 -93.972)" fill="var(--primary)"/><path d="M647.572,580.4s-15.395,135.989-5.132,146.252,51.316,38.487,51.316,38.487v-30.79L673.23,695.862l20.527-89.8Z" transform="translate(233.279 -36.014)" fill="#ed9da0"/><path d="M746.267,579.448s-8.98,139.838-8.98,144.969S714.194,747.51,706.5,747.51s-12.829-12.829-12.829-12.829l17.961-20.527L698.8,608.955Z" transform="translate(400.147 -38.914)" fill="#ed9da0"/><path d="M790.47,649.41s115.462-64.146,118.027,0-59.014,89.8-59.014,89.8-159.081,47.7-165.5,30.266-19.244-45.661-8.98-48.226,23.092-7.7,28.224-2.566S772.509,680.2,772.509,680.2Z" transform="translate(331.569 87.411)" fill="#2f2e41"/><path d="M695.055,569.049l-15.4-5.132s-56.448,59.014-38.487,74.409,28.224,20.527,33.356,25.658,30.79,7.7,30.79,7.7Z" transform="translate(229.416 -86.245)" fill="var(--primary)"/><path d="M725.152,568.354l23.092,5.132s17.961,38.487,23.092,43.619-7.7,2.566-15.395,12.829-15.4,28.224-30.79,28.224S689.23,632.5,689.23,632.5Z" transform="translate(386.624 -72.72)" fill="var(--primary)"/><path d="M750.957,661.426s-97.5-69.277-130.857-17.961S763.786,764.059,789.444,774.322s48.751,20.527,48.751,20.527,23.092-56.448,23.092-66.711-17.961-10.263-23.092-10.263-28.224-5.132-33.356-12.829S750.957,661.426,750.957,661.426Z" transform="translate(163.25 98.489)" fill="#2f2e41"/><path d="M644.921,615.809l2.05,108.638a13.6,13.6,0,0,0,13.75,13.343l202.168-2.271A13.6,13.6,0,0,0,876.314,722.7l6.137-106.367a13.6,13.6,0,0,0-13.577-14.383H658.519a13.6,13.6,0,0,0-13.6,13.856Z" transform="translate(251.586 29.67)" fill="#090814"/><g transform="translate(885.188 282.736)"><path d="M662.151,702.584c5.506-12.151,12.906-23.553,16.432-36.419,4.226-15.42,2.58-31.736,2.077-47.717a149.817,149.817,0,0,1,3.577-42.106,72.4,72.4,0,0,1,20.813-36.235c26.889-24,53.277-25.728,86.11-15.735,12.944,3.94,26.732,11.441,29.942,24.585.484,1.985.7,4.029,1.243,6,2.688,9.786,12.7,15.979,16.312,25.463,4.672,12.267-2.532,25.607-3.474,38.7-1.1,15.286,6.415,29.726,13.821,43.143,4.4,7.976,8.981,16.472,8.544,25.572a32.3,32.3,0,0,1-4.421,14.1,53.753,53.753,0,0,1-45.154,25.884,28.326,28.326,0,0,1-16.913-3.993c-8.013-5.517-10.36-16.627-8.691-26.212s6.534-18.253,10.347-27.2c1.17-2.747,2.225-5.54,3.2-8.361a57.416,57.416,0,1,0-37.873,6.424,77.777,77.777,0,0,1-3.766,43.247,163.309,163.309,0,0,1-18.16,31.664,43.707,43.707,0,0,1-11.569,12.947,41.046,41.046,0,0,1-9.856,4.209c-14.493,4.661-6.932,8.411-22.01,6.315s-30.012-11.191-35.15-25.522C653.028,728.768,656.645,714.734,662.151,702.584Z" transform="translate(-655.498 -518.627)" fill="#090814"/><ellipse cx="62.629" cy="35.49" rx="62.629" ry="35.49" transform="translate(46.663 22.315)" fill="#090814"/></g></g>
+                    </svg>}
                   <div className="border-t border-gray-100 pt-3 mt-auto">
                     <p className="text-lg font-bold text-gray-900 mb-2">
                       {priceMensual != null ? formatCurrency(priceMensual) : '—'}
                       <span className="text-xs font-normal text-gray-500"> / mes</span>
                     </p>
                     <button
-                      onClick={() => setModalTier(tier)}
+                      onClick={() => openModal(tier)}
                       className="btn btn-primary w-full text-sm"
                     >
                       Elegir plan
@@ -120,7 +157,7 @@ const PlanSelector = ({ planes, suscripcion, creandoPago, whatsappNumero, accion
         </p>
       </div>
 
-      {/* Modal de período */}
+      {/* Modal de plan y período */}
       {modalTier && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
@@ -128,7 +165,8 @@ const PlanSelector = ({ planes, suscripcion, creandoPago, whatsappNumero, accion
           onClick={() => setModalTier(null)}
         >
           <div
-            className="bg-white rounded-2xl shadow-xl w-full max-w-sm animate-slide-in"
+            className="bg-white rounded-2xl shadow-xl w-full max-w-lg animate-slide-in overflow-y-auto"
+            style={{ maxHeight: '90vh' }}
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
@@ -137,30 +175,86 @@ const PlanSelector = ({ planes, suscripcion, creandoPago, whatsappNumero, accion
                 <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${modalTier.badgeCls}`}>
                   {modalTier.label}
                 </span>
-                <p className="text-sm font-medium text-gray-700 mt-1">Elegí la frecuencia de pago</p>
+                <p className="text-sm font-medium text-gray-700 mt-1">Personalizá tu plan</p>
               </div>
               <button onClick={() => setModalTier(null)} className="text-gray-400 hover:text-gray-600 transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Opciones */}
-            <div className="p-5 flex flex-col gap-3">
-              {/* Mensual */}
-              <div className="border border-gray-200 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-3">
+            <div className="p-5 flex flex-col gap-4">
+
+              {/* Add-on: Tienda Online — deshabilitado temporalmente */}
+
+              {/* Add-ons Empresarial: sucursales y usuarios extra */}
+              {isEmpresarial && (
+                <div className="border border-gray-200 rounded-xl p-4 flex flex-col gap-3">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Capacidad adicional</p>
+
+                  {/* Sucursales extra */}
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="text-sm font-medium text-gray-800 shrink-0">Sucursales extra</label>
+                    <div className="flex items-center gap-2 ml-auto">
+                      <select
+                        value={sucursalesExtra}
+                        onChange={e => setSucursalesExtra(Number(e.target.value))}
+                        className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
+                        style={{ '--tw-ring-color': 'var(--primary)' }}
+                      >
+                        {Array.from({ length: 10 }, (_, i) => (
+                          <option key={i} value={i}>{3 + i} sucursal{3 + i !== 1 ? 'es' : ''}{i === 0 ? ' (base)' : ''}</option>
+                        ))}
+                      </select>
+                      {addonPrecios.sucursal_extra > 0 && sucursalesExtra > 0 ? (
+                        <span className="text-xs font-medium w-24 text-right" style={{ color: 'var(--primary)' }}>
+                          +{formatCurrency(sucursalesExtra * addonPrecios.sucursal_extra)}/mes
+                        </span>
+                      ) : addonPrecios.sucursal_extra > 0 ? (
+                        <span className="text-xs text-gray-400 w-24 text-right">{formatCurrency(addonPrecios.sucursal_extra)}/c/u</span>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {/* Usuarios extra */}
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="text-sm font-medium text-gray-800 shrink-0">Usuarios extra</label>
+                    <div className="flex items-center gap-2 ml-auto">
+                      <select
+                        value={usuariosExtraPacks}
+                        onChange={e => setUsuariosExtraPacks(Number(e.target.value))}
+                        className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
+                      >
+                        {Array.from({ length: 11 }, (_, i) => (
+                          <option key={i} value={i}>{15 + i * 5} usuarios{i === 0 ? ' (base)' : ''}</option>
+                        ))}
+                      </select>
+                      {addonPrecios.pack_usuarios > 0 && usuariosExtraPacks > 0 ? (
+                        <span className="text-xs font-medium w-24 text-right" style={{ color: 'var(--primary)' }}>
+                          +{formatCurrency(usuariosExtraPacks * addonPrecios.pack_usuarios)}/mes
+                        </span>
+                      ) : addonPrecios.pack_usuarios > 0 ? (
+                        <span className="text-xs text-gray-400 w-24 text-right">{formatCurrency(addonPrecios.pack_usuarios)}/pack</span>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Frecuencia — cards lado a lado */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* Mensual */}
+                <div className="border border-gray-200 rounded-xl p-4 flex flex-col gap-3">
                   <div>
                     <p className="font-semibold text-gray-900 text-sm">Mensual</p>
                     <p className="text-xl font-bold text-gray-900 mt-0.5">
-                      {tierData?.precio_mensual != null ? formatCurrency(tierData.precio_mensual) : '—'}
+                      {formatCurrency(totalMensual)}
                       <span className="text-xs font-normal text-gray-500"> / mes</span>
                     </p>
                   </div>
-                </div>
-                <button
-                    onClick={() => { onPagar('mensual', modalTier.key); setModalTier(null); }}
+                  <button
+                    onClick={() => handlePagar('mensual')}
                     disabled={creandoPago !== null}
-                    className="btn btn-primary w-full flex items-center gap-2 text-sm justify-center"
+                    className="btn btn-primary w-full flex items-center gap-1.5 text-sm justify-center mt-auto"
                   >
                     {creandoPago === `${modalTier.key}-mensual` ? (
                       <><div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white" /> Redirigiendo...</>
@@ -168,27 +262,25 @@ const PlanSelector = ({ planes, suscripcion, creandoPago, whatsappNumero, accion
                       <><ExternalLink className="w-3.5 h-3.5" /> {accionLabel} mensual</>
                     )}
                   </button>
-              </div>
+                </div>
 
-              {/* Anual */}
-              <div className="border border-gray-200 rounded-xl p-4 relative">
-                <span className="absolute -top-2.5 right-4 bg-green-600 text-white text-xs font-semibold px-2.5 py-0.5 rounded-full">
-                  1 mes gratis
-                </span>
-                <div className="flex items-center justify-between mb-3">
+                {/* Anual */}
+                <div className="border border-gray-200 rounded-xl p-4 flex flex-col gap-3 relative">
+                  <span className="absolute -top-2.5 right-3 bg-green-600 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                    1 mes gratis
+                  </span>
                   <div>
                     <p className="font-semibold text-gray-900 text-sm">Anual</p>
                     <p className="text-xl font-bold text-gray-900 mt-0.5">
-                      {tierData?.precio_anual != null ? formatCurrency(tierData.precio_anual) : '—'}
+                      {formatCurrency(totalAnual)}
                       <span className="text-xs font-normal text-gray-500"> / año</span>
                     </p>
-                    <p className="text-xs text-gray-400 mt-0.5">12 meses al precio de 11</p>
+                    <p className="text-xs text-gray-400">12 meses al precio de 11</p>
                   </div>
-                </div>
-                <button
-                    onClick={() => { onPagar('anual', modalTier.key); setModalTier(null); }}
+                  <button
+                    onClick={() => handlePagar('anual')}
                     disabled={creandoPago !== null}
-                    className="btn btn-primary w-full flex items-center gap-2 text-sm justify-center"
+                    className="btn btn-primary w-full flex items-center gap-1.5 text-sm justify-center mt-auto"
                   >
                     {creandoPago === `${modalTier.key}-anual` ? (
                       <><div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white" /> Redirigiendo...</>
@@ -196,11 +288,12 @@ const PlanSelector = ({ planes, suscripcion, creandoPago, whatsappNumero, accion
                       <><ExternalLink className="w-3.5 h-3.5" /> {accionLabel} anual</>
                     )}
                   </button>
+                </div>
               </div>
 
               {/* Transferencia */}
               {whatsappNumero && (
-                <div className="border-t border-gray-100 pt-3">
+                <div className="border-t border-gray-100 pt-1">
                   <div className="relative">
                     <a
                       href={`https://wa.me/${whatsappNumero.replace(/\D/g, '')}`}
@@ -251,6 +344,7 @@ const CuentaView = ({
   descargandoRecibo,
   sortConfig,
   requestSort,
+  suscripcionAddons,
 }) => {
   const StatusIcon = statusConf?.icon || Clock;
 
@@ -398,6 +492,7 @@ const CuentaView = ({
           <PlanSelector
             planes={planes}
             suscripcion={suscripcion}
+            suscripcionAddons={suscripcionAddons}
             creandoPago={creandoPago}
             whatsappNumero={whatsappNumero}
             accionLabel={accionLabel}
@@ -414,34 +509,46 @@ const CuentaView = ({
                 const diaFact = suscripcion?.dia_facturacion;
 
                 return (
-                  <div className={`rounded-lg p-4 ${esAutomatico ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'}`}>
-                    <div className="flex items-start justify-between gap-4 flex-wrap">
-                      <div className="flex items-start gap-3">
+                  <div
+                    className="rounded-lg p-4 border border-gray-300 relative overflow-hidden"
+                    style={{}}
+                  >
+                    <div className="absolute inset-0 rounded-lg" style={{ background: 'rgba(var(--primary-rgb, 16, 185, 129), 0.01)' }} />
+                    <svg xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink" viewBox="0 0 564.98435 512.2962" className="hidden absolute right-8 bottom-0 h-full w-auto opacity-90 pointer-events-none select-none" aria-hidden="true">
+                      <g><path d="M390.42662,511.00598H230.11441c-24.04481,0-43.60692-19.5621-43.60692-43.60736V43.60692c0-24.04481,19.56212-43.60692,43.60692-43.60692h160.31224c24.04437,0,43.60645,19.56211,43.60645,43.60691,2.98416,170.18169,8.073,360.75835,0,423.79168,0,24.04529-19.56207,43.60736-43.60645,43.60736l-.00003,.00003Z" fill="#3f3d56"/><path d="M436.26875,155.88451c-1.01743,0-1.84479,.82736-1.84479,1.84479v59.03313c0,1.01743,.82736,1.84479,1.84479,1.84479s1.84479-.82736,1.84479-1.84479v-59.03313c0-1.01743-.82736-1.84479-1.84479-1.84479Z" fill="#3f3d56"/><path d="M429.88273,43.60724V467.39133c0,20.92908-16.28943,38.04871-36.88647,39.37695h-.00922c-.30441,.01846-.60876,.03693-.92239,.04617-.54425,.02765-1.08841,.03687-1.64182,.03687,0,0-2.02927-.14761-5.7373-.42432-3.7449-.2767-9.19623-.6918-15.99432-1.23596-2.03845-.15686-4.18765-.33209-6.45676-.51654-4.51968-.36899-9.48218-.77484-14.80438-1.23602-2.12149-.17526-4.3168-.36893-6.5582-.56265-11.4561-.98697-24.28661-2.13995-37.8181-3.44974-2.28752-.21219-4.59351-.43356-6.91794-.66415-.60875-.06458-105.47714-26.42651-105.47714-31.37057V43.60724c0-21.79609,17.66384-39.45993,39.45998-39.45993h23.55789c3.76338,0,6.7888,2.9332,7.11166,6.68735,.02763,.24906,.05534,.49807,.10146,.74714,.68256,3.77261,4.14153,6.40141,7.97865,6.40141h82.80478c3.83713,0,7.29611-2.6288,7.97867-6.40141,.04611-.24906,.07382-.49807,.1015-.74714,.32281-3.75414,3.34824-6.68735,7.1116-6.68735h23.55795c21.79608,0,39.45993,17.66384,39.45993,39.45993h-.00003Z" fill="#fff"/><path d="M185.58526,111.60966c-1.01742,0-1.84479,.82736-1.84479,1.84479v14.75828c0,1.01743,.82736,1.84479,1.84479,1.84479s1.84479-.82736,1.84479-1.84479v-14.75828c0-1.01742-.82736-1.84479-1.84479-1.84479Z" fill="#3f3d56"/><path d="M185.58526,155.88451c-1.01742,0-1.84479,.82736-1.84479,1.84479v28.59416c0,1.01743,.82736,1.84479,1.84479,1.84479s1.84479-.82736,1.84479-1.84479v-28.59418c0-1.01743-.82736-1.84479-1.84479-1.84479v.00002Z" fill="#3f3d56"/><path d="M185.58526,196.46979c-1.01742,0-1.84479,.82736-1.84479,1.84479v28.59418c0,1.01743,.82736,1.84479,1.84479,1.84479s1.84479-.82736,1.84479-1.84479v-28.59418c0-1.01743-.82736-1.84479-1.84479-1.84479Z" fill="#3f3d56"/><rect x="217.40784" y="10.60766" width="35.97331" height="4.61196" rx=".31021" ry=".31021" fill="#e6e6e6"/><circle cx="372.69417" cy="11.53006" r="3.68957" fill="#e6e6e6"/><circle cx="382.84047" cy="11.53006" r="3.68957" fill="#e6e6e6"/><circle cx="392.9868" cy="11.53006" r="3.68957" fill="#e6e6e6"/></g><path d="M14.31431,511.1062c0,.66003,.53003,1.19,1.19006,1.19H563.79435c.65997,0,1.19-.52997,1.19-1.19,0-.65997-.53003-1.19-1.19-1.19H15.50437c-.66003,0-1.19006,.53003-1.19006,1.19Z" fill="#ccc"/><g><polygon points="189.13337 503.29034 177.88964 503.28925 172.54091 459.92004 189.13563 459.9212 189.13337 503.29034" fill="#ffb6b6"/><path d="M150.61091,503.03528h0c-.35009,.58963-.53482,2.49265-.53482,3.17831h0c0,2.1076,1.70851,3.81616,3.81617,3.81616h34.82056c1.43779,0,2.60341-1.16556,2.60341-2.60342v-1.44968s1.72254-4.35709-1.82386-9.72742c0,0-4.40771,4.20505-10.99395-2.3812l-1.94223-3.51849-14.05904,10.28207-7.79271,.9592c-1.70489,.20984-3.21643-.03256-4.0934,1.44443h-.00014v.00003Z" fill="#2f2e41"/></g><g><polygon points="126.95369 443.05221 115.71001 443.01542 110.49898 399.62947 127.09363 399.68329 126.95369 443.05221" fill="#ffb6b6"/><path d="M88.43223,442.67487h0c-.35195,.5885-.54273,2.49094-.54489,3.1766h0c-.0067,2.10759,1.69638,3.82159,3.80403,3.82827l34.82038,.11053c1.43776,.00456,2.60709-1.15728,2.61167-2.59513l.0046-1.44968s1.73635-4.35158-1.79297-9.73316c0,0-4.42102,4.19104-10.98634-2.41607l-1.93104-3.52463-14.09161,10.23739-7.79573,.93448c-1.70554,.20442-3.2163-.04278-4.09795,1.43142h-.00015Z" fill="#2f2e41"/></g><path d="M172.73446,240l-14,1s-47.39555,26.94744-51.39555,32.94744-9.5,14.5-4.5,23.5,1.19455,117.97274,1.19455,117.97274l23.89279-5.40494,15.30821-114.01524,32-4.5s11,23.73227,7,43.36615-6,31.63385-6,31.63385l-5,116,19.5-.5,17.5-107.5,29.99999-85-39-46-26.49999-3.5Z" fill="#2f2e41"/><path d="M241.73446,117l-29,3-3,10-28,15,9,63-7,11,3,11s-8,1-7,7l-18,3s23.87402,4.87402,28.93701,28.93701,47.06299,27.06299,47.06299,27.06299l33-103,3-61-23-6-9-9Z" fill="#e6e6e6"/><circle cx="226.451" cy="90.66142" r="22.54398" fill="#ffb6b6"/><path d="M214.73446,111h0s-20-1-18-17c-4.95023-17.03827-.56866-28.10098,15-32,0,0,4-1,5-1,13.15295,0,20,4,20,4,0,0-1-3.96063,0-2.98031s2,2.98031,2,2.98031c0,0,10,5,10,15s0,6,0,6c0,0-2,0-4-6s-14.94882-2-14.94882-2l.94882,2-3-1-3,3-2-1s-8,0-7,0,.30315,6.79592,.30315,6.79592l-7.30315,8.20408,8,15h-2Z" fill="#2f2e41"/><path d="M108.18012,230.35401c-5.69337,3.10727-8.70576,8.56321-6.72842,12.18627s8.19564,4.04119,13.88902,.9339c2.49218-1.36017,4.47051-3.1704,5.74165-5.07992l23.95923-13.46902-6.5601-11.10881-22.92283,14.45689c-2.29362,.03603-4.88636,.72053-7.37854,2.08069Z" fill="#ffb6b6"/><path d="M188.97834,145.46667s-9.39215-3.57597-12.62811,.7285-24.61287,56.535-24.61287,56.535l-31.36392,16.38001,8.81983,15.3588,40.3873-13.4462,26.6467-48.73349-7.24893-26.82262Z" fill="#e6e6e6"/><g><path d="M485.14933,316.99789v105.99999c0,9.37402-7.62598,17-17,17H206.14933c-9.37402,0-17-7.62598-17-17v-105.99999c0-9.37402,7.62598-17,17-17H468.14933c9.37402,0,17,7.62598,17,17Z" fill="#fff"/><path d="M485.14933,316.99789v105.99999c0,9.37402-7.62598,17-17,17H206.14933c-9.37402,0-17-7.62598-17-17v-105.99999c0-9.37402,7.62598-17,17-17H468.14933c9.37402,0,17,7.62598,17,17Zm-17,120.99999c8.28424,0,15-6.71573,15-15v-53.44095c0-37.31184-30.24719-67.55906-67.55905-67.55906H206.14933c-8.28427,0-15,6.71573-15,15v106.00001c0,8.28427,6.71573,15,15,15H468.14933Z" fill="#3f3d56"/><g><path d="M306.7598,364.03938h-34.22064c-.86273,0-1.5647,.70166-1.5647,1.56439s.70197,1.56476,1.5647,1.56476h34.22064c.86273,0,1.56439-.70203,1.56439-1.56476s-.70166-1.56439-1.56439-1.56439Z" fill="var(--primary)"/><path d="M358.7598,364.03938h-34.22064c-.86273,0-1.5647,.70166-1.5647,1.56439s.70197,1.56476,1.5647,1.56476h34.22064c.86273,0,1.56439-.70203,1.56439-1.56476s-.70166-1.56439-1.56439-1.56439Z" fill="var(--primary)"/></g><g><path d="M306.7598,381.14545h-34.22064c-.86273,0-1.5647,.70166-1.5647,1.56439s.70197,1.56476,1.5647,1.56476h34.22064c.86273,0,1.56439-.70203,1.56439-1.56476s-.70166-1.56439-1.56439-1.56439Z" fill="var(--primary)"/><path d="M358.7598,381.14545h-34.22064c-.86273,0-1.5647,.70166-1.5647,1.56439s.70197,1.56476,1.5647,1.56476h34.22064c.86273,0,1.56439-.70203,1.56439-1.56476s-.70166-1.56439-1.56439-1.56439Z" fill="var(--primary)"/><path d="M412.3242,382.70986c0-.86273-.70166-1.56439-1.56439-1.56439h-34.22064c-.86273,0-1.5647,.70166-1.5647,1.56439s.70197,1.56476,1.5647,1.56476h34.22064c.86273,0,1.56439-.70203,1.56439-1.56476Z" fill="var(--primary)"/></g><g><path d="M286.7598,350.38064c.86273,0,1.56439-.70197,1.56439-1.5647s-.70166-1.56439-1.56439-1.56439h-34.22064c-.86273,0-1.5647,.70166-1.5647,1.56439s.70197,1.5647,1.5647,1.5647h34.22064Z" fill="var(--primary)"/><path d="M387.53916,349.74429h34.22064c.86273,0,1.56439-.70203,1.56439-1.56476s-.70166-1.56439-1.56439-1.56439h-34.22064c-.86273,0-1.5647,.70166-1.5647,1.56439s.70197,1.56476,1.5647,1.56476Z" fill="var(--primary)"/><path d="M301.17606,350.07339h70.94684c.86273,0,1.56439-.70197,1.56439-1.5647s-.70166-1.56439-1.56439-1.56439h-70.94684c-.86273,0-1.56476,.70166-1.56476,1.56439s.70203,1.5647,1.56476,1.5647Z" fill="var(--primary)"/></g><path d="M329.09021,396.687h-34.22064c-.86273,0-1.5647,.70166-1.5647,1.56439s.70197,1.5647,1.5647,1.5647h34.22064c.86273,0,1.56439-.70197,1.56439-1.5647s-.70166-1.56439-1.56439-1.56439Z" fill="var(--primary)"/><g><path d="M439.6113,316.19874v106c0,9.37402-7.62598,17-17,17h-106c-9.37402,0-17-7.62598-17-17v-106c0-9.37402,7.62598-17,17-17h106c9.37402,0,17,7.62598,17,17Z" fill="#fff"/><path d="M439.6113,316.19874v106c0,9.37402-7.62598,17-17,17h-106c-9.37402,0-17-7.62598-17-17v-106c0-9.37402,7.62598-17,17-17h106c9.37402,0,17,7.62598,17,17Zm-23.57587,121c11.91602,0,21.57587-9.65985,21.57587-21.57584v-46.86511c0-37.31183-30.24719-67.55905-67.55902-67.55905h-53.44095c-8.28427,0-15,6.71573-15,15v91.2106c0,16.45221,13.33716,29.78937,29.78937,29.78937h84.6348v.00003h-.00006Z" fill="#3f3d56"/><path d="M383.72178,342.49095h-34.22061c-.86273,0-1.5647-.702-1.5647-1.56473s.702-1.56439,1.5647-1.56439h34.22061c.86273,0,1.56439,.70166,1.56439,1.56439s-.70166,1.5647-1.56439,1.5647v.00003Z" fill="var(--primary)"/><path d="M383.72178,375.85458h-34.22061c-.86273,0-1.5647-.702-1.5647-1.56473s.702-1.56439,1.5647-1.56439h34.22061c.86273,0,1.56439,.70166,1.56439,1.56439s-.70166,1.5647-1.56439,1.5647v.00003Z" fill="var(--primary)"/><path d="M366.72178,421.85458h-34.22061c-.86273,0-1.5647-.702-1.5647-1.56473s.702-1.56439,1.5647-1.56439h34.22061c.86273,0,1.56439,.70166,1.56439,1.56439s-.70166,1.5647-1.56439,1.5647v.00003Z" fill="var(--primary)"/><path d="M402.08494,359.18369h-70.9469c-.86273,0-1.5647-.702-1.5647-1.56473s.702-1.56439,1.5647-1.56439h70.9469c.86273,0,1.56439,.70166,1.56439,1.56439s-.70166,1.5647-1.56439,1.5647v.00003Z" fill="var(--primary)"/></g><g><g><path d="M419.66655,257.46159c0-33.0672-27.94839-51.25775-59.87342-59.87342-40.93082-11.04603-70.90792,11.30614-59.87342,59.87342,2.50085,11.00731,8.48242,23.86325,15.88639,34.86015h58.75409c19.62598-12.77725,45.10635-9.19397,45.10635-34.86015Z" fill="var(--primary)"/><path d="M358.91428,319.97157c3.34221-6.37133,7.57932-10.96804,12.24824-14.467h-55.03043c14.16355,20.23175,32.94678,33.21654,42.78219,14.467Z" fill="var(--primary)"/></g><path d="M352.56421,222.06211c3.53286,0,6.3968,2.86395,6.3968,6.39681v12.79359h-12.79359v-12.79359c0-3.53286,2.86395-6.39681,6.3968-6.39681Zm9.5952,19.19038v-12.79359c0-5.29928-4.29592-9.5952-9.5952-9.5952s-9.5952,4.29592-9.5952,9.5952v12.79359c-3.53286,0-6.3968,2.86395-6.3968,6.39681v15.99198c0,3.53286,2.86395,6.39681,6.3968,6.39681h19.19039c3.53286,0,6.3968-2.86395,6.3968-6.39681v-15.99198c0-3.53286-2.86395-6.39681-6.3968-6.39681h.00001Zm-19.19039,3.19839h19.19038c1.76643,0,3.1984,1.43196,3.1984,3.19839v15.99198c0,1.76643-1.43198,3.19839-3.1984,3.19839h-19.19038c-1.76643,0-3.1984-1.43196-3.1984-3.19839v-15.99198c0-1.76643,1.43198-3.19839,3.1984-3.19839Z" fill="#fff"/></g></g><path d="M261.15048,296.5433c-.77129,6.44009,1.92574,12.05862,6.02397,12.54944s8.04572-4.33197,8.817-10.77206c.33762-2.81903,.01053-5.48059-.80762-7.62363l2.92577-27.32944-12.85422-1.09985-1.51991,27.05823c-1.30106,1.88925-2.24738,4.39828-2.58499,7.21732Z" fill="#ffb6b6"/><path d="M264.23446,133.5s14-4,17,2,10,85,10,85l-13.5,63.05905-15.5-4.05905,8-64-11-48,5-34Z" fill="#e6e6e6"/><g><circle cx="58.49998" cy="266.83965" r="58.49999" fill="var(--primary)"/><path d="M58.49998,240.65068c4.13251,0,7.48256,3.35007,7.48256,7.48257v14.96512h-14.96512v-14.96512c0-4.13251,3.35007-7.48257,7.48256-7.48257Zm11.22385,22.44766v-14.96512c0-6.19876-5.02509-11.22385-11.22385-11.22385s-11.22385,5.02509-11.22385,11.22385v14.96512c-4.13251,0-7.48256,3.35007-7.48256,7.48257v18.70639c0,4.13251,3.35007,7.48257,7.48256,7.48257h22.44768c4.13251,0,7.48256-3.35007,7.48256-7.48257v-18.70639c0-4.13251-3.35007-7.48257-7.48256-7.48257h.00002Zm-22.44768,3.74127h22.44766c2.06625,0,3.74129,1.67502,3.74129,3.74127v18.70639c0,2.06625-1.67503,3.74127-3.74129,3.74127h-22.44766c-2.06625,0-3.74129-1.67502-3.74129-3.74127v-18.70639c0-2.06625,1.67503-3.74127,3.74129-3.74127Z" fill="#fff"/></g>
+                    </svg>
+                    <div className="flex items-center gap-4 relative z-10">
+                      <div className="flex items-start gap-3 flex-1">
                         {esAutomatico ? (
-                          <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 shrink-0" />
+                          <CheckCircle2 className="w-8 h-8 text-green-700 mt-0.5 shrink-0" />
                         ) : (
-                          <Zap className="w-5 h-5 text-gray-400 mt-0.5 shrink-0" />
+                          <Zap className="w-8 h-8 text-green-600 mt-0.5 shrink-0" />
                         )}
                         <div>
-                          <p className="font-semibold text-gray-900 text-sm">
+                          <p className="font-semibold text-gray-900 text-base">
                             {esAutomatico ? 'Débito automático activo' : 'Débito automático'}
                           </p>
                           {esAutomatico ? (
-                            <p className="text-xs text-green-700 mt-0.5">
+                            <p className="text-sm text-green-800 mt-0.5">
                               Tu suscripción se renueva automáticamente cada mes
                               {diaFact ? ` el día ${diaFact}` : ''}.
                               No tenés que hacer nada.
                             </p>
                           ) : pendienteAuth ? (
-                            <p className="text-xs text-amber-700 mt-0.5">
+                            <p className="text-sm text-amber-700 mt-0.5">
                               Autorización pendiente — completá el proceso en MercadoPago para activar el cobro automático.
                             </p>
                           ) : (
-                            <p className="text-xs text-gray-500 mt-0.5">
+                            <p className="text-sm text-gray-600 mt-0.5">
                               Activá el débito automático y olvidate de renovar cada mes.
                               MP cobra solo el día {diaFact || 'de tu ciclo'} sin que tengas que hacer nada.
                             </p>
                           )}
+                          <ul className="text-xs text-gray-700 mt-2 space-y-0.5">
+                            <li>• MercadoPago debita el importe de tu plan automáticamente cada mes.</li>
+                            <li>• Podés cancelarlo en cualquier momento desde esta sección.</li>
+                            <li>• Sin cobros adicionales ni cargos ocultos.</li>
+                          </ul>
                         </div>
                       </div>
                       <div className="flex gap-2 shrink-0">

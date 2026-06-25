@@ -576,7 +576,7 @@ const BranchManagementView = ({
                       key={product.product_id}
                       data-bm-focused={focusedIdx === idx ? 'true' : undefined}
                       data-expanded={expandedRows.has(product.product_id) ? 'true' : undefined}
-                      className={focusedIdx === idx ? 'bg-green-50 outline outline-2 outline-green-400' : hasChange ? 'bg-amber-50' : isSelected ? 'bg-blue-50' : ''}
+                      className={`group ${focusedIdx === idx ? 'bg-green-50 outline outline-2 outline-green-400' : hasChange ? 'bg-amber-50' : isSelected ? 'bg-blue-50' : ''}`}
                     >
                       <td data-mobile="hide">
                         <input
@@ -628,7 +628,7 @@ const BranchManagementView = ({
                           );
                         })()}
                       </td>
-                      <td data-label="Precio Costo" className="text-center bg-yellow-50">
+                      <td data-label="Precio Costo" className={`text-center transition-colors ${isSelected ? 'bg-yellow-100' : 'bg-yellow-50 group-hover:bg-[#fefbd6]'}`}>
                         <input
                           type="number"
                           step="0.01"
@@ -642,7 +642,7 @@ const BranchManagementView = ({
                           }}
                         />
                       </td>
-                      <td data-label="Margen %" className="text-center bg-yellow-50">
+                      <td data-label="Margen %" className={`text-center transition-colors ${isSelected ? 'bg-yellow-100' : 'bg-yellow-50 group-hover:bg-[#fefbd6]'}`}>
                         <div className="flex items-center justify-center gap-1">
                           <input
                             type="number"
@@ -657,7 +657,7 @@ const BranchManagementView = ({
                           <span className="text-sm text-gray-500">%</span>
                         </div>
                       </td>
-                      <td data-label="Precio Sucursal" className="text-center bg-yellow-50">
+                      <td data-label="Precio Sucursal" className={`text-center transition-colors ${isSelected ? 'bg-yellow-100' : 'bg-yellow-50 group-hover:bg-[#fefbd6]'}`}>
                         <input
                           type="number"
                           step="0.01"
@@ -684,7 +684,7 @@ const BranchManagementView = ({
                           </div>
                         )}
                       </td>
-                      <td data-label="Stock" className="text-center bg-yellow-50">
+                      <td data-label="Stock" className={`text-center transition-colors ${isSelected ? 'bg-yellow-100' : 'bg-yellow-50 group-hover:bg-[#fefbd6]'}`}>
                         <input
                           type="number"
                           min="0"
@@ -1178,7 +1178,8 @@ const BranchManagementView = ({
           {branches.map(branch => (
             <div
               key={branch.id}
-              className={`bg-white rounded-xl border-2 p-5 shadow-sm transition-all ${branch.activo ? 'border-gray-200 hover:border-green-300 hover:shadow-md' : 'border-gray-100 opacity-60'}`}
+              className={`rounded-xl border p-5 shadow-sm transition-all ${branch.activo ? 'border-gray-200 hover:border-green-300 hover:shadow-md' : 'border-gray-100 opacity-60'}`}
+              style={{ background: 'rgba(var(--primary-rgb, 16, 185, 129), 0.01)' }}
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">

@@ -107,6 +107,18 @@ async def get_precio_por_tier(tier: str) -> float:
         return await get_precio_empresarial()
     return await get_precio_profesional()
 
+async def get_precio_tienda() -> float:
+    doc = await db.system_config.find_one({"key": "precio_tienda"})
+    return float(doc["value"]) if doc else 0.0
+
+async def get_precio_sucursal_extra() -> float:
+    doc = await db.system_config.find_one({"key": "precio_sucursal_extra"})
+    return float(doc["value"]) if doc else 0.0
+
+async def get_precio_pack_usuarios() -> float:
+    doc = await db.system_config.find_one({"key": "precio_pack_usuarios"})
+    return float(doc["value"]) if doc else 0.0
+
 async def get_saas_nombre() -> str:
     doc = await db.system_config.find_one({"key": "saas_nombre"})
     return doc["value"] if doc else "PULS"
@@ -490,6 +502,9 @@ class Suscripcion(BaseModel):
     mp_preapproval_id: Optional[str] = None  # ID del preapproval en MP (débito automático)
     modules_extra: List[str] = Field(default_factory=list)     # módulos añadidos por owner
     modules_removidos: List[str] = Field(default_factory=list) # módulos quitados por owner
+    addon_tienda: bool = False
+    sucursales_extra: int = 0       # sucursales adicionales sobre las 3 base del plan empresarial
+    usuarios_extra_packs: int = 0   # packs de 5 usuarios adicionales sobre los 15 base
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class PagoSuscripcion(BaseModel):
@@ -505,6 +520,9 @@ class PagoSuscripcion(BaseModel):
     origen: str = "manual"                   # "manual" | "preapproval"
     plan_tipo: str = "mensual"
     plan_tier: Optional[str] = None          # "emprendedor" | "profesional" | "empresarial"
+    addon_tienda: bool = False
+    sucursales_extra: int = 0
+    usuarios_extra_packs: int = 0
     fecha: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     periodo_inicio: Optional[datetime] = None
     periodo_fin: Optional[datetime] = None
@@ -1169,7 +1187,10 @@ def require_role(required_roles: List[UserRole]):
 async def create_branch(branch_data: BranchCreate, user: User = Depends(require_role([UserRole.ADMIN]))):
     empresa = await db.empresas.find_one({"id": user.empresa_id})
     plan = (empresa or {}).get("plan", "emprendedor")
-    limite_sucursales = {"empresarial": 3, "profesional": 1, "emprendedor": 1}.get(plan, 1)
+    suscripcion_doc = await db.suscripciones.find_one({"empresa_id": user.empresa_id})
+    suc_extra = int((suscripcion_doc or {}).get("sucursales_extra", 0))
+    limite_base = {"empresarial": 3, "profesional": 1, "emprendedor": 1}.get(plan, 1)
+    limite_sucursales = limite_base + (suc_extra if plan == "empresarial" else 0)
     count = await db.branches.count_documents({"empresa_id": user.empresa_id, "activo": True})
     if count >= limite_sucursales:
         raise HTTPException(status_code=400, detail=f"Tu plan permite hasta {limite_sucursales} sucursal(es). Actualizá tu plan para agregar más.")
@@ -1732,7 +1753,10 @@ async def register_empresa(data: EmpresaRegister):
 async def register(user_data: UserCreate, current_user: User = Depends(require_role([UserRole.ADMIN]))):
     empresa = await db.empresas.find_one({"id": current_user.empresa_id})
     plan = (empresa or {}).get("plan", "emprendedor")
-    limite_usuarios = {"empresarial": 15, "profesional": 5, "emprendedor": 2}.get(plan, 2)
+    suscripcion_doc = await db.suscripciones.find_one({"empresa_id": current_user.empresa_id})
+    usr_extra_packs = int((suscripcion_doc or {}).get("usuarios_extra_packs", 0))
+    limite_base = {"empresarial": 15, "profesional": 5, "emprendedor": 2}.get(plan, 2)
+    limite_usuarios = limite_base + (usr_extra_packs * 5 if plan == "empresarial" else 0)
     count = await db.users.count_documents({"empresa_id": current_user.empresa_id, "activo": True})
     if count >= limite_usuarios:
         raise HTTPException(status_code=400, detail=f"Tu plan permite hasta {limite_usuarios} usuario(s). Actualizá tu plan para agregar más.")
@@ -4964,6 +4988,9 @@ async def get_cuenta_status(user: User = Depends(require_role([UserRole.ADMIN]))
         "dia_facturacion": doc.get("dia_facturacion"),
         "plan_tier": plan_tier,
         "modules_activos": calcular_modules_activos(plan_tier, modules_extra, modules_removidos),
+        "addon_tienda": doc.get("addon_tienda", False),
+        "sucursales_extra": doc.get("sucursales_extra", 0),
+        "usuarios_extra_packs": doc.get("usuarios_extra_packs", 0),
         **estado,
     }
 
@@ -5006,6 +5033,11 @@ async def get_planes(user: User = Depends(require_role([UserRole.ADMIN]))):
             "emprendedor": {"precio_mensual": precio_emp, "precio_anual": precio_emp * 11},
             "profesional":  {"precio_mensual": precio_pro, "precio_anual": precio_pro * 11},
             "empresarial":  {"precio_mensual": precio_ent, "precio_anual": precio_ent * 11},
+        },
+        "addon_precios": {
+            "tienda": await get_precio_tienda(),
+            "sucursal_extra": await get_precio_sucursal_extra(),
+            "pack_usuarios": await get_precio_pack_usuarios(),
         },
         "whatsapp_numero": whatsapp,
     }
@@ -5075,6 +5107,9 @@ async def marcar_notificacion_leida(notif_id: str, user: User = Depends(require_
 class PagoCreate(BaseModel):
     plan_tipo: str = "mensual"   # "mensual" | "anual"
     plan_tier: str = "profesional"  # "emprendedor" | "profesional" | "empresarial"
+    addon_tienda: bool = False
+    sucursales_extra: int = 0
+    usuarios_extra_packs: int = 0
 
 
 @api_router.post("/cuenta/pago/crear")
@@ -5100,7 +5135,19 @@ async def crear_pago_suscripcion(data: PagoCreate = PagoCreate(), user: User = D
     # Plan tipo, tier y precio
     plan_tipo = data.plan_tipo if data.plan_tipo in ("mensual", "anual") else "mensual"
     plan_tier = data.plan_tier if data.plan_tier in ("emprendedor", "profesional", "empresarial") else "profesional"
-    precio_mensual = await get_precio_por_tier(plan_tier)
+    precio_mensual_base = await get_precio_por_tier(plan_tier)
+
+    # Addons
+    addon_tienda = bool(data.addon_tienda)
+    sucursales_extra = max(0, min(int(data.sucursales_extra), 9))
+    usuarios_extra_packs = max(0, int(data.usuarios_extra_packs))
+    precio_addon_mensual = (
+        (await get_precio_tienda() if addon_tienda else 0) +
+        sucursales_extra * await get_precio_sucursal_extra() +
+        usuarios_extra_packs * await get_precio_pack_usuarios()
+    )
+    precio_mensual = precio_mensual_base + precio_addon_mensual
+
     tier_labels = {"emprendedor": "Emprendedor", "profesional": "Profesional", "empresarial": "Empresarial"}
     tier_label = tier_labels[plan_tier]
     if plan_tipo == "anual":
@@ -5172,6 +5219,9 @@ async def crear_pago_suscripcion(data: PagoCreate = PagoCreate(), user: User = D
         mp_preference_id=preference["id"],
         plan_tipo=plan_tipo,
         plan_tier=plan_tier,
+        addon_tienda=addon_tienda,
+        sucursales_extra=sucursales_extra,
+        usuarios_extra_packs=usuarios_extra_packs,
     )
     await db.pagos_suscripcion.insert_one(pago.dict())
 
@@ -5382,7 +5432,10 @@ async def simular_pago_aprobado(
 async def _procesar_pago_aprobado(empresa_id: str, payment_id: str, monto: float,
                                    plan_tipo_pago: str = "mensual", origen: str = "manual",
                                    preapproval_id: Optional[str] = None,
-                                   plan_tier: Optional[str] = None):
+                                   plan_tier: Optional[str] = None,
+                                   addon_tienda: bool = False,
+                                   sucursales_extra: int = 0,
+                                   usuarios_extra_packs: int = 0):
     """Aplica la renovación de suscripción cuando un pago es aprobado."""
     meses = 1 if plan_tipo_pago == "mensual" else 12
     suscripcion = await db.suscripciones.find_one({"empresa_id": empresa_id})
@@ -5393,6 +5446,12 @@ async def _procesar_pago_aprobado(empresa_id: str, payment_id: str, monto: float
     nuevo_plan_nombre = f"Plan {tier_label}" if plan_tipo_pago == "mensual" else f"Plan {tier_label} Anual"
     if suscripcion:
         base, nueva_fecha = _aplicar_renovacion(suscripcion, meses, now)
+        # Calcular modules_extra para incluir/excluir tienda
+        existing_modules_extra = list(suscripcion.get("modules_extra", []))
+        if addon_tienda and "tienda" not in existing_modules_extra:
+            existing_modules_extra.append("tienda")
+        elif not addon_tienda and "tienda" in existing_modules_extra:
+            existing_modules_extra.remove("tienda")
         update_fields = {
             "status": SuscripcionStatus.ACTIVA,
             "fecha_vencimiento": nueva_fecha,
@@ -5401,6 +5460,10 @@ async def _procesar_pago_aprobado(empresa_id: str, payment_id: str, monto: float
             "fue_pagada": True,
             "plan_nombre": nuevo_plan_nombre,
             "precio": monto,
+            "addon_tienda": addon_tienda,
+            "sucursales_extra": sucursales_extra,
+            "usuarios_extra_packs": usuarios_extra_packs,
+            "modules_extra": existing_modules_extra,
         }
         # Si es preapproval, marcar como automático
         if preapproval_id:
@@ -5610,14 +5673,16 @@ async def mp_webhook(request: Request):
         pago_reg = await db.pagos_suscripcion.find_one({"empresa_id": empresa_id, "mp_payment_id": payment_id})
         if not pago_reg:
             pago_reg = await db.pagos_suscripcion.find_one({"empresa_id": empresa_id, "mp_preference_id": {"$exists": True}, "estado": "approved"})
-        plan_tipo_pago = (pago_reg or {}).get("plan_tipo", "mensual") if pago_reg else "mensual"
-        plan_tier_pago = (pago_reg or {}).get("plan_tier") if pago_reg else None
+        pr = pago_reg or {}
         await _procesar_pago_aprobado(
             empresa_id=empresa_id,
             payment_id=payment_id,
             monto=monto,
-            plan_tipo_pago=plan_tipo_pago,
-            plan_tier=plan_tier_pago,
+            plan_tipo_pago=pr.get("plan_tipo", "mensual"),
+            plan_tier=pr.get("plan_tier"),
+            addon_tienda=bool(pr.get("addon_tienda", False)),
+            sucursales_extra=int(pr.get("sucursales_extra", 0)),
+            usuarios_extra_packs=int(pr.get("usuarios_extra_packs", 0)),
         )
 
     return {"status": "ok"}
@@ -6148,6 +6213,9 @@ class OwnerConfigUpdate(BaseModel):
     precio_emprendedor: Optional[float] = None
     precio_profesional: Optional[float] = None
     precio_empresarial: Optional[float] = None
+    precio_tienda: Optional[float] = None
+    precio_sucursal_extra: Optional[float] = None
+    precio_pack_usuarios: Optional[float] = None
     whatsapp_numero: Optional[str] = None
     trial_dias: Optional[int] = None
     grace_days: Optional[int] = None
@@ -6169,6 +6237,9 @@ async def owner_update_config(data: OwnerConfigUpdate, _=Depends(verify_owner_to
         ("precio_emprendedor", data.precio_emprendedor),
         ("precio_profesional", data.precio_profesional),
         ("precio_empresarial", data.precio_empresarial),
+        ("precio_tienda", data.precio_tienda),
+        ("precio_sucursal_extra", data.precio_sucursal_extra),
+        ("precio_pack_usuarios", data.precio_pack_usuarios),
         ("whatsapp_numero", data.whatsapp_numero),
         ("trial_dias", data.trial_dias),
         ("grace_days", data.grace_days),

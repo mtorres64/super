@@ -2133,6 +2133,9 @@ const ConfigView = ({ token }) => {
         precio_emprendedor: String(res.data.precio_emprendedor ?? 30000),
         precio_profesional: String(res.data.precio_profesional ?? 45000),
         precio_empresarial: String(res.data.precio_empresarial ?? 60000),
+        precio_tienda: String(res.data.precio_tienda ?? 0),
+        precio_sucursal_extra: String(res.data.precio_sucursal_extra ?? 0),
+        precio_pack_usuarios: String(res.data.precio_pack_usuarios ?? 0),
         whatsapp_numero: res.data.whatsapp_numero ?? '',
         trial_dias: String(res.data.trial_dias ?? 15),
         descuento_anual_pct: String(res.data.descuento_anual_pct ?? 20),
@@ -2171,6 +2174,9 @@ const ConfigView = ({ token }) => {
         precio_emprendedor: parseFloat(cfg.precio_emprendedor),
         precio_profesional: parseFloat(cfg.precio_profesional),
         precio_empresarial: parseFloat(cfg.precio_empresarial),
+        precio_tienda: parseFloat(cfg.precio_tienda) || 0,
+        precio_sucursal_extra: parseFloat(cfg.precio_sucursal_extra) || 0,
+        precio_pack_usuarios: parseFloat(cfg.precio_pack_usuarios) || 0,
         whatsapp_numero: cfg.whatsapp_numero,
         trial_dias: parseInt(cfg.trial_dias),
         descuento_anual_pct: parseInt(cfg.descuento_anual_pct),
@@ -2230,6 +2236,20 @@ const ConfigView = ({ token }) => {
               </ConfigField>
             </div>
             <p className="text-xs text-gray-500 mt-1.5">El precio anual se calcula automáticamente como precio × 11 (1 mes gratis).</p>
+          </div>
+          <div className="mb-4">
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Precio mensual de add-ons (ARS)</p>
+            <div className="grid grid-cols-3 gap-3">
+              <ConfigField label="Tienda Online" hint="Precio mensual del add-on Tienda para cualquier plan.">
+                <input type="number" value={cfg.precio_tienda} onChange={set('precio_tienda')} className={inputCls} min="0" />
+              </ConfigField>
+              <ConfigField label="Sucursal extra" hint="Precio por cada sucursal adicional sobre las 3 base del plan Empresarial.">
+                <input type="number" value={cfg.precio_sucursal_extra} onChange={set('precio_sucursal_extra')} className={inputCls} min="0" />
+              </ConfigField>
+              <ConfigField label="Pack 5 usuarios" hint="Precio por cada pack de 5 usuarios adicionales sobre los 15 base del plan Empresarial.">
+                <input type="number" value={cfg.precio_pack_usuarios} onChange={set('precio_pack_usuarios')} className={inputCls} min="0" />
+              </ConfigField>
+            </div>
           </div>
           <ConfigField label="Días del período de prueba (trial)" hint="Días de acceso gratuito al registrar una empresa nueva.">
             <input type="number" value={cfg.trial_dias} onChange={set('trial_dias')} className={inputCls} min="1" max="365" required />
