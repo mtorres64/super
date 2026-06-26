@@ -3,6 +3,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext, API } from '../../App';
+import useModalClose from '../../useModalClose';
 import {
   ShoppingBag, Settings, ExternalLink, Copy, Check,
   MapPin, Store, ChevronDown, RefreshCw, Link, Printer, ShoppingCart, Pencil, QrCode, X,
@@ -315,24 +316,121 @@ const TabPedidos = ({ initialExpandId }) => {
   const [expandido, setExpandido] = useState(null);
   const [updatingId, setUpdatingId] = useState(null);
   const [printConfig, setPrintConfig] = useState(null);
+  const [waMenu, setWaMenu] = useState(null);
+  const [waChat, setWaChat] = useState(null); // { pedido, tel, templates }
+  const [waChatClosing, handleWaChatClose] = useModalClose(() => setWaChat(null));
+  const [waChatMsg, setWaChatMsg] = useState('');
+  const [waChatHistory, setWaChatHistory] = useState([]);
+  const chatBottomRef = useRef(null);
+  const [waConnected, setWaConnected] = useState(false);
+  const [waSending, setWaSending] = useState(null);
 
   const abrirEnPOS = (p) => {
     sessionStorage.setItem('tienda_pedido_en_pos', JSON.stringify(p));
     navigate('/pos');
   };
+
+  const abrirWaChat = (p) => {
+    const tel = p.tienda_customer_telefono.replace(/\D/g, '');
+    const storeName = printConfig?.company_name || '';
+    const sym = printConfig?.currency_symbol || '$';
+    const itemLines = (p.items || []).map(i => `✅ ${i.nombre} x${i.cantidad}`).join('\n');
+    const tiendaAlias = printConfig?.tienda_alias || '';
+    const templates = [
+      { label: 'Pedido recibido ✅', msg: `¡Hola ${p.tienda_customer_nombre}! Recibimos tu pedido *#${p.numero_factura}*\n\n${itemLines}\n\n*Total: ${sym}${p.total?.toFixed(2)}*\n\ny ya lo estamos preparando. Gracias por elegirnos 🙌${storeName ? `\n${storeName}` : ''}` },
+      { label: 'Listo para retirar 📦', msg: `¡Hola ${p.tienda_customer_nombre}! Tu pedido *#${p.numero_factura}* ya está *listo para retirar* 🎉${storeName ? `\n— ${storeName}` : ''}` },
+      { label: 'En camino 🚀', msg: `¡Hola ${p.tienda_customer_nombre}! Tu pedido *#${p.numero_factura}* está *en camino* hacia tu domicilio 🛵${storeName ? `\n— ${storeName}` : ''}` },
+      { label: 'Cancelado ❌', msg: `Hola ${p.tienda_customer_nombre}, lamentablemente tu pedido *#${p.numero_factura}* fue *cancelado*. Disculpá los inconvenientes.${storeName ? `\n— ${storeName}` : ''}` },
+      { label: '¿Cómo abonás? 💳', msg: `¡Hola ${p.tienda_customer_nombre}! ¿Cómo vas a abonar tu pedido *#${p.numero_factura}*?\n\nPodés pagar en 💵 Efectivo, 💳 Tarjeta o 🏦 Transferencia.${storeName ? `\n— ${storeName}` : ''}` },
+      ...(tiendaAlias ? [{ label: 'Alias 🏦', msg: `¡Hola ${p.tienda_customer_nombre}! Para abonar por transferencia, usá el siguiente alias:\n\n🏦 *${tiendaAlias}*${storeName ? `\n— ${storeName}` : ''}` }] : []),
+    ];
+    setWaMenu(null);
+    setWaChatHistory([]);
+    setWaChat({ pedido: p, tel, templates });
+    setWaChatMsg('');
+    const token = localStorage.getItem('token');
+    axios.get(`${API}/whatsapp/messages/${tel}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => {
+        setWaChatHistory(res.data);
+        setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+      })
+      .catch(() => {});
+  };
+
+  const sendWaTemplate = async (tel, msg, pedidoId) => {
+    setWaSending(pedidoId);
+    setWaMenu(null);
+    const token = localStorage.getItem('token');
+    try {
+      await axios.post(`${API}/whatsapp/service/send`, { to: tel, message: msg },
+        { headers: { Authorization: `Bearer ${token}` } });
+      toast.success('Mensaje enviado por WhatsApp');
+      if (waChat?.tel === tel) {
+        setWaChatHistory(prev => [...prev, { direccion: 'saliente', mensaje: msg, fecha: new Date().toISOString() }]);
+        setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+      }
+    } catch (err) {
+      const detail = err.response?.data?.detail || 'Error al enviar mensaje';
+      toast.error(detail);
+    } finally { setWaSending(null); }
+  };
+
+  const sendWaChat = async () => {
+    if (!waChat || !waChatMsg.trim()) return;
+    const msgText = waChatMsg;
+    setWaSending('chat');
+    setWaChatMsg('');
+    setWaChatHistory(prev => [...prev, { direccion: 'saliente', mensaje: msgText, fecha: new Date().toISOString() }]);
+    setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+    const token = localStorage.getItem('token');
+    try {
+      if (waConnected) {
+        await axios.post(`${API}/whatsapp/service/send`, { to: waChat.tel, message: msgText },
+          { headers: { Authorization: `Bearer ${token}` } });
+        toast.success('Mensaje enviado por WhatsApp');
+      } else {
+        window.open(`https://wa.me/${waChat.tel}?text=${encodeURIComponent(msgText)}`, '_blank');
+        await axios.post(`${API}/whatsapp/service/send`, { to: waChat.tel, message: msgText },
+          { headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al enviar mensaje');
+    } finally { setWaSending(null); }
+  };
+  // Polling de mensajes entrantes mientras el chat está abierto
+  useEffect(() => {
+    if (!waChat) return;
+    const tel = waChat.tel;
+    const token = localStorage.getItem('token');
+    const poll = setInterval(() => {
+      axios.get(`${API}/whatsapp/messages/${tel}`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => {
+          setWaChatHistory(prev => {
+            if (res.data.length !== prev.length) {
+              setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+            }
+            return res.data;
+          });
+        })
+        .catch(() => {});
+    }, 4000);
+    return () => clearInterval(poll);
+  }, [waChat]);
+
   const pendingExpandRef = useRef(initialExpandId || null);
   const fetchPedidosRef = React.useRef(null);
-
-  useEffect(() => {
-    axios.get(`${API}/config`).then(res => setPrintConfig(res.data)).catch(() => {});
-  }, []);
+  const fetchVersionRef = useRef(0);
+  const perPageRef = useRef(20); // mismo default que el backend
+  const skipPageEffect = useRef(true);
 
   const fetchPedidos = useCallback((silent = false) => {
     if (!silent) setLoading(true);
-    const params = { page, per_page: 15 };
+    const version = ++fetchVersionRef.current;
+    const params = { page, per_page: perPageRef.current };
     if (filtroEstado) params.estado = filtroEstado;
     axios.get(`${API}/pedidos`, { params })
       .then(res => {
+        if (version !== fetchVersionRef.current) return;
         setPedidos(res.data.items);
         setTotal(res.data.total);
         setTotalPages(res.data.total_pages);
@@ -344,14 +442,40 @@ const TabPedidos = ({ initialExpandId }) => {
           }
         }
       })
-      .catch(() => { if (!silent) toast.error('Error al cargar pedidos'); })
-      .finally(() => { if (!silent) setLoading(false); });
+      .catch(() => { if (version === fetchVersionRef.current && !silent) toast.error('Error al cargar pedidos'); })
+      .finally(() => { if (version === fetchVersionRef.current && !silent) setLoading(false); });
   }, [page, filtroEstado]);
 
-  // Mantener ref siempre actualizada para usarla desde el SSE sin re-crear la conexión
+  // Mantener ref actualizada para SSE y config effect
   useEffect(() => { fetchPedidosRef.current = fetchPedidos; }, [fetchPedidos]);
 
-  useEffect(() => { fetchPedidos(); }, [fetchPedidos]);
+  // Fetch inicial + config en paralelo. Un solo punto de entrada al montar.
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    fetchPedidosRef.current?.();
+    axios.get(`${API}/config`)
+      .then(res => {
+        setPrintConfig(res.data);
+        const newPerPage = res.data?.items_per_page || 20;
+        if (newPerPage !== perPageRef.current) {
+          perPageRef.current = newPerPage;
+          fetchPedidosRef.current?.(); // re-fetch solo si cambió el per_page
+        }
+      })
+      .catch(() => {});
+    axios.get(`${API}/whatsapp/service/status`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => setWaConnected(res.data?.status === 'connected'))
+      .catch(() => {});
+  }, []);
+
+  // Re-fetch cuando cambia página o filtro. fetchPedidos cambia junto con ellos.
+  // skipPageEffect evita el disparo en el mount inicial (ya lo maneja el effect de arriba).
+  useEffect(() => {
+    if (skipPageEffect.current) { skipPageEffect.current = false; return; }
+    fetchPedidos();
+  }, [fetchPedidos]);
+
+  const perPage = printConfig?.items_per_page || 20;
 
   // SSE — conexión en tiempo real
   useEffect(() => {
@@ -434,10 +558,10 @@ const TabPedidos = ({ initialExpandId }) => {
         <>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem' }}>
             {pedidos.map(p => (
-              <div key={p.id} style={{ background: 'white', borderRadius: 14, border: '1.5px solid #e5e7eb', overflow: 'hidden' }}>
+              <div key={p.id} style={{ background: 'white', borderRadius: 14, border: '1.5px solid #e5e7eb', overflow: 'visible' }}>
                 {/* Header del pedido */}
                 <div style={{ padding: '0.85rem 1rem', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: 'pointer' }}
-                  onClick={() => setExpandido(expandido === p.id ? null : p.id)}>
+                  onClick={() => { setExpandido(expandido === p.id ? null : p.id); setWaMenu(null); }}>
                   <div style={{ flex: 1, minWidth: 180 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2, flexWrap: 'wrap' }}>
                       <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#111827' }}>#{p.numero_factura}</span>
@@ -453,8 +577,78 @@ const TabPedidos = ({ initialExpandId }) => {
                         </span>
                       )}
                     </div>
-                    <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>
-                      {p.tienda_customer_nombre} · {p.tienda_customer_email} {p.tienda_customer_telefono && `· ${p.tienda_customer_telefono}`}
+                    <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <span>{p.tienda_customer_nombre} · {p.tienda_customer_email}{p.tienda_customer_telefono && ` · ${p.tienda_customer_telefono}`}</span>
+                      {p.tienda_customer_telefono && (() => {
+                        const tel = p.tienda_customer_telefono.replace(/\D/g, '');
+                        const waIcon = (
+                          <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                        );
+                        const storeName = printConfig?.company_name || '';
+                        const sym = printConfig?.currency_symbol || '$';
+                        const tiendaAlias = printConfig?.tienda_alias || '';
+                        const itemLines = (p.items || []).map(i => `✅ ${i.nombre} x${i.cantidad}`).join('\n');
+                        const templates = [
+                          { label: 'Pedido recibido ✅', msg: `¡Hola ${p.tienda_customer_nombre}! Recibimos tu pedido *#${p.numero_factura}*\n\n${itemLines}\n\n*Total: ${sym}${p.total?.toFixed(2)}*\n\ny ya lo estamos preparando. Gracias por elegirnos 🙌${storeName ? `\n${storeName}` : ''}` },
+                          { label: 'Listo para retirar 📦', msg: `¡Hola ${p.tienda_customer_nombre}! Tu pedido *#${p.numero_factura}* ya está *listo para retirar* 🎉${storeName ? `\n— ${storeName}` : ''}` },
+                          { label: 'En camino 🚀', msg: `¡Hola ${p.tienda_customer_nombre}! Tu pedido *#${p.numero_factura}* está *en camino* hacia tu domicilio 🛵${storeName ? `\n— ${storeName}` : ''}` },
+                          { label: 'Cancelado ❌', msg: `Hola ${p.tienda_customer_nombre}, lamentablemente tu pedido *#${p.numero_factura}* fue *cancelado*. Disculpá los inconvenientes.${storeName ? `\n— ${storeName}` : ''}` },
+                          { label: '¿Cómo abonás? 💳', msg: `¡Hola ${p.tienda_customer_nombre}! ¿Cómo vas a abonar tu pedido *#${p.numero_factura}*?\n\nPodés pagar en 💵 Efectivo, 💳 Tarjeta o 🏦 Transferencia.${storeName ? `\n— ${storeName}` : ''}` },
+                          ...(tiendaAlias ? [{ label: 'Alias 🏦', msg: `¡Hola ${p.tienda_customer_nombre}! Para abonar por transferencia, usá el siguiente alias:\n\n🏦 *${tiendaAlias}*${storeName ? `\n— ${storeName}` : ''}` }] : []),
+                        ];
+                        return (
+                          <div style={{ position: 'relative', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                            <button
+                              onClick={() => setWaMenu(waMenu === p.id ? null : p.id)}
+                              title="Enviar WhatsApp"
+                              style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#25d366' }}
+                            >
+                              {waIcon}
+                            </button>
+                            {waMenu === p.id && (
+                              <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 50, background: 'white', border: '1.5px solid #e5e7eb', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 240, padding: '0.4rem 0', marginTop: 4 }}>
+                                {waConnected && (
+                                  <div style={{ padding: '0.3rem 0.85rem 0.2rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
+                                    <span style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 600 }}>Envío directo activo</span>
+                                  </div>
+                                )}
+                                {templates.map((t, i) => (
+                                  waConnected ? (
+                                    <button key={i} type="button"
+                                      disabled={waSending === p.id}
+                                      onClick={() => sendWaTemplate(tel, t.msg, p.id)}
+                                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.5rem 0.85rem', fontSize: '0.8rem', color: '#111827', background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                                      onMouseEnter={e => e.currentTarget.style.background = '#f0fdf4'}
+                                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                    >
+                                      {waSending === p.id ? '...' : t.label}
+                                    </button>
+                                  ) : (
+                                    <button key={i} type="button"
+                                      onClick={() => { setWaMenu(null); abrirWaChat({ ...p, _templates: templates }); }}
+                                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.5rem 0.85rem', fontSize: '0.8rem', color: '#111827', background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                                      onMouseEnter={e => e.currentTarget.style.background = '#f0fdf4'}
+                                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                    >
+                                      {t.label}
+                                    </button>
+                                  )
+                                ))}
+                                <div style={{ borderTop: '1px solid #f3f4f6', margin: '0.3rem 0' }} />
+                                <button type="button"
+                                  onClick={() => abrirWaChat(p)}
+                                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.5rem 0.85rem', fontSize: '0.8rem', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer' }}
+                                  onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                >
+                                  Abrir chat
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </p>
                   </div>
                   <div style={{ textAlign: 'right' }}>
@@ -548,9 +742,107 @@ const TabPedidos = ({ initialExpandId }) => {
           </div>
 
           <div style={{ background: 'white', borderRadius: 12, overflow: 'hidden' }}>
-            <PaginationView currentPage={page} totalPages={totalPages} totalItems={total} itemsPerPage={15} onPageChange={p => { setPage(p); }} itemName="pedidos" />
+            <PaginationView currentPage={page} totalPages={totalPages} totalItems={total} itemsPerPage={perPage} onPageChange={p => { setPage(p); }} itemName="pedidos" />
           </div>
         </>
+      )}
+
+      {/* Modal chat WhatsApp */}
+      {waChat && (
+        <div onClick={handleWaChatClose}
+          className={`wa-chat-modal-overlay${waChatClosing ? ' closing' : ''}`}>
+          <div onClick={e => e.stopPropagation()}
+            className={`wa-chat-modal-container${waChatClosing ? ' closing' : ''}`}>
+
+            {/* Header estilo WhatsApp */}
+            <div style={{ background: '#075e54', padding: '0.85rem 1rem', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#128c7e', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="white"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, fontWeight: 700, color: 'white', fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {waChat.pedido.tienda_customer_nombre}
+                </p>
+                <p style={{ margin: 0, fontSize: '0.75rem', color: '#b2dfdb' }}>+{waChat.tel}</p>
+              </div>
+              {waConnected && (
+                <span style={{ fontSize: '0.7rem', color: '#b2dfdb', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#25d366', display: 'inline-block' }} /> Conectado
+                </span>
+              )}
+              <button onClick={handleWaChatClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.7)', padding: 4, display: 'flex' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Área de chat */}
+            <div style={{ background: '#e5ddd5', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: 6, height: 260, overflowY: 'auto' }}>
+              {waChatHistory.length === 0 && !waChatMsg ? (
+                <p style={{ textAlign: 'center', color: '#999', fontSize: '0.78rem', margin: 'auto' }}>
+                  Sin mensajes anteriores
+                </p>
+              ) : (
+                <>
+                  {waChatHistory.map((m, i) => (
+                    <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: m.direccion === 'saliente' ? 'flex-end' : 'flex-start' }}>
+                      <div style={{ maxWidth: '82%', background: m.direccion === 'saliente' ? '#dcf8c6' : 'white', borderRadius: m.direccion === 'saliente' ? '12px 12px 2px 12px' : '12px 12px 12px 2px', padding: '0.45rem 0.7rem', fontSize: '0.82rem', color: '#111', whiteSpace: 'pre-wrap', lineHeight: 1.45, boxShadow: '0 1px 2px rgba(0,0,0,0.12)' }}>
+                        {m.mensaje}
+                      </div>
+                      <span style={{ fontSize: '0.65rem', color: '#aaa', marginTop: 2, marginLeft: m.direccion === 'saliente' ? 0 : 4, marginRight: m.direccion === 'saliente' ? 4 : 0 }}>
+                        {m.fecha ? new Date(m.fecha).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
+                      </span>
+                    </div>
+                  ))}
+                  {waChatMsg && (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', opacity: 0.5 }}>
+                      <div style={{ maxWidth: '82%', background: '#dcf8c6', borderRadius: '12px 12px 2px 12px', padding: '0.45rem 0.7rem', fontSize: '0.82rem', color: '#111', whiteSpace: 'pre-wrap', lineHeight: 1.45, boxShadow: '0 1px 2px rgba(0,0,0,0.12)' }}>
+                        {waChatMsg}
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatBottomRef} />
+                </>
+              )}
+            </div>
+
+            {/* Respuestas rápidas */}
+            <div style={{ background: '#f0f0f0', padding: '0.5rem 0.75rem', display: 'flex', gap: 6, flexWrap: 'wrap', borderTop: '1px solid #ddd' }}>
+              {waChat.templates.map((t, i) => (
+                <button key={i} onClick={() => setWaChatMsg(t.msg)}
+                  style={{ padding: '0.3rem 0.65rem', borderRadius: 999, border: '1.5px solid #25d366', background: waChatMsg === t.msg ? '#25d366' : 'white', color: waChatMsg === t.msg ? 'white' : '#075e54', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', transition: 'all .15s' }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Composición */}
+            <div style={{ background: '#f0f0f0', padding: '0.65rem 0.75rem', display: 'flex', gap: 8, alignItems: 'flex-end', borderTop: '1px solid #ddd' }}>
+              <textarea
+                value={waChatMsg}
+                onChange={e => setWaChatMsg(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendWaChat(); } }}
+                placeholder="Escribí un mensaje…"
+                rows={3}
+                style={{ flex: 1, borderRadius: 20, border: 'none', padding: '0.5rem 0.85rem', fontSize: '0.85rem', resize: 'none', outline: 'none', fontFamily: 'inherit', lineHeight: 1.4 }}
+              />
+              <button
+                onClick={sendWaChat}
+                disabled={!waChatMsg.trim() || waSending === 'chat'}
+                style={{ width: 40, height: 40, borderRadius: '50%', background: waChatMsg.trim() ? '#25d366' : '#ccc', border: 'none', cursor: waChatMsg.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background .2s' }}>
+                {waSending === 'chat'
+                  ? <div style={{ width: 16, height: 16, border: '2px solid white', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+                  : <svg viewBox="0 0 24 24" width="18" height="18" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                }
+              </button>
+            </div>
+
+            {!waConnected && (
+              <div style={{ background: '#fff8e1', padding: '0.45rem 0.75rem', fontSize: '0.75rem', color: '#795548', textAlign: 'center' }}>
+                Sin servicio activo — se abrirá WhatsApp Web al enviar
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -561,26 +853,87 @@ const TabPedidos = ({ initialExpandId }) => {
 const TabConfiguracion = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [sucursales, setSucursales] = useState([]);
 
   const [tiendaActiva, setTiendaActiva] = useState(true);
+  const [tiendaModo, setTiendaModo] = useState('pedidos');
+  const [ecommerceSucursalId, setEcommerceSucursalId] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [horario, setHorario] = useState('');
   const [envioActivo, setEnvioActivo] = useState(true);
   const [costoEnvio, setCostoEnvio] = useState(0);
   const [retiroActivo, setRetiroActivo] = useState(true);
   const [montoMinimo, setMontoMinimo] = useState(0);
+  const [alias, setAlias] = useState('');
+  const [waService, setWaService] = useState(null); // null | { status, phone, qr }
+  const [waServiceLoading, setWaServiceLoading] = useState(false);
+  const [waRefreshing, setWaRefreshing] = useState(false);
+  const waPollingRef = useRef(null);
+
+  const fetchWaStatus = useCallback(() => {
+    const token = localStorage.getItem('token');
+    setWaRefreshing(true);
+    axios.get(`${API}/whatsapp/service/status`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => setWaService(res.data))
+      .catch(() => setWaService({ status: 'unavailable' }))
+      .finally(() => setWaRefreshing(false));
+  }, []);
 
   useEffect(() => {
-    axios.get(`${API}/config`)
-      .then(res => {
-        const d = res.data;
+    fetchWaStatus();
+  }, [fetchWaStatus]);
+
+  // Polling mientras espera QR o está connecting
+  useEffect(() => {
+    if (waService?.status === 'qr_pending' || waService?.status === 'connecting') {
+      waPollingRef.current = setInterval(fetchWaStatus, 3000);
+    } else {
+      clearInterval(waPollingRef.current);
+    }
+    return () => clearInterval(waPollingRef.current);
+  }, [waService?.status, fetchWaStatus]);
+
+  const handleWaReconnect = async () => {
+    setWaRefreshing(true);
+    const token = localStorage.getItem('token');
+    try {
+      await axios.post(`${API}/whatsapp/service/reconnect`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      setWaService({ status: 'connecting' });
+    } catch {
+      toast.error('No se pudo iniciar la reconexión');
+    } finally { setWaRefreshing(false); }
+  };
+
+  const handleWaLogout = async () => {
+    setWaServiceLoading(true);
+    const token = localStorage.getItem('token');
+    try {
+      await axios.post(`${API}/whatsapp/service/logout`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      setWaService({ status: 'disconnected' });
+      toast.success('WhatsApp desconectado');
+    } catch {
+      toast.error('No se pudo desconectar WhatsApp');
+    } finally { setWaServiceLoading(false); }
+  };
+
+  useEffect(() => {
+    Promise.all([
+      axios.get(`${API}/config`),
+      axios.get(`${API}/branches`),
+    ])
+      .then(([cfgRes, branchRes]) => {
+        const d = cfgRes.data;
         setTiendaActiva(d.tienda_activa !== false);
+        setTiendaModo(d.tienda_modo || 'pedidos');
+        setEcommerceSucursalId(d.tienda_ecommerce_sucursal_id || '');
         setDescripcion(d.tienda_descripcion || '');
         setHorario(d.tienda_horario || '');
         setEnvioActivo(d.tienda_envio_activo !== false);
         setCostoEnvio(d.tienda_costo_envio || 0);
         setRetiroActivo(d.tienda_retiro_activo !== false);
         setMontoMinimo(d.tienda_monto_minimo || 0);
+        setAlias(d.tienda_alias || '');
+        setSucursales(branchRes.data || []);
       })
       .catch(() => toast.error('Error al cargar configuración'))
       .finally(() => setLoading(false));
@@ -588,16 +941,23 @@ const TabConfiguracion = () => {
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if (tiendaModo === 'ecommerce' && !ecommerceSucursalId) {
+      toast.error('Seleccioná una sucursal para la tienda online');
+      return;
+    }
     setSaving(true);
     try {
       await axios.put(`${API}/config`, {
         tienda_activa: tiendaActiva,
+        tienda_modo: tiendaModo,
+        tienda_ecommerce_sucursal_id: tiendaModo === 'ecommerce' ? ecommerceSucursalId : null,
         tienda_descripcion: descripcion,
         tienda_horario: horario,
         tienda_envio_activo: envioActivo,
         tienda_costo_envio: parseFloat(costoEnvio) || 0,
         tienda_retiro_activo: retiroActivo,
         tienda_monto_minimo: parseFloat(montoMinimo) || 0,
+        tienda_alias: alias,
       });
       toast.success('Configuración guardada');
     } catch (err) {
@@ -622,6 +982,53 @@ const TabConfiguracion = () => {
             <span style={{ position: 'absolute', top: 2, left: tiendaActiva ? 22 : 2, width: 20, height: 20, borderRadius: '50%', background: 'white', transition: 'left .2s', boxShadow: '0 1px 4px rgba(0,0,0,0.2)' }} />
           </button>
         </div>
+      </div>
+
+      {/* Modo de tienda */}
+      <div style={{ background: 'white', borderRadius: 14, padding: '1.25rem', border: '1.5px solid #e5e7eb' }}>
+        <p style={{ fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>Modo de tienda</p>
+        <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: '0 0 1rem' }}>Elegí cómo se muestra la tienda a tus clientes</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          {[
+            { value: 'pedidos', label: 'Pedidos', desc: 'Estilo app de delivery. Categorías en chips, diseño compacto.', icon: '🛵' },
+            { value: 'ecommerce', label: 'Tienda online', desc: 'Estilo e-commerce. Sidebar, productos grandes, vitrina profesional.', icon: '🛍️' },
+          ].map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setTiendaModo(opt.value)}
+              style={{
+                padding: '1rem', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
+                border: tiendaModo === opt.value ? '2px solid var(--primary,#10b981)' : '1.5px solid #e5e7eb',
+                background: tiendaModo === opt.value ? 'var(--primary-bg,#ecfdf5)' : 'white',
+                transition: 'all .15s',
+              }}
+            >
+              <div style={{ fontSize: '1.5rem', marginBottom: 6 }}>{opt.icon}</div>
+              <p style={{ fontWeight: 700, fontSize: '0.9rem', color: '#111827', margin: '0 0 3px' }}>{opt.label}</p>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0, lineHeight: 1.4 }}>{opt.desc}</p>
+            </button>
+          ))}
+        </div>
+
+        {tiendaModo === 'ecommerce' && sucursales.length > 0 && (
+          <div style={{ marginTop: '0.85rem' }} className="form-group">
+            <label className="form-label">Sucursal para precios y stock</label>
+            <select
+              className="form-input"
+              value={ecommerceSucursalId}
+              onChange={e => setEcommerceSucursalId(e.target.value)}
+            >
+              <option value="">— Seleccioná una sucursal —</option>
+              {sucursales.map(s => (
+                <option key={s.id} value={s.id}>{s.nombre}</option>
+              ))}
+            </select>
+            <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: 4 }}>
+              Los precios y el stock mostrados en la tienda online serán los de esta sucursal.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Descripción y horario */}
@@ -676,6 +1083,96 @@ const TabConfiguracion = () => {
           <p style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: 4 }}>Dejá en 0 para no aplicar mínimo.</p>
         </div>
       </div>
+
+      {/* Alias de transferencia */}
+      <div style={{ background: 'white', borderRadius: 14, padding: '1.25rem', border: '1.5px solid #e5e7eb' }}>
+        <div className="form-group" style={{ margin: 0 }}>
+          <label className="form-label">Alias para transferencias</label>
+          <input type="text" className="form-input" value={alias} onChange={e => setAlias(e.target.value)} placeholder="ej: milocal.mp" maxLength={100} />
+          <p style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: 4 }}>Se incluye automáticamente en los mensajes de WhatsApp cuando el cliente consulta cómo pagar.</p>
+        </div>
+      </div>
+
+      {/* Servicio WhatsApp */}
+      {(() => {
+        const waIcon = <svg viewBox="0 0 24 24" width="14" height="14" fill="#25d366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>;
+        const st = waService?.status;
+        const statusColor = st === 'connected' ? '#10b981' : st === 'qr_pending' || st === 'connecting' ? '#f59e0b' : '#9ca3af';
+        const statusLabel = st === 'connected' ? 'Conectado' : st === 'qr_pending' ? 'Esperando escaneo QR' : st === 'connecting' ? 'Conectando...' : st === 'not_configured' ? 'Servicio no configurado' : st === 'unavailable' ? 'Servicio no disponible' : 'Desconectado';
+        return (
+          <div style={{ background: 'white', borderRadius: 14, padding: '1.25rem', border: '1.5px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.85rem' }}>
+              <p style={{ fontWeight: 700, color: '#111827', margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {waIcon} Servicio WhatsApp
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: statusColor, fontWeight: 600 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor, display: 'inline-block' }} />
+                  {statusLabel}
+                </span>
+                <button type="button" onClick={fetchWaStatus} title="Actualizar estado" disabled={waRefreshing}
+                  style={{ background: 'none', border: 'none', cursor: waRefreshing ? 'default' : 'pointer', color: '#9ca3af', padding: 2, display: 'flex', alignItems: 'center' }}>
+                  <RefreshCw size={13} style={waRefreshing ? { animation: 'spin 1s linear infinite' } : {}} />
+                </button>
+              </div>
+            </div>
+
+            {st === 'connected' && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <p style={{ fontSize: '0.82rem', color: '#6b7280', margin: 0 }}>
+                  Teléfono: <strong>+{waService.phone}</strong>
+                </p>
+                <button type="button" onClick={handleWaLogout} disabled={waServiceLoading}
+                  style={{ fontSize: '0.78rem', color: '#ef4444', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '4px 10px', cursor: waServiceLoading ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  {waServiceLoading && <div className="spinner" style={{ width: 11, height: 11, borderWidth: 2, borderColor: '#fecaca', borderTopColor: '#ef4444' }} />}
+                  {waServiceLoading ? 'Desconectando...' : 'Desconectar'}
+                </button>
+              </div>
+            )}
+
+            {st === 'qr_pending' && waService.qr && (
+              <div style={{ textAlign: 'center', padding: '0.5rem 0' }}>
+                <p style={{ fontSize: '0.78rem', color: '#6b7280', margin: '0 0 0.75rem' }}>
+                  Abrí WhatsApp en tu celular → Dispositivos vinculados → Vincular dispositivo, y escaneá este código.
+                </p>
+                <img src={waService.qr} alt="QR WhatsApp" style={{ width: 200, height: 200, borderRadius: 12, border: '2px solid #e5e7eb' }} />
+                <p style={{ fontSize: '0.72rem', color: '#9ca3af', margin: '0.5rem 0 0' }}>Se refresca automáticamente cada 3 segundos</p>
+              </div>
+            )}
+
+            {(st === 'connecting') && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div className="spinner" style={{ width: 13, height: 13, borderWidth: 2 }} />
+                <p style={{ fontSize: '0.82rem', color: '#6b7280', margin: 0 }}>Reconectando al servicio...</p>
+              </div>
+            )}
+
+            {(st === 'disconnected' || !st) && (
+              <button type="button" onClick={handleWaReconnect} disabled={waRefreshing}
+                style={{ fontSize: '0.78rem', color: '#10b981', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '5px 12px', cursor: waRefreshing ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                {waRefreshing
+                  ? <><div className="spinner" style={{ width: 11, height: 11, borderWidth: 2, borderColor: '#bbf7d0', borderTopColor: '#10b981' }} /> Reconectando...</>
+                  : <><RefreshCw size={11} /> Reconectar</>}
+              </button>
+            )}
+
+            {st === 'not_configured' && (
+              <p style={{ fontSize: '0.78rem', color: '#9ca3af', margin: 0 }}>
+                Configurá <code>WA_SERVICE_URL</code> en el archivo <code>.env</code> del backend.
+              </p>
+            )}
+
+            {st === 'unavailable' && (
+              <button type="button" onClick={handleWaReconnect} disabled={waRefreshing}
+                style={{ fontSize: '0.78rem', color: '#10b981', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '5px 12px', cursor: waRefreshing ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                {waRefreshing
+                  ? <><div className="spinner" style={{ width: 11, height: 11, borderWidth: 2, borderColor: '#bbf7d0', borderTopColor: '#10b981' }} /> Reconectando...</>
+                  : <><RefreshCw size={11} /> Reconectar</>}
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       <button type="submit" className="btn btn-primary" disabled={saving}>
         {saving ? <><div className="spinner" />Guardando...</> : 'Guardar configuración'}

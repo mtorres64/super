@@ -2106,6 +2106,37 @@ html.dark .modal-sticky-bottom {
   animation: ticket-modal-exit 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
 
+.wa-chat-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: overlay-in 0.2s ease both;
+}
+
+.wa-chat-modal-overlay.closing {
+  animation: overlay-out 0.2s ease both;
+}
+
+.wa-chat-modal-container {
+  width: 520px;
+  max-width: 95vw;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  animation: ticket-modal-bounce 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  transform-origin: center center;
+}
+
+.wa-chat-modal-container.closing {
+  animation: ticket-modal-exit 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
 .ticket-modal-actions {
   display: flex;
   align-items: center;
@@ -2481,7 +2512,11 @@ html.dark .ticket-separator    { color: #5c5c5c; }
 .no-animations .ticket-modal-overlay,
 .no-animations .ticket-modal-overlay.closing,
 .no-animations .ticket-modal-container,
-.no-animations .ticket-modal-container.closing {
+.no-animations .ticket-modal-container.closing,
+.no-animations .wa-chat-modal-overlay,
+.no-animations .wa-chat-modal-overlay.closing,
+.no-animations .wa-chat-modal-container,
+.no-animations .wa-chat-modal-container.closing {
   animation: none !important;
   opacity: 1 !important;
   transform: none !important;

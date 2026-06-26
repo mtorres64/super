@@ -1,17 +1,38 @@
 import React from 'react';
-import { ArrowLeft, MapPin, Store, FileText, CheckCircle, ShoppingCart, Building2 } from 'lucide-react';
+import { ArrowLeft, MapPin, Store, FileText, CheckCircle, ShoppingCart, Building2, Banknote, CreditCard, ArrowRightLeft } from 'lucide-react';
 
 const PRIMARY = 'var(--primary, #10b981)';
 const PRIMARY_BG = 'var(--primary-bg, #ecfdf5)';
 
+const PROVINCIAS_AR = [
+  'Buenos Aires', 'CABA', 'Catamarca', 'Chaco', 'Chubut', 'Córdoba', 'Corrientes',
+  'Entre Ríos', 'Formosa', 'Jujuy', 'La Pampa', 'La Rioja', 'Mendoza', 'Misiones',
+  'Neuquén', 'Río Negro', 'Salta', 'San Juan', 'San Luis', 'Santa Cruz', 'Santa Fe',
+  'Santiago del Estero', 'Tierra del Fuego', 'Tucumán',
+];
+
+const MEDIOS_PAGO = [
+  { value: 'efectivo',      label: 'Efectivo',               Icon: Banknote,         desc: 'Al recibir o retirar el pedido' },
+  { value: 'transferencia', label: 'Transferencia bancaria',  Icon: ArrowRightLeft,   desc: 'Te enviamos los datos al confirmar' },
+  { value: 'tarjeta',       label: 'Tarjeta',                 Icon: CreditCard,       desc: 'Al recibir o retirar el pedido' },
+];
+
 const TiendaCheckoutView = ({
-  config, empresa_id, tiendaUser,
+  config, empresa_id, tiendaUser, isEcommerce,
   sucursales = [], sucursalId, onCambiarSucursal, cambiandoSucursal,
-  carrito, tipoEntrega, setTipoEntrega, direccion, setDireccion,
+  carrito, tipoEntrega, setTipoEntrega,
+  direccion, setDireccion, dirEcommerce, setDirEcommerce,
+  medioPago, setMedioPago,
   observaciones, setObservaciones, loading,
   costoEnvio, totalCarrito, totalFinal, currencySymbol,
   pedidoConfirmado, onConfirmar, onVolverCatalogo,
 }) => {
+  const setDir = (field, value) => setDirEcommerce(prev => ({ ...prev, [field]: value }));
+  const adjustments = config?.payment_method_adjustments || {};
+  const calcTotal = (metodo) => {
+    const pct = adjustments[metodo] || 0;
+    return pct !== 0 ? totalFinal * (1 + pct / 100) : totalFinal;
+  };
   const sucursalActual = sucursales.find(s => s.id === sucursalId);
   const storeName = config?.company_name || config?.empresa_nombre || 'Tienda';
 
@@ -60,7 +81,7 @@ const TiendaCheckoutView = ({
       <div style={{ maxWidth: 800, margin: '0 auto', padding: '1.5rem 1rem', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,340px)', gap: '1.5rem' }}>
 
         {/* Columna izquierda: formulario */}
-        <form onSubmit={onConfirmar} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <form id="checkout-form" onSubmit={onConfirmar} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
           {/* Sucursal (solo si hay más de una) */}
           {sucursales.length > 1 && (
@@ -105,7 +126,7 @@ const TiendaCheckoutView = ({
           </div>
 
           {/* Dirección (solo si es domicilio) */}
-          {tipoEntrega === 'domicilio' && (
+          {tipoEntrega === 'domicilio' && !isEcommerce && (
             <div style={{ background: 'white', borderRadius: 16, padding: '1.25rem', boxShadow: '0 1px 8px rgba(0,0,0,0.06)' }}>
               <h3 style={{ fontWeight: 700, color: '#111827', fontSize: '0.95rem', marginBottom: '1rem' }}>Dirección de entrega</h3>
               <div className="form-group" style={{ margin: 0 }}>
@@ -115,6 +136,64 @@ const TiendaCheckoutView = ({
                   <input type="text" className="form-input" value={direccion} onChange={e => setDireccion(e.target.value)}
                     placeholder="Ej: Av. Corrientes 1234, 3° B" required={tipoEntrega === 'domicilio'} />
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Dirección extendida ecommerce (todo el país) */}
+          {tipoEntrega === 'domicilio' && isEcommerce && (
+            <div style={{ background: 'white', borderRadius: 16, padding: '1.25rem', boxShadow: '0 1px 8px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              <h3 style={{ fontWeight: 700, color: '#111827', fontSize: '0.95rem', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <MapPin size={16} style={{ color: PRIMARY }} /> Dirección de entrega
+              </h3>
+
+              {/* Provincia */}
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label">Provincia <span style={{ color: '#ef4444' }}>*</span></label>
+                <select className="form-input" value={dirEcommerce.provincia} onChange={e => setDir('provincia', e.target.value)} required>
+                  <option value="">Seleccioná tu provincia</option>
+                  {PROVINCIAS_AR.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+
+              {/* Localidad + CP en fila */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Ciudad / Localidad <span style={{ color: '#ef4444' }}>*</span></label>
+                  <input type="text" className="form-input" value={dirEcommerce.localidad}
+                    onChange={e => setDir('localidad', e.target.value)}
+                    placeholder="Ej: Rosario" required />
+                </div>
+                <div className="form-group" style={{ margin: 0, width: 110 }}>
+                  <label className="form-label">Código postal</label>
+                  <input type="text" className="form-input" value={dirEcommerce.cp}
+                    onChange={e => setDir('cp', e.target.value)}
+                    placeholder="Ej: 2000" maxLength={8} />
+                </div>
+              </div>
+
+              {/* Calle + Número en fila */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Calle <span style={{ color: '#ef4444' }}>*</span></label>
+                  <input type="text" className="form-input" value={dirEcommerce.calle}
+                    onChange={e => setDir('calle', e.target.value)}
+                    placeholder="Ej: Av. Corrientes" required />
+                </div>
+                <div className="form-group" style={{ margin: 0, width: 100 }}>
+                  <label className="form-label">Número <span style={{ color: '#ef4444' }}>*</span></label>
+                  <input type="text" className="form-input" value={dirEcommerce.numero}
+                    onChange={e => setDir('numero', e.target.value)}
+                    placeholder="1234" required />
+                </div>
+              </div>
+
+              {/* Piso / Dpto opcional */}
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label">Piso / Departamento <span style={{ color: '#9ca3af', fontWeight: 400 }}>(opcional)</span></label>
+                <input type="text" className="form-input" value={dirEcommerce.pisoDpto}
+                  onChange={e => setDir('pisoDpto', e.target.value)}
+                  placeholder="Ej: 3° B, PH, Local 4" />
               </div>
             </div>
           )}
@@ -134,10 +213,6 @@ const TiendaCheckoutView = ({
             />
           </div>
 
-          <button type="submit" className="btn btn-primary btn-lg w-full" disabled={loading || carrito.length === 0}
-            style={{ borderRadius: 12 }}>
-            {loading ? <><div className="spinner" />Procesando...</> : `Confirmar pedido · ${currencySymbol}${totalFinal.toFixed(2)}`}
-          </button>
         </form>
 
         {/* Columna derecha: resumen */}
@@ -176,6 +251,46 @@ const TiendaCheckoutView = ({
                 <span>{currencySymbol}{totalFinal.toFixed(2)}</span>
               </div>
             </div>
+
+            {/* Medios de pago (solo ecommerce) */}
+            {isEcommerce && (
+              <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: '1rem', marginTop: '0.5rem' }}>
+                <p style={{ fontWeight: 700, fontSize: '0.875rem', color: '#111827', margin: '0 0 0.65rem' }}>Medio de pago</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {MEDIOS_PAGO.map(({ value, label, Icon, desc }) => {
+                    const pct = adjustments[value] || 0;
+                    const total = calcTotal(value);
+                    const selected = medioPago === value;
+                    return (
+                      <button key={value} type="button" onClick={() => setMedioPago(value)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0.65rem 0.85rem', borderRadius: 10, border: `2px solid ${selected ? PRIMARY : '#e5e7eb'}`, background: selected ? PRIMARY_BG : 'white', cursor: 'pointer', textAlign: 'left', transition: 'all .15s' }}>
+                        <Icon size={18} style={{ color: selected ? PRIMARY : '#6b7280', flexShrink: 0 }} />
+                        <div style={{ flex: 1 }}>
+                          <p style={{ fontWeight: 600, fontSize: '0.85rem', color: '#111827', margin: 0 }}>{label}</p>
+                          <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>{desc}</p>
+                        </div>
+                        {pct !== 0 && (
+                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: pct < 0 ? '#10b981' : '#f59e0b', whiteSpace: 'nowrap' }}>
+                            {pct < 0 ? `${pct}%` : `+${pct}%`}
+                          </span>
+                        )}
+                        {selected && pct !== 0 && (
+                          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: PRIMARY, whiteSpace: 'nowrap' }}>
+                            {currencySymbol}{total.toFixed(2)}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <button type="submit" form="checkout-form" className="btn btn-primary btn-lg w-full"
+              disabled={loading || carrito.length === 0}
+              style={{ borderRadius: 12, marginTop: '1rem' }}>
+              {loading ? <><div className="spinner" />Procesando...</> : `Confirmar pedido · ${currencySymbol}${calcTotal(medioPago).toFixed(2)}`}
+            </button>
           </div>
         </div>
 

@@ -60,6 +60,11 @@ SMTP_USER = os.environ.get('SMTP_USER', '')
 SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', '')
 EMAIL_FROM = os.environ.get('EMAIL_FROM', 'PULS <noreply@example.com>')
 
+# WhatsApp service settings
+WA_SERVICE_URL = os.environ.get('WA_SERVICE_URL', '')
+WA_SERVICE_KEY = os.environ.get('WA_SERVICE_KEY', 'wa-service-secret-key')
+WA_INCOMING_KEY = os.environ.get('WA_INCOMING_KEY', 'wa-incoming-secret')
+
 async def get_precio_suscripcion() -> float:
     doc = await db.system_config.find_one({"key": "suscripcion_precio"})
     return float(doc["value"]) if doc else SUSCRIPCION_PRECIO
@@ -229,7 +234,24 @@ OWNER_PASSWORD = os.environ.get('OWNER_PASSWORD', 'owner1234')
 security = HTTPBearer()
 
 # Create the main app without a prefix
-app = FastAPI()
+async def _create_indexes():
+    await db.sales.create_index(
+        [("empresa_id", 1), ("origen", 1), ("fecha", -1)],
+        name="idx_sales_tienda_fecha",
+        background=True,
+    )
+    await db.sales.create_index(
+        [("empresa_id", 1), ("origen", 1), ("estado_pedido", 1), ("fecha", -1)],
+        name="idx_sales_tienda_estado_fecha",
+        background=True,
+    )
+    await db.wa_messages.create_index(
+        [("empresa_id", 1), ("telefono", 1), ("fecha", 1)],
+        name="idx_wa_messages_tel_fecha",
+        background=True,
+    )
+
+app = FastAPI(on_startup=[_create_indexes])
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
@@ -729,6 +751,10 @@ class Configuration(BaseModel):
     tienda_costo_envio: float = 0.0
     tienda_retiro_activo: bool = True
     tienda_monto_minimo: float = 0.0
+    tienda_modo: str = "pedidos"
+    tienda_ecommerce_sucursal_id: Optional[str] = None
+    tienda_whatsapp: str = ""
+    tienda_alias: str = ""
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -774,6 +800,10 @@ class ConfigurationUpdate(BaseModel):
     tienda_costo_envio: Optional[float] = None
     tienda_retiro_activo: Optional[bool] = None
     tienda_monto_minimo: Optional[float] = None
+    tienda_modo: Optional[str] = None
+    tienda_ecommerce_sucursal_id: Optional[str] = None
+    tienda_whatsapp: Optional[str] = None
+    tienda_alias: Optional[str] = None
 
 class User(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -2679,6 +2709,140 @@ async def suggest_product_image(
 
     raise HTTPException(status_code=404, detail="No se encontró imagen para ese producto")
 
+@api_router.delete("/products/drive-image")
+async def delete_product_drive_image(
+    file_id: str = Query(..., min_length=1),
+    user: User = Depends(get_current_user)
+):
+    """Borra un archivo de Drive por ID. Llamado desde el frontend al sugerir/reemplazar imagen."""
+    try:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, lambda: _drive.delete_file(file_id))
+    except Exception as e:
+        logger.warning(f"No se pudo borrar imagen Drive {file_id}: {e}")
+    return {"ok": True}
+
+# ── WhatsApp service proxy ────────────────────────────────────────────────────
+
+class WAMessagePayload(BaseModel):
+    to: str
+    message: str
+
+@api_router.get("/whatsapp/service/status")
+async def wa_service_status(user: User = Depends(get_current_user)):
+    if not WA_SERVICE_URL:
+        return {"status": "not_configured"}
+    try:
+        async with httpx.AsyncClient(timeout=5) as c:
+            r = await c.get(
+                f"{WA_SERVICE_URL}/status",
+                params={"empresa_id": user.empresa_id},
+                headers={"x-api-key": WA_SERVICE_KEY},
+            )
+            return r.json()
+    except Exception:
+        return {"status": "unavailable"}
+
+@api_router.post("/whatsapp/service/send")
+async def wa_service_send(
+    payload: WAMessagePayload,
+    user: User = Depends(get_current_user),
+):
+    if not WA_SERVICE_URL:
+        raise HTTPException(status_code=400, detail="Servicio WhatsApp no configurado")
+    async with httpx.AsyncClient(timeout=15) as c:
+        r = await c.post(
+            f"{WA_SERVICE_URL}/send",
+            json={"empresa_id": user.empresa_id, "to": payload.to, "message": payload.message},
+            headers={"x-api-key": WA_SERVICE_KEY},
+        )
+        if r.status_code >= 400:
+            raise HTTPException(status_code=r.status_code, detail=r.json().get("error", "Error en servicio WA"))
+    await db.wa_messages.insert_one({
+        "empresa_id": user.empresa_id,
+        "telefono": payload.to,
+        "mensaje": payload.message,
+        "direccion": "saliente",
+        "fecha": datetime.utcnow(),
+    })
+    return {"ok": True}
+
+@api_router.get("/whatsapp/messages/{telefono}")
+async def wa_get_messages(telefono: str, user: User = Depends(get_current_user)):
+    msgs = await db.wa_messages.find(
+        {"empresa_id": user.empresa_id, "telefono": telefono},
+        {"_id": 0}
+    ).sort("fecha", 1).to_list(100)
+    for m in msgs:
+        if isinstance(m.get("fecha"), datetime):
+            m["fecha"] = m["fecha"].isoformat()
+    return msgs
+
+@api_router.post("/whatsapp/incoming")
+async def wa_incoming_message(request: Request):
+    if request.headers.get("x-wa-key") != WA_INCOMING_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        data = await request.json()
+        empresa_id = str(data.get("empresa_id", "")).strip()
+        from_tel   = str(data.get("from", "")).strip()
+        text       = str(data.get("text", "")).strip()
+        ts         = data.get("timestamp")
+        msg_id     = data.get("msgId")
+        if not empresa_id or not from_tel or not text:
+            return {"ok": False, "reason": "missing_fields"}
+        try:
+            fecha = datetime.fromtimestamp(int(str(ts)), tz=timezone.utc)
+        except (TypeError, ValueError, OSError):
+            fecha = datetime.now(timezone.utc)
+        if msg_id and await db.wa_messages.find_one({"msg_id": msg_id}):
+            return {"ok": True, "duplicate": True}
+        await db.wa_messages.insert_one({
+            "empresa_id": empresa_id,
+            "telefono": from_tel,
+            "mensaje": text,
+            "direccion": "entrante",
+            "fecha": fecha,
+            **({"msg_id": msg_id} if msg_id else {}),
+        })
+        print(f"[WA:{empresa_id}] Mensaje entrante guardado de +{from_tel}: {text[:60]}")
+        return {"ok": True}
+    except Exception as e:
+        print(f"[WA] Error procesando mensaje entrante: {e}")
+        return {"ok": False, "reason": str(e)}
+
+@api_router.get("/whatsapp/known-phones")
+async def wa_known_phones(request: Request, empresa_id: str = ""):
+    if request.headers.get("x-wa-key") != WA_INCOMING_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    query = {"empresa_id": empresa_id} if empresa_id else {}
+    phones = await db.wa_messages.distinct("telefono", query)
+    return {"phones": phones}
+
+@api_router.post("/whatsapp/service/logout")
+async def wa_service_logout(user: User = Depends(get_current_user)):
+    if not WA_SERVICE_URL:
+        raise HTTPException(status_code=400, detail="Servicio WhatsApp no configurado")
+    async with httpx.AsyncClient(timeout=10) as c:
+        r = await c.post(
+            f"{WA_SERVICE_URL}/logout",
+            json={"empresa_id": user.empresa_id},
+            headers={"x-api-key": WA_SERVICE_KEY},
+        )
+        return r.json()
+
+@api_router.post("/whatsapp/service/reconnect")
+async def wa_service_reconnect(user: User = Depends(get_current_user)):
+    if not WA_SERVICE_URL:
+        raise HTTPException(status_code=400, detail="Servicio WhatsApp no configurado")
+    async with httpx.AsyncClient(timeout=10) as c:
+        r = await c.post(
+            f"{WA_SERVICE_URL}/reconnect",
+            json={"empresa_id": user.empresa_id},
+            headers={"x-api-key": WA_SERVICE_KEY},
+        )
+        return r.json()
+
 @api_router.post("/products/upload-image")
 async def upload_product_image(
     file: UploadFile = File(...),
@@ -2748,12 +2912,10 @@ async def update_product(product_id: str, product_data: ProductUpdate, user: Use
     if product_data.combo_items is not None:
         update_data['combo_items'] = [ci.dict() for ci in product_data.combo_items]
 
-    # Si cambia la imagen y la anterior era un archivo del cliente en Drive, borrarlo
+    # Si cambia la imagen y la anterior era un archivo subido por el usuario en Drive, borrarlo
+    # Solo se usa drive_file_id explícito — nunca extraer de la URL (evita borrar fotos del catálogo global)
     old_imagen_url = existing_product.get("imagen_url")
-    old_drive_file_id = (
-        existing_product.get("drive_file_id")
-        or _drive.extract_drive_file_id(old_imagen_url or "")
-    )
+    old_drive_file_id = existing_product.get("drive_file_id") or ""
     new_imagen_url = update_data.get("imagen_url")
     if old_drive_file_id and new_imagen_url is not None and new_imagen_url != old_imagen_url:
         new_file_id = product_data.drive_file_id or ""
@@ -6837,6 +6999,7 @@ class TiendaCreatePedido(BaseModel):
     tipo_entrega: str  # "domicilio" | "retiro"
     direccion_entrega: Optional[str] = None
     observaciones: Optional[str] = None
+    metodo_pago: str = "efectivo"
 
 class TiendaUpdateEstado(BaseModel):
     estado_pedido: str
@@ -6885,7 +7048,7 @@ def _fmt_producto(p: dict, bp: dict = None) -> dict:
         "nombre": p.get("nombre", ""),
         "precio": bp["precio"] if bp else p.get("precio", 0),
         "categoria_id": p.get("categoria_id"),
-        "tipo": p.get("tipo", "UNIDAD"),
+        "tipo": p.get("tipo", "codigo_barras"),
         "imagen": p.get("imagen_url") or p.get("imagen"),
         "stock": bp["stock"] if bp else p.get("stock"),
         "control_stock": p.get("control_stock", False),
@@ -6922,6 +7085,11 @@ async def tienda_config(empresa_id: str):
         "tienda_costo_envio": cfg.get("tienda_costo_envio", 0.0),
         "tienda_retiro_activo": cfg.get("tienda_retiro_activo", True),
         "tienda_monto_minimo": cfg.get("tienda_monto_minimo", 0.0),
+        "tienda_modo": cfg.get("tienda_modo", "pedidos"),
+        "tienda_ecommerce_sucursal_id": cfg.get("tienda_ecommerce_sucursal_id"),
+        "tienda_whatsapp": cfg.get("tienda_whatsapp", ""),
+        "tienda_alias": cfg.get("tienda_alias", ""),
+        "payment_method_adjustments": cfg.get("payment_method_adjustments", {"efectivo": 0.0, "tarjeta": 0.0, "transferencia": 0.0}),
     }
 
 @tienda_router.get("/api/tienda/{empresa_id}/sucursales")
@@ -7208,7 +7376,7 @@ async def tienda_crear_pedido(empresa_id: str, data: TiendaCreatePedido, custome
         "id": pedido_id, "empresa_id": empresa_id,
         "cajero_id": customer["id"], "branch_id": branch_id, "session_id": None,
         "items": items_doc, "subtotal": subtotal, "impuestos": 0.0, "total": total,
-        "metodo_pago": "efectivo", "fecha": datetime.now(timezone.utc),
+        "metodo_pago": data.metodo_pago, "fecha": datetime.now(timezone.utc),
         "numero_factura": numero_pedido, "estado": "activo", "afip_estado": "no_configurado",
         "descuento": 0.0, "impuestos_extra_total": costo_envio,
         "origen": "tienda",
@@ -7262,9 +7430,11 @@ async def admin_get_pedidos(
     query: dict = {"empresa_id": user.empresa_id, "origen": "tienda"}
     if estado:
         query["estado_pedido"] = estado
-    total = await db.sales.count_documents(query)
     skip = (page - 1) * per_page
-    pedidos = await db.sales.find(query, {"_id": 0}).sort("fecha", -1).skip(skip).limit(per_page).to_list(per_page)
+    total, pedidos = await asyncio.gather(
+        db.sales.count_documents(query),
+        db.sales.find(query, {"_id": 0}).sort("fecha", -1).skip(skip).limit(per_page).to_list(per_page),
+    )
     return {"items": pedidos, "total": total, "page": page, "per_page": per_page, "total_pages": max(1, -(-total // per_page))}
 
 @api_router.get("/pedidos/pendientes/count")

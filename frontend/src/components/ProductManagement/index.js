@@ -16,6 +16,12 @@ export const driveToProxyUrl = (url) => {
   return m ? `${API}/drive-image?file_id=${m[1]}` : url;
 };
 
+const extractDriveFileId = (url) => {
+  if (!url || !url.includes('drive.google.com')) return '';
+  const m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : '';
+};
+
 const ProductManagement = () => {
   const navigate = useNavigate();
   const { user, activeBranch } = useContext(AuthContext);
@@ -221,6 +227,15 @@ const ProductManagement = () => {
     }
   };
 
+  const deleteDriveFile = (fileId) => {
+    if (!fileId) return;
+    const token = localStorage.getItem('token');
+    axios.delete(`${API}/products/drive-image`, {
+      params: { file_id: fileId },
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => {});
+  };
+
   const suggestImage = async () => {
     const nombre = formData.nombre.trim();
     if (!nombre) return;
@@ -232,6 +247,12 @@ const ProductManagement = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.data?.url) {
+        // Si hay un archivo Drive subido en esta sesión (no guardado aún), borrarlo como huérfano
+        const pendingId = formData.drive_file_id;
+        const savedId = editingProduct?.drive_file_id || '';
+        if (pendingId && pendingId !== savedId) {
+          deleteDriveFile(pendingId);
+        }
         setFormData(prev => ({ ...prev, imagen_url: res.data.url, drive_file_id: '' }));
       } else {
         toast.warning('No se encontró imagen para ese producto');
@@ -397,6 +418,13 @@ const ProductManagement = () => {
       if (editingProduct) {
         await axios.put(`${API}/products/${editingProduct.id}`, productData);
         toast.success('Producto actualizado exitosamente');
+        // Borrar archivo Drive anterior si la imagen cambió — solo si fue subido por el usuario
+        // (drive_file_id solo se setea en uploadImage, nunca en fotos del catálogo global)
+        const oldDriveId = editingProduct.drive_file_id;
+        const imageChanged = productData.imagen_url !== (editingProduct.imagen_url || '');
+        if (oldDriveId && imageChanged && productData.drive_file_id !== oldDriveId) {
+          deleteDriveFile(oldDriveId);
+        }
       } else {
         await axios.post(`${API}/products`, productData);
         toast.success('Producto creado exitosamente');

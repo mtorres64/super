@@ -154,10 +154,15 @@ const TiendaLoginView = ({
               </div>
               <div className="form-group">
                 <label className="form-label">Teléfono</label>
-                <div className="input-icon-wrap">
-                  <span className="input-icon"><Phone size={15} /></span>
-                  <input type="tel" className="form-input" value={telefono} onChange={e => setTelefono(e.target.value)} placeholder="Tu número" />
+                <div style={{ display: 'flex', border: '1.5px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', background: 'white' }}>
+                  <span style={{ padding: '0.65rem 0.75rem', background: '#f3f4f6', borderRight: '1.5px solid #e5e7eb', color: '#374151', fontWeight: 700, fontSize: '0.875rem', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center' }}>+54</span>
+                  <input type="tel" value={telefono} onChange={e => setTelefono(e.target.value)}
+                    placeholder="381 5123456"
+                    style={{ flex: 1, border: 'none', padding: '0.65rem 0.75rem', fontSize: '0.875rem', outline: 'none', background: 'transparent' }} />
                 </div>
+                <p style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4, marginBottom: 0 }}>
+                  Código de área <strong>sin el 0</strong> y número <strong>sin el 15</strong>. Ej: <strong>381 5123456</strong>
+                </p>
               </div>
               {sucursales.length > 1 && (
                 <div className="form-group">

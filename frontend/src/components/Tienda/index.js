@@ -162,7 +162,7 @@ const Tienda = ({ seccion }) => {
         next = [...prev];
         next[idx] = { ...next[idx], cantidad: next[idx].cantidad + cantidad };
       } else {
-        next = [...prev, { producto_id: producto.id, nombre: producto.nombre, precio_unitario: producto.precio, cantidad }];
+        next = [...prev, { producto_id: producto.id, nombre: producto.nombre, precio_unitario: producto.precio, cantidad, tipo: producto.tipo }];
       }
       saveCarrito(empresa_id, next);
       return next;
@@ -218,7 +218,7 @@ const Tienda = ({ seccion }) => {
   };
 
   const totalCarrito = carrito.reduce((sum, i) => sum + i.precio_unitario * i.cantidad, 0);
-  const cantidadCarrito = carrito.reduce((sum, i) => sum + i.cantidad, 0);
+  const cantidadCarrito = carrito.length;
 
   if (loadingConfig) {
     return (

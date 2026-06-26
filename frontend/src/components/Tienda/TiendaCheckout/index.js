@@ -12,12 +12,17 @@ const TiendaCheckout = () => {
   const { config, sucursales, carrito, vaciarCarrito, totalCarrito, apiBase, cambiarSucursal } = useContext(TiendaContext);
   const navigate = useNavigate();
 
-  const [sucursalId, setSucursalId] = useState(tiendaUser?.sucursal_id || '');
+  const isEcommerce = config?.tienda_modo === 'ecommerce';
+  const [sucursalId, setSucursalId] = useState(
+    isEcommerce ? (config?.tienda_ecommerce_sucursal_id || '') : (tiendaUser?.sucursal_id || '')
+  );
   const [cambiandoSucursal, setCambiandoSucursal] = useState(false);
   const [tipoEntrega, setTipoEntrega] = useState('domicilio');
   const getDireccionGuardada = (sid) =>
     tiendaUser?.direcciones_por_sucursal?.[sid || tiendaUser?.sucursal_id] || '';
   const [direccion, setDireccion] = useState(() => getDireccionGuardada(tiendaUser?.sucursal_id));
+  const [dirEcommerce, setDirEcommerce] = useState({ provincia: '', localidad: '', calle: '', numero: '', pisoDpto: '', cp: '' });
+  const [medioPago, setMedioPago] = useState('efectivo');
   const [observaciones, setObservaciones] = useState('');
   const [loading, setLoading] = useState(false);
   const [pedidoConfirmado, setPedidoConfirmado] = useState(null);
@@ -42,7 +47,23 @@ const TiendaCheckout = () => {
   const handleConfirmar = async (e) => {
     e.preventDefault();
     if (carrito.length === 0) { toast.error('Tu carrito está vacío'); return; }
-    if (tipoEntrega === 'domicilio' && !direccion.trim()) { toast.error('Ingresá tu dirección de entrega'); return; }
+    let direccionFinal = direccion.trim();
+    if (isEcommerce && tipoEntrega === 'domicilio') {
+      const { provincia, localidad, calle, numero, pisoDpto, cp } = dirEcommerce;
+      if (!provincia || !localidad || !calle || !numero) {
+        toast.error('Completá provincia, localidad, calle y número');
+        return;
+      }
+      const partes = [`${calle} ${numero}`];
+      if (pisoDpto.trim()) partes.push(pisoDpto.trim());
+      partes.push(localidad);
+      if (cp.trim()) partes.push(`CP ${cp.trim()}`);
+      partes.push(provincia);
+      direccionFinal = partes.join(', ');
+    } else if (tipoEntrega === 'domicilio' && !direccionFinal) {
+      toast.error('Ingresá tu dirección de entrega');
+      return;
+    }
     setLoading(true);
     try {
       const items = carrito.map(i => ({
@@ -53,8 +74,9 @@ const TiendaCheckout = () => {
       const { data } = await axios.post(`${apiBase}/pedidos`, {
         items,
         tipo_entrega: tipoEntrega,
-        direccion_entrega: tipoEntrega === 'domicilio' ? direccion.trim() : '',
+        direccion_entrega: tipoEntrega === 'domicilio' ? direccionFinal : '',
         observaciones: observaciones.trim(),
+        metodo_pago: medioPago,
       }, { headers: { Authorization: `Bearer ${tiendaToken}` } });
       vaciarCarrito();
       if (tipoEntrega === 'domicilio' && direccion.trim()) {
@@ -75,7 +97,8 @@ const TiendaCheckout = () => {
   return (
     <TiendaCheckoutView
       config={config}
-      sucursales={sucursales}
+      isEcommerce={isEcommerce}
+      sucursales={isEcommerce ? [] : sucursales}
       sucursalId={sucursalId}
       onCambiarSucursal={handleCambiarSucursal}
       cambiandoSucursal={cambiandoSucursal}
@@ -84,6 +107,8 @@ const TiendaCheckout = () => {
       carrito={carrito}
       tipoEntrega={tipoEntrega} setTipoEntrega={setTipoEntrega}
       direccion={direccion} setDireccion={setDireccion}
+      dirEcommerce={dirEcommerce} setDirEcommerce={setDirEcommerce}
+      medioPago={medioPago} setMedioPago={setMedioPago}
       observaciones={observaciones} setObservaciones={setObservaciones}
       loading={loading}
       costoEnvio={costoEnvio}

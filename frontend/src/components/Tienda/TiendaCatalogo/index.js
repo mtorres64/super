@@ -4,6 +4,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import { TiendaAuthContext, TiendaContext } from '../index';
 import TiendaCatalogoView from './TiendaCatalogoView';
+import TiendaEcommerceView from './TiendaEcommerceView';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const PER_PAGE = 12;
@@ -11,7 +12,10 @@ const PER_PAGE = 12;
 const TiendaCatalogo = () => {
   const { tiendaUser, empresa_id, tiendaLogout, updateTiendaUser } = useContext(TiendaAuthContext);
   const { config, sucursales, carrito, carritoOpen, setCarritoOpen, agregarAlCarrito, actualizarCantidad, vaciarCarrito, cambiarSucursal, totalCarrito, cantidadCarrito, apiBase, authHeaders } = useContext(TiendaContext);
-  const sucursalId = tiendaUser?.sucursal_id || null;
+  const isEcommerce = config?.tienda_modo === 'ecommerce';
+  const sucursalId = isEcommerce
+    ? (config?.tienda_ecommerce_sucursal_id || null)
+    : (tiendaUser?.sucursal_id || null);
   const navigate = useNavigate();
 
   const [categorias, setCategorias] = useState([]);
@@ -78,6 +82,7 @@ const TiendaCatalogo = () => {
   };
 
   const handleCambiarSucursal = async (id) => {
+    if (isEcommerce) return;
     try {
       await cambiarSucursal(id);
       updateTiendaUser({ sucursal_id: id });
@@ -100,8 +105,10 @@ const TiendaCatalogo = () => {
   // No mostrar más vendidos cuando hay búsqueda o filtro activo
   const mostrarMasVendidos = !search && !categoriaActiva;
 
+  const ViewComponent = config?.tienda_modo === 'ecommerce' ? TiendaEcommerceView : TiendaCatalogoView;
+
   return (
-    <TiendaCatalogoView
+    <ViewComponent
       config={config}
       sucursales={sucursales}
       sucursalId={sucursalId}

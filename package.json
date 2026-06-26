@@ -2,7 +2,7 @@
   "name": "super",
   "private": true,
   "scripts": {
-    "dev": "concurrently --names \"backend,frontend\" --prefix-colors \"cyan,magenta\" \"scripts\\start-backend.cmd\" \"scripts\\start-frontend.cmd\""
+    "dev": "concurrently --names \"backend,frontend,whatsapp\" --prefix-colors \"cyan,magenta,green\" \"scripts\\start-backend.cmd\" \"scripts\\start-frontend.cmd\" \"scripts\\start-whatsapp.cmd\""
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

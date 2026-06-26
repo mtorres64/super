@@ -58,14 +58,30 @@ const TiendaLogin = () => {
     } finally { setLoading(false); }
   };
 
+  const normalizarTelefono = (tel) => {
+    // El prefijo +54 ya está fijo en la UI — tel es solo la parte local (ej: "381 5123456")
+    const digits = tel.replace(/\D/g, '');
+    // Si el usuario igual puso 54 o 549 adelante, los quitamos para no duplicar
+    const local = digits.startsWith('549') ? digits.slice(3)
+                : digits.startsWith('54')  ? digits.slice(2)
+                : digits.startsWith('9')   ? digits.slice(1)
+                : digits;
+    return `549${local}`;  // +54 9 (área sin 0)(número sin 15)
+  };
+
   const handleVerificarYRegistrar = async (e) => {
     e.preventDefault();
     if (otpCode.length < 4) { toast.error('Ingresá los 4 dígitos del código'); return; }
+    const telefonoNorm = telefono.trim() ? normalizarTelefono(telefono) : '';
+    if (telefono.trim() && telefonoNorm.length < 11) {
+      toast.error('El teléfono no parece válido. Ej: 381 5123456 (sin el 0 y sin el 15)');
+      return;
+    }
     setLoading(true);
     try {
       const { data: otpData } = await axios.post(`${apiBase}/auth/otp/verificar`, { email, codigo: otpCode });
       const { data } = await axios.post(`${apiBase}/auth/register`, {
-        nombre, email, telefono, password, otp_token: otpData.verificacion_token,
+        nombre, email, telefono: telefonoNorm, password, otp_token: otpData.verificacion_token,
         sucursal_id: sucursalId || undefined,
       });
       tiendaLogin(data.customer, data.access_token);
