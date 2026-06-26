@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import { useParams, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import axios from 'axios';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -276,7 +276,6 @@ const TiendaCheckout = React.lazy(() => import('./TiendaCheckout'));
 const TiendaRouter = ({ seccion }) => {
   const { tiendaUser, loadingAuth } = React.useContext(TiendaAuthContext);
   const { empresa_id } = React.useContext(TiendaContext);
-  const navigate = useNavigate();
 
   if (loadingAuth) {
     return (
@@ -287,12 +286,11 @@ const TiendaRouter = ({ seccion }) => {
   }
 
   if (seccion === 'login') {
-    if (tiendaUser) { navigate(`/tienda/${empresa_id}`); return null; }
+    if (tiendaUser) return <Navigate to={`/tienda/${empresa_id}`} replace />;
     return <React.Suspense fallback={<div />}><TiendaLogin /></React.Suspense>;
   }
   if (!tiendaUser) {
-    navigate(`/tienda/${empresa_id}/login`);
-    return null;
+    return <Navigate to={`/tienda/${empresa_id}/login`} replace />;
   }
   if (seccion === 'checkout') {
     return <React.Suspense fallback={<div />}><TiendaCheckout /></React.Suspense>;
