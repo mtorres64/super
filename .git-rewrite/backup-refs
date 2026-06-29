@@ -1,0 +1,9 @@
+0b7ceeb11377212f31e57658fb7b65753d48c778 commit	refs/heads/arca
+31c21bbc68092feee04e568079cf62e7b9b9ec66 commit	refs/heads/feature/tienda
+e92640a22a060da73a615726c1de25e9df0f2ee9 commit	refs/heads/main
+2c8f4c235edb91bfcbfa1b00e388f33a72390ce5 commit	refs/heads/worktree-agent-aafdd1d1f1f09b85c
+388183c8d4e7ac6d3fd791a08440130cec7a7071 commit	refs/heads/worktree-agent-af9168294d6eb02c5
+e92640a22a060da73a615726c1de25e9df0f2ee9 commit	refs/remotes/origin/HEAD
+93f53b41a6bd11e6cc7056507ff18462c88ff174 commit	refs/remotes/origin/feature/tienda
+e92640a22a060da73a615726c1de25e9df0f2ee9 commit	refs/remotes/origin/main
+1ce9b96c665325f3045783501f59a25b48327ee5 commit	refs/stash
