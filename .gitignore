@@ -83,3 +83,9 @@ agenthub/agents/youtube/db
 
 # Mobile development
 android-sdk/
+
+# WhatsApp service - session credentials (sensitive, never commit)
+whatsapp-service/auth/
+
+# Claude Code agent worktrees (generated automatically, not project code)
+.claude/worktrees/

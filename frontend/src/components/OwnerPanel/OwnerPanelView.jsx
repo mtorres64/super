@@ -659,7 +659,7 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
   const [showPagoModal, setShowPagoModal] = useState(false);
   const [showSuscModal, setShowSuscModal] = useState(false);
   const [pagoForm, setPagoForm] = useState({ monto: '', concepto: '', plan_tipo: 'mensual' });
-  const [suscForm, setSuscForm] = useState({ status: '', dias_extra: '', fecha_vencimiento: '', precio: '' });
+  const [suscForm, setSuscForm] = useState({ status: '', dias_extra: '', fecha_vencimiento: '', precio: '', descuento_pct: '0' });
   const [extMsg, setExtMsg] = useState(null);
   const [cancelandoPreapproval, setCancelandoPreapproval] = useState(false);
   const [moduleMsg, setModuleMsg] = useState(null);
@@ -683,6 +683,7 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
         dias_extra: '',
         fecha_vencimiento: '',
         precio: sus?.precio != null ? String(sus.precio) : '',
+        descuento_pct: sus?.descuento_pct != null ? String(sus.descuento_pct) : '0',
       });
     } catch (err) {
       console.error(err);
@@ -867,6 +868,7 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
     if (suscForm.dias_extra) payload.dias_extra = parseInt(suscForm.dias_extra);
     if (suscForm.fecha_vencimiento) payload.fecha_vencimiento = suscForm.fecha_vencimiento + 'T12:00:00Z';
     if (suscForm.precio !== '') payload.precio = parseFloat(suscForm.precio);
+    if (suscForm.descuento_pct !== '') payload.descuento_pct = parseInt(suscForm.descuento_pct);
     try {
       await ownerAxios.put(`/clientes/${clienteId}/suscripcion`, payload, authHeader);
       setShowSuscModal(false);
@@ -1166,6 +1168,12 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
                   {formatMoney(sus.precio)}/{sus.plan_tipo === 'anual' ? 'año' : 'mes'}
                 </dd>
               </div>
+              {sus.descuento_pct > 0 && (
+                <div className="flex justify-between items-center">
+                  <dt className="text-sm text-gray-500">Descuento</dt>
+                  <dd className="text-sm font-semibold text-green-400">{sus.descuento_pct}% OFF</dd>
+                </div>
+              )}
               <div className="flex justify-between">
                 <dt className="text-sm text-gray-500">Inicio</dt>
                 <dd className="text-sm text-gray-200">{formatDate(sus.fecha_inicio)}</dd>
@@ -1427,6 +1435,19 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
                   placeholder="Dejar vacío para no cambiar"
                   min="0"
                 />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1.5">Descuento personalizado (%)</label>
+                <input
+                  type="number"
+                  value={suscForm.descuento_pct}
+                  onChange={e => setSuscForm({ ...suscForm, descuento_pct: e.target.value })}
+                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="0"
+                  min="0"
+                  max="100"
+                />
+                <p className="text-xs text-gray-600 mt-1">El cliente verá el precio con este descuento y sus pagos se calcularán con él.</p>
               </div>
               <div className="flex gap-3 pt-1">
                 <button

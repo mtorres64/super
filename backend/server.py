@@ -485,6 +485,7 @@ class Suscripcion(BaseModel):
     addon_tienda: bool = False
     sucursales_extra: int = 0       # sucursales adicionales sobre las 3 base del plan empresarial
     usuarios_extra_packs: int = 0   # packs de 5 usuarios adicionales sobre los 15 base
+    descuento_pct: int = 0          # porcentaje de descuento personalizado asignado por owner (0-100)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class PagoSuscripcion(BaseModel):
@@ -4719,6 +4720,7 @@ async def get_cuenta_status(user: User = Depends(require_role([UserRole.ADMIN]))
         "addon_tienda": doc.get("addon_tienda", False),
         "sucursales_extra": doc.get("sucursales_extra", 0),
         "usuarios_extra_packs": doc.get("usuarios_extra_packs", 0),
+        "descuento_pct": doc.get("descuento_pct", 0),
         **estado,
     }
 
@@ -4756,11 +4758,17 @@ async def get_planes(user: User = Depends(require_role([UserRole.ADMIN]))):
     precio_pro = await get_precio_profesional()
     precio_ent = await get_precio_empresarial()
     whatsapp = await get_whatsapp_numero()
+    suscripcion = await db.suscripciones.find_one({"empresa_id": user.empresa_id})
+    descuento_pct = (suscripcion or {}).get("descuento_pct", 0)
+    def aplicar_descuento(precio: float) -> float:
+        if descuento_pct > 0:
+            return round(precio * (1 - descuento_pct / 100))
+        return precio
     return {
         "tiers": {
-            "emprendedor": {"precio_mensual": precio_emp, "precio_anual": precio_emp * 11},
-            "profesional":  {"precio_mensual": precio_pro, "precio_anual": precio_pro * 11},
-            "empresarial":  {"precio_mensual": precio_ent, "precio_anual": precio_ent * 11},
+            "emprendedor": {"precio_mensual": aplicar_descuento(precio_emp), "precio_anual": aplicar_descuento(precio_emp) * 11, "precio_mensual_original": precio_emp},
+            "profesional":  {"precio_mensual": aplicar_descuento(precio_pro), "precio_anual": aplicar_descuento(precio_pro) * 11, "precio_mensual_original": precio_pro},
+            "empresarial":  {"precio_mensual": aplicar_descuento(precio_ent), "precio_anual": aplicar_descuento(precio_ent) * 11, "precio_mensual_original": precio_ent},
         },
         "addon_precios": {
             "tienda": await get_precio_tienda(),
@@ -4768,6 +4776,7 @@ async def get_planes(user: User = Depends(require_role([UserRole.ADMIN]))):
             "pack_usuarios": await get_precio_pack_usuarios(),
         },
         "whatsapp_numero": whatsapp,
+        "descuento_pct": descuento_pct,
     }
 
 @api_router.get("/public/planes")
@@ -4865,6 +4874,12 @@ async def crear_pago_suscripcion(data: PagoCreate = PagoCreate(), user: User = D
     plan_tier = data.plan_tier if data.plan_tier in ("emprendedor", "profesional", "empresarial") else "profesional"
     precio_mensual_base = await get_precio_por_tier(plan_tier)
 
+    # Obtener suscripción para descuento y ventana check
+    suscripcion = await db.suscripciones.find_one({"empresa_id": user.empresa_id})
+    descuento_pct = (suscripcion or {}).get("descuento_pct", 0)
+    if descuento_pct > 0:
+        precio_mensual_base = round(precio_mensual_base * (1 - descuento_pct / 100))
+
     # Addons
     addon_tienda = bool(data.addon_tienda)
     sucursales_extra = max(0, min(int(data.sucursales_extra), 9))
@@ -4890,7 +4905,6 @@ async def crear_pago_suscripcion(data: PagoCreate = PagoCreate(), user: User = D
         meses = 1
 
     # Verificar que la suscripción esté próxima a vencer o ya vencida
-    suscripcion = await db.suscripciones.find_one({"empresa_id": user.empresa_id})
     if suscripcion:
         vencimiento = suscripcion.get("fecha_vencimiento")
         if isinstance(vencimiento, str):
@@ -4972,14 +4986,18 @@ async def activar_suscripcion_automatica(user: User = Depends(require_role([User
     admin = await db.users.find_one({"empresa_id": user.empresa_id, "rol": "admin"})
     payer_email = MP_TEST_PAYER_EMAIL or (admin["email"] if admin else user.email)
 
-    precio_mensual = await get_precio_suscripcion()
     nombre_base = await get_plan_nombre_suscripcion()
 
-    # Obtener día de facturación de la suscripción existente
+    # Obtener suscripción para día de facturación, plan tier y descuento
     suscripcion = await db.suscripciones.find_one({"empresa_id": user.empresa_id})
     if suscripcion and suscripcion.get("tipo_cobro") == "automatico" and suscripcion.get("mp_preapproval_id"):
         raise HTTPException(status_code=409, detail="Ya tenés el débito automático activo.")
     dia_facturacion = (suscripcion or {}).get("dia_facturacion") or min(datetime.now(timezone.utc).day, 28)
+    plan_tier = (suscripcion or {}).get("plan_tier", "profesional")
+    precio_mensual = await get_precio_por_tier(plan_tier)
+    descuento_pct = (suscripcion or {}).get("descuento_pct", 0)
+    if descuento_pct > 0:
+        precio_mensual = round(precio_mensual * (1 - descuento_pct / 100))
 
     back_url = f"{FRONTEND_URL}/cuenta?suscripcion=authorized"
     if back_url.startswith("http://localhost") or back_url.startswith("http://127.0.0.1"):
@@ -5430,6 +5448,7 @@ class SuscripcionUpdate(BaseModel):
     plan_tier: Optional[str] = None
     precio: Optional[float] = None
     dias_extra: Optional[int] = None
+    descuento_pct: Optional[int] = None
 
 class ModulosUpdate(BaseModel):
     modules_extra: Optional[List[str]] = None
@@ -5650,6 +5669,8 @@ async def owner_update_suscripcion(
         update["plan_tier"] = data.plan_tier
     if data.precio is not None:
         update["precio"] = data.precio
+    if data.descuento_pct is not None:
+        update["descuento_pct"] = max(0, min(100, data.descuento_pct))
     if data.dias_extra and data.dias_extra > 0:
         if suscripcion:
             vencimiento = suscripcion.get("fecha_vencimiento")
