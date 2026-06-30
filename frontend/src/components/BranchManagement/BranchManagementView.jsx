@@ -150,6 +150,10 @@ const BranchManagementView = ({
   branchImportFileRef,
   onBranchImport,
   onDownloadBranchTemplate,
+  totalActivosSucursal,
+  totalTodosSucursal,
+  listaCompleta,
+  onSetListaCompleta,
 }) => {
   const [focusedIdx, setFocusedIdx] = React.useState(-1);
   const [showCategoryFilter, setShowCategoryFilter] = React.useState(false);
@@ -221,7 +225,15 @@ const BranchManagementView = ({
                   <Building2 className="w-6 h-6 text-green-600 flex-shrink-0" />
                   <span className="truncate">{selectedBranch.nombre}</span>
                 </h1>
-                <p className="text-gray-500 text-sm truncate">{selectedBranch.direccion}</p>
+                <div className="flex items-center gap-3">
+                  <p className="text-gray-500 text-sm truncate">{selectedBranch.direccion}</p>
+                  {totalTodosSucursal !== null && (
+                    <span className="text-xs text-gray-400 whitespace-nowrap">
+                      <span className="font-semibold text-green-600">{totalActivosSucursal} activos</span>
+                      <span className="text-gray-400"> de {totalTodosSucursal} productos</span>
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             {/* Importar y Exportar — siempre visible, derecha */}
@@ -1092,11 +1104,10 @@ const BranchManagementView = ({
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1">
                         <p className="font-medium mb-1">Formato requerido (XLSX o CSV):</p>
-                        <p className="font-mono text-xs">codigo_barras, precio_venta, precio_costo, stock</p>
-                        <p className="mt-1 text-xs">• <strong>codigo_barras</strong>: obligatorio — identifica el producto</p>
-                        <p className="text-xs">• <strong>precio_venta</strong>: actualiza el precio en esta sucursal</p>
-                        <p className="text-xs">• <strong>precio_costo</strong>: actualiza el costo y recalcula el margen</p>
-                        <p className="text-xs">• <strong>stock</strong>: actualiza el stock de esta sucursal</p>
+                        <p className="font-mono text-xs">nombre, tipo, precio_venta, categoria, precio_costo, <strong>codigo_barras</strong>, stock, stock_minimo, clase</p>
+                        <p className="mt-1 text-xs">• <strong>codigo_barras</strong>: obligatorio — identifica el producto. Si no existe en el sistema, se crea.</p>
+                        <p className="text-xs">• <strong>nombre, tipo, categoria</strong>: obligatorios solo para productos nuevos</p>
+                        <p className="text-xs">• <strong>precio_venta, precio_costo, stock, stock_minimo</strong>: actualizan esta sucursal</p>
                         <p className="text-xs text-blue-600 mt-1">La plantilla ya incluye los productos actuales de la sucursal.</p>
                       </div>
                       <button
@@ -1126,6 +1137,19 @@ const BranchManagementView = ({
                       required
                     />
                   </div>
+
+                  <label className="flex items-start gap-3 cursor-pointer select-none p-3 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 transition-colors">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-amber-500 focus:ring-amber-400"
+                      checked={listaCompleta}
+                      onChange={e => onSetListaCompleta(e.target.checked)}
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-amber-800">Lista completa de la sucursal</p>
+                      <p className="text-xs text-amber-600 mt-0.5">Los productos del catálogo global que <strong>no estén en este archivo</strong> quedarán <strong>inactivos</strong> en esta sucursal. Los productos nuevos se crearán como inactivos en las otras sucursales.</p>
+                    </div>
+                  </label>
                 </div>
 
                 {branchImportLoading && (
@@ -1164,7 +1188,11 @@ const BranchManagementView = ({
               </form>
             ) : (
               <div className="space-y-4">
-                <div className="grid grid-cols-3 gap-3 text-center">
+                <div className={`grid gap-3 text-center ${(branchImportResult.desactivados ?? 0) > 0 ? 'grid-cols-5' : 'grid-cols-4'}`}>
+                  <div className="bg-green-50 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-green-700">{branchImportResult.created ?? 0}</div>
+                    <div className="text-xs text-green-600">Creados</div>
+                  </div>
                   <div className="bg-blue-50 rounded-lg p-3">
                     <div className="text-2xl font-bold text-blue-700">{branchImportResult.updated}</div>
                     <div className="text-xs text-blue-600">Actualizados</div>
@@ -1173,6 +1201,12 @@ const BranchManagementView = ({
                     <div className="text-2xl font-bold text-gray-500">{branchImportResult.skipped}</div>
                     <div className="text-xs text-gray-400">Sin cambios</div>
                   </div>
+                  {(branchImportResult.desactivados ?? 0) > 0 && (
+                    <div className="bg-amber-50 rounded-lg p-3">
+                      <div className="text-2xl font-bold text-amber-700">{branchImportResult.desactivados}</div>
+                      <div className="text-xs text-amber-600">Desactivados</div>
+                    </div>
+                  )}
                   <div className="bg-red-50 rounded-lg p-3">
                     <div className="text-2xl font-bold text-red-700">{branchImportResult.errors?.length ?? 0}</div>
                     <div className="text-xs text-red-600">Errores</div>

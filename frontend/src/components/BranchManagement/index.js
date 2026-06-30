@@ -55,7 +55,10 @@ const BranchManagement = () => {
   const [branchImportProgress, setBranchImportProgress] = useState(0);
   const [branchImportResult, setBranchImportResult] = useState(null);
   const [branchTemplateLoading, setBranchTemplateLoading] = useState(false);
+  const [listaCompleta, setListaCompleta] = useState(false);
   const branchImportFileRef = useRef(null);
+  const [totalActivosSucursal, setTotalActivosSucursal] = useState(null);
+  const [totalTodosSucursal, setTotalTodosSucursal] = useState(null);
 
   const [formData, setFormData] = useState({
     nombre: '',
@@ -63,6 +66,21 @@ const BranchManagement = () => {
     telefono: '',
     margen_ajuste: ''
   });
+
+  useEffect(() => {
+    if (!selectedBranch) return;
+    const fetchCounts = async () => {
+      try {
+        const [rActivos, rTodos] = await Promise.all([
+          axios.get(`${API}/branches/${selectedBranch.id}/products`, { params: { per_page: 1, activo_sucursal: true } }),
+          axios.get(`${API}/branches/${selectedBranch.id}/products`, { params: { per_page: 1 } }),
+        ]);
+        setTotalActivosSucursal(rActivos.data.total);
+        setTotalTodosSucursal(rTodos.data.total);
+      } catch (_) {}
+    };
+    fetchCounts();
+  }, [selectedBranch?.id]);
 
   useEffect(() => {
     fetchBranches();
@@ -812,8 +830,8 @@ const BranchManagement = () => {
       const token = localStorage.getItem('token');
       const formDataFile = new FormData();
       formDataFile.append('file', branchImportFile);
-      const response = await fetch(
-        `${API}/branch-products/import?branch_id=${selectedBranch.id}`,
+      const url = `${API}/branch-products/import?branch_id=${selectedBranch.id}${listaCompleta ? '&lista_completa=true' : ''}`;
+      const response = await fetch(url,
         { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formDataFile }
       );
       if (!response.ok) {
@@ -836,10 +854,21 @@ const BranchManagement = () => {
             if (data.progress !== undefined) setBranchImportProgress(data.progress);
             if (data.done) {
               setBranchImportResult(data);
-              toast.success(`Importación completada: ${data.updated} actualizados`);
-              // Recargar productos
+              const creados = data.created ?? 0;
+              const actualizados = data.updated ?? 0;
+              const desactivados = data.desactivados ?? 0;
+              toast.success(`Importación completada: ${creados > 0 ? `${creados} creados, ` : ''}${actualizados} actualizados${desactivados > 0 ? `, ${desactivados} desactivados` : ''}`);
+              // Recargar productos y conteos
               setCurrentPage(1);
               setBranchProductsCache({});
+              try {
+                const [rA, rT] = await Promise.all([
+                  axios.get(`${API}/branches/${selectedBranch.id}/products`, { params: { per_page: 1, activo_sucursal: true } }),
+                  axios.get(`${API}/branches/${selectedBranch.id}/products`, { params: { per_page: 1 } }),
+                ]);
+                setTotalActivosSucursal(rA.data.total);
+                setTotalTodosSucursal(rT.data.total);
+              } catch (_) {}
             }
           } catch { /* ignore */ }
         }
@@ -976,6 +1005,10 @@ const BranchManagement = () => {
       branchImportFileRef={branchImportFileRef}
       onBranchImport={handleBranchImport}
       onDownloadBranchTemplate={handleDownloadBranchTemplate}
+      totalActivosSucursal={totalActivosSucursal}
+      totalTodosSucursal={totalTodosSucursal}
+      listaCompleta={listaCompleta}
+      onSetListaCompleta={setListaCompleta}
     />
   );
 };

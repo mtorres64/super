@@ -1135,8 +1135,8 @@ def require_role(required_roles: List[UserRole]):
 @api_router.post("/branches", response_model=Branch)
 async def create_branch(branch_data: BranchCreate, user: User = Depends(require_role([UserRole.ADMIN]))):
     empresa = await db.empresas.find_one({"id": user.empresa_id})
-    plan = (empresa or {}).get("plan", "emprendedor")
     suscripcion_doc = await db.suscripciones.find_one({"empresa_id": user.empresa_id})
+    plan = (suscripcion_doc or {}).get("plan_tier") or (empresa or {}).get("plan", "emprendedor")
     suc_extra = int((suscripcion_doc or {}).get("sucursales_extra", 0))
     limite_base = {"empresarial": 3, "profesional": 1, "emprendedor": 1}.get(plan, 1)
     limite_sucursales = limite_base + (suc_extra if plan == "empresarial" else 0)
@@ -1699,8 +1699,8 @@ async def register_empresa(data: EmpresaRegister):
 @api_router.post("/auth/register", response_model=User)
 async def register(user_data: UserCreate, current_user: User = Depends(require_role([UserRole.ADMIN]))):
     empresa = await db.empresas.find_one({"id": current_user.empresa_id})
-    plan = (empresa or {}).get("plan", "emprendedor")
     suscripcion_doc = await db.suscripciones.find_one({"empresa_id": current_user.empresa_id})
+    plan = (suscripcion_doc or {}).get("plan_tier") or (empresa or {}).get("plan", "emprendedor")
     usr_extra_packs = int((suscripcion_doc or {}).get("usuarios_extra_packs", 0))
     limite_base = {"empresarial": 15, "profesional": 5, "emprendedor": 2}.get(plan, 2)
     limite_usuarios = limite_base + (usr_extra_packs * 5 if plan == "empresarial" else 0)
@@ -2474,14 +2474,17 @@ async def get_branch_import_template(
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.datavalidation import DataValidation
 
     branch = await db.branches.find_one({"id": branch_id, "empresa_id": user.empresa_id})
     if not branch:
         raise HTTPException(status_code=404, detail="Sucursal no encontrada")
 
-    # Obtener productos actuales de la sucursal (join products + branch_products)
+    db_cats = await db.categories.find({"empresa_id": user.empresa_id}).to_list(1000)
+    cat_id_to_name = {c["id"]: c["nombre"] for c in db_cats}
+    cat_names = [c["nombre"] for c in db_cats] if db_cats else ["General"]
+
     products = await db.products.find({"empresa_id": user.empresa_id, "activo": True}).to_list(5000)
-    product_map = {p["id"]: p for p in products}
     branch_prods = await db.branch_products.find({"branch_id": branch_id, "empresa_id": user.empresa_id}).to_list(5000)
     bp_map = {bp["product_id"]: bp for bp in branch_prods}
 
@@ -2489,10 +2492,15 @@ async def get_branch_import_template(
     ws = wb.active
     ws.title = "Precios y Stock"
 
+    ws_cats = wb.create_sheet("Categorias")
+    for i, nombre in enumerate(cat_names, start=1):
+        ws_cats.cell(row=i, column=1, value=nombre)
+    ws_cats.sheet_state = "hidden"
+
     HDR_FILL  = PatternFill("solid", fgColor="1a7a4a")
     REF_FILL  = PatternFill("solid", fgColor="e8e8e8")
-    REQ_FILL  = PatternFill("solid", fgColor="fff3cd")
-    OPT_FILL  = PatternFill("solid", fgColor="e8f5e9")
+    REQ_FILL  = PatternFill("solid", fgColor="e8f5e9")
+    OPT_FILL  = PatternFill("solid", fgColor="f3f4f6")
     THIN = Border(
         left=Side(style="thin", color="cccccc"), right=Side(style="thin", color="cccccc"),
         top=Side(style="thin", color="cccccc"),  bottom=Side(style="thin", color="cccccc"),
@@ -2502,11 +2510,15 @@ async def get_branch_import_template(
     NORM       = Font(name="Calibri", size=10)
 
     cols = [
-        ("codigo_barras", 22, "REQUERIDO. Código de barras para identificar el producto."),
-        ("nombre",        30, "Referencia (no se modifica)."),
-        ("precio_venta",  16, "Opcional. Nuevo precio de venta en esta sucursal."),
+        ("nombre",        28, "OBLIGATORIO para nuevos productos."),
+        ("tipo",          18, "OBLIGATORIO para nuevos. Valores: codigo_barras  o  por_peso"),
+        ("precio_venta",  14, "Precio de venta en esta sucursal. Se redondea."),
+        ("categoria",     18, "OBLIGATORIO para nuevos. Seleccionar de la lista."),
         ("precio_costo",  16, "Opcional. Costo de compra. Recalcula el margen."),
+        ("codigo_barras", 20, "REQUERIDO. Identifica el producto. Si no existe se crea solo en esta sucursal."),
         ("stock",         12, "Opcional. Stock en esta sucursal."),
+        ("stock_minimo",  14, "Opcional. Stock mínimo de alerta."),
+        ("clase",         14, "Opcional. Normal o Combo."),
     ]
 
     for c, (header, width, _) in enumerate(cols, start=1):
@@ -2519,33 +2531,50 @@ async def get_branch_import_template(
     ws.row_dimensions[1].height = 22
     ws.freeze_panes = "A2"
 
+    dv_tipo = DataValidation(type="list", formula1='"codigo_barras,por_peso"', allow_blank=False)
+    dv_tipo.sqref = "B2:B1000"
+    ws.add_data_validation(dv_tipo)
+
+    n_cats = len(cat_names)
+    dv_cat = DataValidation(type="list", formula1=f"=Categorias!$A$1:$A${n_cats}", allow_blank=True)
+    dv_cat.sqref = "D2:D1000"
+    ws.add_data_validation(dv_cat)
+
+    dv_clase = DataValidation(type="list", formula1='"Normal,Combo"', allow_blank=True)
+    dv_clase.sqref = "I2:I1000"
+    ws.add_data_validation(dv_clase)
+
     row = 2
     for prod in sorted(products, key=lambda p: p.get("nombre", "")):
         if not prod.get("codigo_barras") or prod["codigo_barras"].startswith("INT-"):
             continue
         bp = bp_map.get(prod["id"], {})
+        cat_name = cat_id_to_name.get(prod.get("categoria_id", ""), "")
+        kind_str = "Combo" if prod.get("kind") == "combo" else "Normal"
         cells_data = [
-            (prod.get("codigo_barras", ""), REQ_FILL),
-            (prod.get("nombre", ""),        REF_FILL),
-            (bp.get("precio", prod.get("precio", "")), OPT_FILL),
-            (bp.get("costo", ""),           OPT_FILL),
-            (bp.get("stock", ""),           OPT_FILL),
+            (prod.get("nombre", ""),                               REF_FILL, GRAY_BOLD),
+            (prod.get("tipo", "codigo_barras"),                    REF_FILL, GRAY_BOLD),
+            (bp.get("precio", prod.get("precio", "")),             OPT_FILL, NORM),
+            (cat_name,                                             REF_FILL, GRAY_BOLD),
+            (bp.get("costo", ""),                                  OPT_FILL, NORM),
+            (prod.get("codigo_barras", ""),                        REQ_FILL, GRAY_BOLD),
+            (bp.get("stock", ""),                                  OPT_FILL, NORM),
+            (bp.get("stock_minimo", prod.get("stock_minimo", "")), OPT_FILL, NORM),
+            (kind_str,                                             OPT_FILL, NORM),
         ]
-        for c, (value, fill) in enumerate(cells_data, start=1):
+        for c, (value, fill, font) in enumerate(cells_data, start=1):
             cell = ws.cell(row=row, column=c, value=value)
             cell.fill = fill
             cell.border = THIN
-            cell.font = GRAY_BOLD if c <= 2 else NORM
-            if c == 2:
-                cell.protection = openpyxl.styles.Protection(locked=True)
+            cell.font = font
         ws.row_dimensions[row].height = 18
         row += 1
 
-    # Agregar filas vacías para productos nuevos a ingresar manualmente
+    # Filas vacías para nuevos productos
     for _ in range(20):
         for c in range(1, len(cols) + 1):
             cell = ws.cell(row=row, column=c)
-            cell.fill = REQ_FILL if c == 1 else OPT_FILL
+            cell.fill = REQ_FILL if c in (1, 2, 3, 4, 6) else OPT_FILL
             cell.border = THIN
             cell.font = NORM
         ws.row_dimensions[row].height = 18
@@ -2565,6 +2594,7 @@ async def get_branch_import_template(
 @api_router.post("/branch-products/import")
 async def import_branch_products(
     branch_id: str,
+    lista_completa: bool = Query(False),
     file: UploadFile = File(...),
     user: User = Depends(require_role([UserRole.ADMIN]))
 ):
@@ -2598,16 +2628,32 @@ async def import_branch_products(
     cfg = await db.configuration.find_one({"empresa_id": empresa_id}) or {}
     redondeo = cfg.get("redondeo_precio", 100)
 
+    categories = await db.categories.find({"empresa_id": empresa_id}).to_list(1000)
+    cat_map = {c["nombre"].strip().lower(): c["id"] for c in categories}
+
     def _redondear(valor: float) -> float:
         import math
         if not redondeo:
             return round(valor, 2)
         return math.ceil(valor / redondeo) * redondeo
 
+    def _parse_float(val):
+        if pd.isna(val) or str(val).strip() in ("", "nan"):
+            return None
+        return float(val)
+
+    def _parse_int(val, default=None):
+        if pd.isna(val) or str(val).strip() in ("", "nan"):
+            return default
+        return int(float(val))
+
     async def generate():
         updated = 0
+        created = 0
         skipped = 0
         errors = []
+        imported_barcodes = set()   # barcodes procesados con éxito
+        new_product_ids = []        # IDs de productos creados en esta importación
 
         for idx, row in df.iterrows():
             try:
@@ -2623,40 +2669,99 @@ async def import_branch_products(
                 except (ValueError, OverflowError):
                     codigo_barras = str(raw_barcode).strip()
 
+                # Parsear campos de sucursal
+                precio_costo = _parse_float(row.get("precio_costo"))
+                raw_precio = _parse_float(row.get("precio_venta"))
+                precio_venta = _redondear(raw_precio) if raw_precio is not None else None
+                raw_stock = _parse_int(row.get("stock"))
+                raw_stock_min = _parse_int(row.get("stock_minimo"))
+
+                margen = None
+                if precio_costo is not None and precio_venta is not None and precio_costo > 0:
+                    margen = round((precio_venta - precio_costo) / precio_costo * 100, 2)
+
                 product = await db.products.find_one({"codigo_barras": codigo_barras, "empresa_id": empresa_id})
+
                 if not product:
-                    errors.append(f"Fila {idx+2}: código '{codigo_barras}' no encontrado.")
+                    # Intentar crear el producto con los datos de la fila
+                    raw_nombre = str(row.get("nombre", "")).strip()
+                    raw_tipo = str(row.get("tipo", "codigo_barras")).strip()
+                    raw_categoria = str(row.get("categoria", "")).strip()
+                    raw_clase = str(row.get("clase", "")).strip().lower()
+
+                    if not raw_nombre or precio_venta is None or not raw_categoria:
+                        errors.append(f"Fila {idx+2}: código '{codigo_barras}' no encontrado. Para crear el producto complete nombre, precio_venta y categoria.")
+                        yield f"data: {json.dumps({'progress': int(((idx+1)/total_rows)*100), 'processed': idx+1, 'total': total_rows})}\n\n"
+                        await asyncio.sleep(0)
+                        continue
+
+                    tipo = raw_tipo if raw_tipo in ("codigo_barras", "por_peso") else "codigo_barras"
+                    kind = "combo" if raw_clase == "combo" else "normal"
+                    stock_minimo_prod = raw_stock_min if raw_stock_min is not None else 10
+
+                    cat_key = raw_categoria.lower()
+                    categoria_id = cat_map.get(cat_key)
+                    if not categoria_id:
+                        new_cat = Category(empresa_id=empresa_id, nombre=raw_categoria)
+                        await db.categories.insert_one(new_cat.dict())
+                        cat_map[cat_key] = new_cat.id
+                        categoria_id = new_cat.id
+
+                    new_product = Product(
+                        empresa_id=empresa_id,
+                        nombre=raw_nombre,
+                        codigo_barras=codigo_barras,
+                        tipo=tipo,
+                        kind=kind,
+                        precio=precio_venta,
+                        categoria_id=categoria_id,
+                        stock=raw_stock if raw_stock is not None else 0,
+                        stock_minimo=stock_minimo_prod,
+                    )
+                    _pdoc = {k: v for k, v in new_product.model_dump().items() if v is not None}
+                    await db.products.insert_one(_pdoc)
+
+                    # Crear branch_product SOLO para esta sucursal (activo)
+                    new_bp = BranchProduct(
+                        empresa_id=empresa_id,
+                        product_id=new_product.id,
+                        branch_id=branch_id,
+                        precio=precio_venta,
+                        stock=raw_stock if raw_stock is not None else 0,
+                        stock_minimo=stock_minimo_prod,
+                        costo=precio_costo,
+                        margen=margen,
+                        activo=True,
+                    )
+                    await db.branch_products.insert_one(new_bp.dict())
+                    imported_barcodes.add(codigo_barras)
+                    new_product_ids.append(new_product.id)
+                    created += 1
                     yield f"data: {json.dumps({'progress': int(((idx+1)/total_rows)*100), 'processed': idx+1, 'total': total_rows})}\n\n"
                     await asyncio.sleep(0)
                     continue
 
+                # Producto existente: actualizar branch_product
                 bp_update = {}
-
-                raw_precio = row.get("precio_venta")
-                if pd.notna(raw_precio) and str(raw_precio).strip() not in ("", "nan"):
-                    bp_update["precio"] = _redondear(float(raw_precio))
-
-                raw_costo = row.get("precio_costo")
-                precio_costo = None
-                if pd.notna(raw_costo) and str(raw_costo).strip() not in ("", "nan"):
-                    precio_costo = float(raw_costo)
+                if precio_venta is not None:
+                    bp_update["precio"] = precio_venta
+                if precio_costo is not None:
                     bp_update["costo"] = precio_costo
-
-                precio_venta_final = bp_update.get("precio")
-                if precio_costo is not None and precio_venta_final is not None and precio_costo > 0:
-                    bp_update["margen"] = round((precio_venta_final - precio_costo) / precio_costo * 100, 2)
+                if margen is not None:
+                    bp_update["margen"] = margen
                 elif precio_costo is not None:
-                    # Calcular margen con el precio actual del branch_product
-                    bp_existing = await db.branch_products.find_one({"product_id": product["id"], "branch_id": branch_id, "empresa_id": empresa_id})
-                    precio_actual = (bp_existing or {}).get("precio", product.get("precio", 0))
+                    existing_bp_pre = await db.branch_products.find_one({"product_id": product["id"], "branch_id": branch_id, "empresa_id": empresa_id})
+                    precio_actual = (existing_bp_pre or {}).get("precio", product.get("precio", 0))
                     if precio_actual and precio_costo > 0:
                         bp_update["margen"] = round((precio_actual - precio_costo) / precio_costo * 100, 2)
-
-                raw_stock = row.get("stock")
-                if pd.notna(raw_stock) and str(raw_stock).strip() not in ("", "nan"):
-                    bp_update["stock"] = int(float(raw_stock))
+                if raw_stock is not None:
+                    bp_update["stock"] = raw_stock
+                if raw_stock_min is not None:
+                    bp_update["stock_minimo"] = raw_stock_min
 
                 if not bp_update:
+                    # Sin datos editables pero el barcode está en el archivo: contar como importado
+                    imported_barcodes.add(codigo_barras)
                     skipped += 1
                     yield f"data: {json.dumps({'progress': int(((idx+1)/total_rows)*100), 'processed': idx+1, 'total': total_rows})}\n\n"
                     await asyncio.sleep(0)
@@ -2664,6 +2769,7 @@ async def import_branch_products(
 
                 existing_bp = await db.branch_products.find_one({"product_id": product["id"], "branch_id": branch_id, "empresa_id": empresa_id})
                 if existing_bp:
+                    bp_update["activo"] = True
                     await db.branch_products.update_one(
                         {"id": existing_bp["id"], "empresa_id": empresa_id},
                         {"$set": bp_update}
@@ -2675,11 +2781,14 @@ async def import_branch_products(
                         branch_id=branch_id,
                         precio=bp_update.get("precio", product.get("precio", 0)),
                         stock=bp_update.get("stock", 0),
+                        stock_minimo=bp_update.get("stock_minimo", product.get("stock_minimo", 10)),
                         costo=bp_update.get("costo"),
                         margen=bp_update.get("margen"),
+                        activo=True,
                     )
                     await db.branch_products.insert_one(new_bp.dict())
 
+                imported_barcodes.add(codigo_barras)
                 updated += 1
 
             except Exception as e:
@@ -2688,7 +2797,52 @@ async def import_branch_products(
             yield f"data: {json.dumps({'progress': int(((idx+1)/total_rows)*100), 'processed': idx+1, 'total': total_rows})}\n\n"
             await asyncio.sleep(0)
 
-        yield f"data: {json.dumps({'done': True, 'updated': updated, 'skipped': skipped, 'errors': errors, 'total_procesado': updated + skipped + len(errors)})}\n\n"
+        # --- Lista completa: desactivar lo que no vino en el archivo ---
+        desactivados = 0
+        if lista_completa:
+            all_products = await db.products.find({"empresa_id": empresa_id, "activo": True}).to_list(10000)
+            for prod in all_products:
+                cb = prod.get("codigo_barras") or ""
+                if cb.startswith("INT-") or cb in imported_barcodes:
+                    continue
+                bp_existente = await db.branch_products.find_one({"product_id": prod["id"], "branch_id": branch_id, "empresa_id": empresa_id})
+                if bp_existente:
+                    if bp_existente.get("activo", True):
+                        await db.branch_products.update_one({"id": bp_existente["id"]}, {"$set": {"activo": False}})
+                        desactivados += 1
+                else:
+                    bp_inactivo = BranchProduct(
+                        empresa_id=empresa_id,
+                        product_id=prod["id"],
+                        branch_id=branch_id,
+                        precio=prod.get("precio", 0),
+                        stock=0,
+                        activo=False,
+                    )
+                    await db.branch_products.insert_one(bp_inactivo.dict())
+                    desactivados += 1
+
+            # Nuevos productos creados → inactivos en otras sucursales
+            if new_product_ids:
+                other_branches = await db.branches.find({"empresa_id": empresa_id, "activo": True, "id": {"$ne": branch_id}}).to_list(100)
+                for prod_id in new_product_ids:
+                    new_prod = await db.products.find_one({"id": prod_id, "empresa_id": empresa_id})
+                    if not new_prod:
+                        continue
+                    for ob in other_branches:
+                        exists = await db.branch_products.find_one({"product_id": prod_id, "branch_id": ob["id"], "empresa_id": empresa_id})
+                        if not exists:
+                            bp_ob = BranchProduct(
+                                empresa_id=empresa_id,
+                                product_id=prod_id,
+                                branch_id=ob["id"],
+                                precio=new_prod.get("precio", 0),
+                                stock=0,
+                                activo=False,
+                            )
+                            await db.branch_products.insert_one(bp_ob.dict())
+
+        yield f"data: {json.dumps({'done': True, 'created': created, 'updated': updated, 'skipped': skipped, 'desactivados': desactivados, 'errors': errors, 'total_procesado': created + updated + skipped + len(errors)})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
