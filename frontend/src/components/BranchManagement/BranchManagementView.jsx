@@ -20,6 +20,7 @@ import {
   Tag,
   Layers,
   CircleDot,
+  Upload,
 } from 'lucide-react';
 import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
@@ -137,6 +138,18 @@ const BranchManagementView = ({
   onHandleBranchBulkEditSave,
   tieneMultiSucursal = true,
   limiteAlcanzado = false,
+  showBranchImportModal,
+  onSetShowBranchImportModal,
+  branchImportFile,
+  onSetBranchImportFile,
+  branchImportLoading,
+  branchImportProgress,
+  branchImportResult,
+  onSetBranchImportResult,
+  branchTemplateLoading,
+  branchImportFileRef,
+  onBranchImport,
+  onDownloadBranchTemplate,
 }) => {
   const [focusedIdx, setFocusedIdx] = React.useState(-1);
   const [showCategoryFilter, setShowCategoryFilter] = React.useState(false);
@@ -211,8 +224,16 @@ const BranchManagementView = ({
                 <p className="text-gray-500 text-sm truncate">{selectedBranch.direccion}</p>
               </div>
             </div>
-            {/* Exportar — siempre visible, derecha */}
-            <div className="relative flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+            {/* Importar y Exportar — siempre visible, derecha */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => { onSetBranchImportResult(null); onSetShowBranchImportModal(true); }}
+              className="btn btn-secondary"
+            >
+              <Upload className="w-4 h-4" />
+              Importar
+            </button>
+            <div className="relative" onClick={(e) => e.stopPropagation()}>
               <button
                 onClick={() => onSetShowExportMenu(prev => !prev)}
                 className="btn btn-secondary"
@@ -239,6 +260,7 @@ const BranchManagementView = ({
                   </button>
                 </div>
               )}
+            </div>
             </div>
           </div>
           {/* Cambios pendientes */}
@@ -1052,6 +1074,131 @@ const BranchManagementView = ({
           </div>
         </div>
       )}
+      {/* Modal Importar precios/stock por sucursal */}
+      {showBranchImportModal && (
+        <div className="modal-overlay" onClick={() => onSetShowBranchImportModal(false)}>
+          <div className="modal-content modal-content-bounce" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Importar Precios y Stock — {selectedBranch?.nombre}</h3>
+              <button onClick={() => onSetShowBranchImportModal(false)} className="modal-close">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {!branchImportResult ? (
+              <form onSubmit={onBranchImport}>
+                <div className="space-y-4">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <p className="font-medium mb-1">Formato requerido (XLSX o CSV):</p>
+                        <p className="font-mono text-xs">codigo_barras, precio_venta, precio_costo, stock</p>
+                        <p className="mt-1 text-xs">• <strong>codigo_barras</strong>: obligatorio — identifica el producto</p>
+                        <p className="text-xs">• <strong>precio_venta</strong>: actualiza el precio en esta sucursal</p>
+                        <p className="text-xs">• <strong>precio_costo</strong>: actualiza el costo y recalcula el margen</p>
+                        <p className="text-xs">• <strong>stock</strong>: actualiza el stock de esta sucursal</p>
+                        <p className="text-xs text-blue-600 mt-1">La plantilla ya incluye los productos actuales de la sucursal.</p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={branchTemplateLoading}
+                        onClick={onDownloadBranchTemplate}
+                        className="flex items-center gap-1.5 text-xs font-medium text-blue-700 border border-blue-300 rounded-md px-2.5 py-1.5 hover:bg-blue-100 transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
+                      >
+                        {branchTemplateLoading ? (
+                          <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-blue-700" />
+                        ) : (
+                          <Download className="w-3.5 h-3.5" />
+                        )}
+                        {branchTemplateLoading ? 'Descargando...' : 'Descargar plantilla'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Archivo (XLSX o CSV)</label>
+                    <input
+                      ref={branchImportFileRef}
+                      type="file"
+                      accept=".csv,.xlsx,.xls"
+                      className="form-input"
+                      onChange={e => onSetBranchImportFile(e.target.files[0])}
+                      required
+                    />
+                  </div>
+                </div>
+
+                {branchImportLoading && (
+                  <div className="mt-4 space-y-1">
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Procesando productos...</span>
+                      <span>{branchImportProgress}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                      <div
+                        className="h-2.5 rounded-full bg-green-500 transition-all duration-200"
+                        style={{ width: `${branchImportProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button type="button" onClick={() => onSetShowBranchImportModal(false)} className="btn btn-secondary" disabled={branchImportLoading}>
+                    Cancelar
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={branchImportLoading || !branchImportFile}>
+                    {branchImportLoading ? (
+                      <span className="flex items-center gap-2">
+                        <div className="spinner w-4 h-4" />
+                        Procesando... {branchImportProgress}%
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <Upload className="w-4 h-4" />
+                        Importar
+                      </span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="bg-blue-50 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-blue-700">{branchImportResult.updated}</div>
+                    <div className="text-xs text-blue-600">Actualizados</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-gray-500">{branchImportResult.skipped}</div>
+                    <div className="text-xs text-gray-400">Sin cambios</div>
+                  </div>
+                  <div className="bg-red-50 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-red-700">{branchImportResult.errors?.length ?? 0}</div>
+                    <div className="text-xs text-red-600">Errores</div>
+                  </div>
+                </div>
+
+                {branchImportResult.errors?.length > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 max-h-40 overflow-y-auto">
+                    <p className="font-medium text-red-800 text-sm mb-1">Errores:</p>
+                    {branchImportResult.errors.map((err, i) => (
+                      <p key={i} className="text-xs text-red-700">{err}</p>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex justify-end">
+                  <button onClick={() => onSetShowBranchImportModal(false)} className="btn btn-primary">
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       </div>
     );
   }

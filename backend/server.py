@@ -2464,6 +2464,235 @@ async def import_products(
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
+
+@api_router.get("/branch-products/import-template")
+async def get_branch_import_template(
+    branch_id: str,
+    user: User = Depends(require_role([UserRole.ADMIN]))
+):
+    import io as _io
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    branch = await db.branches.find_one({"id": branch_id, "empresa_id": user.empresa_id})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Sucursal no encontrada")
+
+    # Obtener productos actuales de la sucursal (join products + branch_products)
+    products = await db.products.find({"empresa_id": user.empresa_id, "activo": True}).to_list(5000)
+    product_map = {p["id"]: p for p in products}
+    branch_prods = await db.branch_products.find({"branch_id": branch_id, "empresa_id": user.empresa_id}).to_list(5000)
+    bp_map = {bp["product_id"]: bp for bp in branch_prods}
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Precios y Stock"
+
+    HDR_FILL  = PatternFill("solid", fgColor="1a7a4a")
+    REF_FILL  = PatternFill("solid", fgColor="e8e8e8")
+    REQ_FILL  = PatternFill("solid", fgColor="fff3cd")
+    OPT_FILL  = PatternFill("solid", fgColor="e8f5e9")
+    THIN = Border(
+        left=Side(style="thin", color="cccccc"), right=Side(style="thin", color="cccccc"),
+        top=Side(style="thin", color="cccccc"),  bottom=Side(style="thin", color="cccccc"),
+    )
+    WHITE_BOLD = Font(bold=True, color="FFFFFF", name="Calibri", size=11)
+    GRAY_BOLD  = Font(bold=True, color="555555", name="Calibri", size=10)
+    NORM       = Font(name="Calibri", size=10)
+
+    cols = [
+        ("codigo_barras", 22, "REQUERIDO. Código de barras para identificar el producto."),
+        ("nombre",        30, "Referencia (no se modifica)."),
+        ("precio_venta",  16, "Opcional. Nuevo precio de venta en esta sucursal."),
+        ("precio_costo",  16, "Opcional. Costo de compra. Recalcula el margen."),
+        ("stock",         12, "Opcional. Stock en esta sucursal."),
+    ]
+
+    for c, (header, width, _) in enumerate(cols, start=1):
+        cell = ws.cell(row=1, column=c, value=header)
+        cell.font = WHITE_BOLD
+        cell.fill = HDR_FILL
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = THIN
+        ws.column_dimensions[get_column_letter(c)].width = width
+    ws.row_dimensions[1].height = 22
+    ws.freeze_panes = "A2"
+
+    row = 2
+    for prod in sorted(products, key=lambda p: p.get("nombre", "")):
+        if not prod.get("codigo_barras") or prod["codigo_barras"].startswith("INT-"):
+            continue
+        bp = bp_map.get(prod["id"], {})
+        cells_data = [
+            (prod.get("codigo_barras", ""), REQ_FILL),
+            (prod.get("nombre", ""),        REF_FILL),
+            (bp.get("precio", prod.get("precio", "")), OPT_FILL),
+            (bp.get("costo", ""),           OPT_FILL),
+            (bp.get("stock", ""),           OPT_FILL),
+        ]
+        for c, (value, fill) in enumerate(cells_data, start=1):
+            cell = ws.cell(row=row, column=c, value=value)
+            cell.fill = fill
+            cell.border = THIN
+            cell.font = GRAY_BOLD if c <= 2 else NORM
+            if c == 2:
+                cell.protection = openpyxl.styles.Protection(locked=True)
+        ws.row_dimensions[row].height = 18
+        row += 1
+
+    # Agregar filas vacías para productos nuevos a ingresar manualmente
+    for _ in range(20):
+        for c in range(1, len(cols) + 1):
+            cell = ws.cell(row=row, column=c)
+            cell.fill = REQ_FILL if c == 1 else OPT_FILL
+            cell.border = THIN
+            cell.font = NORM
+        ws.row_dimensions[row].height = 18
+        row += 1
+
+    buf = _io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    safe_name = branch.get("nombre", "sucursal").replace(" ", "_")
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=plantilla_precios_{safe_name}.xlsx"},
+    )
+
+
+@api_router.post("/branch-products/import")
+async def import_branch_products(
+    branch_id: str,
+    file: UploadFile = File(...),
+    user: User = Depends(require_role([UserRole.ADMIN]))
+):
+    branch = await db.branches.find_one({"id": branch_id, "empresa_id": user.empresa_id})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Sucursal no encontrada")
+
+    content = await file.read()
+    filename = file.filename or ""
+
+    try:
+        if filename.endswith(".xlsx") or filename.endswith(".xls"):
+            df = pd.read_excel(io.BytesIO(content))
+        elif filename.endswith(".csv"):
+            df = pd.read_csv(io.StringIO(content.decode("utf-8-sig")))
+        else:
+            raise HTTPException(status_code=400, detail="Formato no soportado. Use CSV o XLSX.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error al leer el archivo: {str(e)}")
+
+    df.columns = df.columns.str.strip().str.lower()
+
+    if "codigo_barras" not in df.columns:
+        raise HTTPException(status_code=400, detail="Columna 'codigo_barras' es requerida.")
+
+    empresa_id = user.empresa_id
+    total_rows = len(df)
+
+    cfg = await db.configuration.find_one({"empresa_id": empresa_id}) or {}
+    redondeo = cfg.get("redondeo_precio", 100)
+
+    def _redondear(valor: float) -> float:
+        import math
+        if not redondeo:
+            return round(valor, 2)
+        return math.ceil(valor / redondeo) * redondeo
+
+    async def generate():
+        updated = 0
+        skipped = 0
+        errors = []
+
+        for idx, row in df.iterrows():
+            try:
+                raw_barcode = row.get("codigo_barras")
+                if pd.isna(raw_barcode) or str(raw_barcode).strip() in ("", "nan"):
+                    skipped += 1
+                    yield f"data: {json.dumps({'progress': int(((idx+1)/total_rows)*100), 'processed': idx+1, 'total': total_rows})}\n\n"
+                    await asyncio.sleep(0)
+                    continue
+
+                try:
+                    codigo_barras = str(int(float(str(raw_barcode).strip())))
+                except (ValueError, OverflowError):
+                    codigo_barras = str(raw_barcode).strip()
+
+                product = await db.products.find_one({"codigo_barras": codigo_barras, "empresa_id": empresa_id})
+                if not product:
+                    errors.append(f"Fila {idx+2}: código '{codigo_barras}' no encontrado.")
+                    yield f"data: {json.dumps({'progress': int(((idx+1)/total_rows)*100), 'processed': idx+1, 'total': total_rows})}\n\n"
+                    await asyncio.sleep(0)
+                    continue
+
+                bp_update = {}
+
+                raw_precio = row.get("precio_venta")
+                if pd.notna(raw_precio) and str(raw_precio).strip() not in ("", "nan"):
+                    bp_update["precio"] = _redondear(float(raw_precio))
+
+                raw_costo = row.get("precio_costo")
+                precio_costo = None
+                if pd.notna(raw_costo) and str(raw_costo).strip() not in ("", "nan"):
+                    precio_costo = float(raw_costo)
+                    bp_update["costo"] = precio_costo
+
+                precio_venta_final = bp_update.get("precio")
+                if precio_costo is not None and precio_venta_final is not None and precio_costo > 0:
+                    bp_update["margen"] = round((precio_venta_final - precio_costo) / precio_costo * 100, 2)
+                elif precio_costo is not None:
+                    # Calcular margen con el precio actual del branch_product
+                    bp_existing = await db.branch_products.find_one({"product_id": product["id"], "branch_id": branch_id, "empresa_id": empresa_id})
+                    precio_actual = (bp_existing or {}).get("precio", product.get("precio", 0))
+                    if precio_actual and precio_costo > 0:
+                        bp_update["margen"] = round((precio_actual - precio_costo) / precio_costo * 100, 2)
+
+                raw_stock = row.get("stock")
+                if pd.notna(raw_stock) and str(raw_stock).strip() not in ("", "nan"):
+                    bp_update["stock"] = int(float(raw_stock))
+
+                if not bp_update:
+                    skipped += 1
+                    yield f"data: {json.dumps({'progress': int(((idx+1)/total_rows)*100), 'processed': idx+1, 'total': total_rows})}\n\n"
+                    await asyncio.sleep(0)
+                    continue
+
+                existing_bp = await db.branch_products.find_one({"product_id": product["id"], "branch_id": branch_id, "empresa_id": empresa_id})
+                if existing_bp:
+                    await db.branch_products.update_one(
+                        {"id": existing_bp["id"], "empresa_id": empresa_id},
+                        {"$set": bp_update}
+                    )
+                else:
+                    new_bp = BranchProduct(
+                        empresa_id=empresa_id,
+                        product_id=product["id"],
+                        branch_id=branch_id,
+                        precio=bp_update.get("precio", product.get("precio", 0)),
+                        stock=bp_update.get("stock", 0),
+                        costo=bp_update.get("costo"),
+                        margen=bp_update.get("margen"),
+                    )
+                    await db.branch_products.insert_one(new_bp.dict())
+
+                updated += 1
+
+            except Exception as e:
+                errors.append(f"Fila {idx+2}: {str(e)}")
+
+            yield f"data: {json.dumps({'progress': int(((idx+1)/total_rows)*100), 'processed': idx+1, 'total': total_rows})}\n\n"
+            await asyncio.sleep(0)
+
+        yield f"data: {json.dumps({'done': True, 'updated': updated, 'skipped': skipped, 'errors': errors, 'total_procesado': updated + skipped + len(errors)})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
 @api_router.get("/products/{product_id}", response_model=Product)
 async def get_product(product_id: str, user: User = Depends(get_current_user)):
     product = await db.products.find_one({"id": product_id, "empresa_id": user.empresa_id})

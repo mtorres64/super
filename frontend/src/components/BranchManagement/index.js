@@ -49,6 +49,13 @@ const BranchManagement = () => {
   const [selectedKind, setSelectedKind] = useState('');
   const [selectedActivo, setSelectedActivo] = useState('');
   const [branchProductsCache, setBranchProductsCache] = useState({});
+  const [showBranchImportModal, setShowBranchImportModal] = useState(false);
+  const [branchImportFile, setBranchImportFile] = useState(null);
+  const [branchImportLoading, setBranchImportLoading] = useState(false);
+  const [branchImportProgress, setBranchImportProgress] = useState(0);
+  const [branchImportResult, setBranchImportResult] = useState(null);
+  const [branchTemplateLoading, setBranchTemplateLoading] = useState(false);
+  const branchImportFileRef = useRef(null);
 
   const [formData, setFormData] = useState({
     nombre: '',
@@ -772,6 +779,78 @@ const BranchManagement = () => {
     });
   };
 
+  const handleDownloadBranchTemplate = async () => {
+    if (!selectedBranch) return;
+    setBranchTemplateLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get(`${API}/branch-products/import-template`, {
+        params: { branch_id: selectedBranch.id },
+        responseType: 'blob',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `plantilla_precios_${selectedBranch.nombre.replace(/\s+/g, '_')}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Error al descargar la plantilla');
+    } finally {
+      setBranchTemplateLoading(false);
+    }
+  };
+
+  const handleBranchImport = async (e) => {
+    e.preventDefault();
+    if (!branchImportFile || !selectedBranch) return;
+    setBranchImportLoading(true);
+    setBranchImportProgress(0);
+    setBranchImportResult(null);
+    try {
+      const token = localStorage.getItem('token');
+      const formDataFile = new FormData();
+      formDataFile.append('file', branchImportFile);
+      const response = await fetch(
+        `${API}/branch-products/import?branch_id=${selectedBranch.id}`,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formDataFile }
+      );
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || 'Error al importar');
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.progress !== undefined) setBranchImportProgress(data.progress);
+            if (data.done) {
+              setBranchImportResult(data);
+              toast.success(`Importación completada: ${data.updated} actualizados`);
+              // Recargar productos
+              setCurrentPage(1);
+              setBranchProductsCache({});
+            }
+          } catch { /* ignore */ }
+        }
+      }
+    } catch (error) {
+      toast.error(error.message || 'Error al importar');
+    } finally {
+      setBranchImportLoading(false);
+    }
+  };
+
   return (
     <BranchManagementView
       loading={loading}
@@ -885,6 +964,18 @@ const BranchManagement = () => {
       onHandleBranchBulkEditSave={handleBranchBulkEditSave}
       tieneMultiSucursal={tieneMultiSucursal}
       limiteAlcanzado={branches.length >= 3}
+      showBranchImportModal={showBranchImportModal}
+      onSetShowBranchImportModal={setShowBranchImportModal}
+      branchImportFile={branchImportFile}
+      onSetBranchImportFile={setBranchImportFile}
+      branchImportLoading={branchImportLoading}
+      branchImportProgress={branchImportProgress}
+      branchImportResult={branchImportResult}
+      onSetBranchImportResult={setBranchImportResult}
+      branchTemplateLoading={branchTemplateLoading}
+      branchImportFileRef={branchImportFileRef}
+      onBranchImport={handleBranchImport}
+      onDownloadBranchTemplate={handleDownloadBranchTemplate}
     />
   );
 };
