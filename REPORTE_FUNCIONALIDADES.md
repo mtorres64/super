@@ -2,7 +2,7 @@
 
 ## 🎯 RESUMEN EJECUTIVO
 
-**MiniMarket POS** es un sistema completo de punto de venta (POS) diseñado como plataforma **SaaS multi-tenant** para supermercados con gestión multi-sucursal. El sistema incluye gestión de inventario, ventas, caja, usuarios, reportes, compras, devoluciones, facturación electrónica AFIP/ARCA, suscripciones con MercadoPago y panel de administración para el propietario del SaaS.
+**MiniMarket POS** es un sistema completo de punto de venta (POS) diseñado  como plataforma **SaaS multi-tenant** para supermercados con gestión multi-sucursal. El sistema incluye gestión de inventario, ventas, caja, usuarios, reportes, compras, devoluciones, facturación electrónica AFIP/ARCA, suscripciones con MercadoPago y panel de administración para el propietario del SaaS.
 
 ---
 
