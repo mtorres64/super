@@ -780,6 +780,26 @@ const POSView = ({
                     </div>
                   );
                 })()}
+                {!tieneFacturacion && (
+                  <div className="total-row">
+                    <span className="total-label">Descuento:</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={invoiceConfig?.descuento_valor || ''}
+                        placeholder="0"
+                        onChange={e => {
+                          const val = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0));
+                          setInvoiceConfig(prev => ({ ...prev, descuento_tipo: 'porcentaje', descuento_valor: val }));
+                        }}
+                        style={{ width: '52px', textAlign: 'right', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--input-bg, #fff)', color: 'inherit', fontSize: 'inherit' }}
+                      />
+                      <span>%</span>
+                    </div>
+                  </div>
+                )}
                 {calculateDiscount() > 0 && (
                   <div className="total-row" style={{ color: '#16a34a' }}>
                     <span className="total-label">

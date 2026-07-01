@@ -716,6 +716,7 @@ const POS = () => {
         setSelectedCustomer(null);
         setInvoiceConfig({ ...defaultInvoiceConfig });
         setModifyingSale(null, null);
+        setPaymentMethod('efectivo');
       }
       if (config?.print_receipt_auto) {
         setSaleReceipt(receiptData);
