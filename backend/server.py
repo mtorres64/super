@@ -3766,10 +3766,14 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
     }
     await db.sales.update_one({"id": sale_id}, {"$set": update_fields})
 
-    # Adjust cash session total
+    # Adjust cash session total and the corresponding movement record
     diff = total - old_total
     if diff != 0:
         await db.cash_sessions.update_one({"id": original_sale['session_id']}, {"$inc": {"monto_ventas": diff}})
+        await db.cash_movements.update_one(
+            {"venta_id": sale_id, "empresa_id": user.empresa_id, "tipo": MovementType.VENTA.value},
+            {"$inc": {"monto": diff}}
+        )
 
     updated = await db.sales.find_one({"id": sale_id})
     return Sale(**updated)
