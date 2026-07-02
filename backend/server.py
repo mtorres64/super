@@ -3778,7 +3778,7 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
 @api_router.get("/sales", response_model=List[Sale])
 async def get_sales(customer_id: Optional[str] = None, user: User = Depends(get_current_user)):
     query: dict = {"empresa_id": user.empresa_id}
-    if user.branch_id:
+    if user.branch_id and user.rol not in [UserRole.ADMIN, UserRole.SUPERVISOR]:
         query["branch_id"] = user.branch_id
     if user.rol == UserRole.CAJERO:
         query["cajero_id"] = user.id
@@ -4443,8 +4443,9 @@ async def get_cash_session_report(session_id: str, user: User = Depends(get_curr
 async def get_dashboard_stats(user: User = Depends(get_current_user)):
     is_admin_or_supervisor = user.rol in [UserRole.ADMIN, UserRole.SUPERVISOR]
 
-    # Today's sales
-    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    # Today's sales — use Argentina local time (UTC-3) so "today" matches the user's calendar day
+    AR_TZ = timezone(timedelta(hours=-3))
+    today = datetime.now(AR_TZ).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
     tomorrow = today + timedelta(days=1)
 
     sales_filter = {"empresa_id": user.empresa_id, "fecha": {"$gte": today, "$lt": tomorrow}}
