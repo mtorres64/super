@@ -148,21 +148,22 @@ const SalesReports = () => {
       filteredSales = filteredSales.filter(sale => sale.cajero_id === userFilter);
     }
 
-    const utcMidnight = (y, m, d) => new Date(Date.UTC(y, m, d));
+    // Argentina is UTC-3: midnight Argentina = 03:00 UTC of the same calendar day
+    const arMidnight = (y, m, d) => new Date(Date.UTC(y, m, d, 3, 0, 0));
 
     switch (dateFilter) {
       case 'today': {
-        const today = utcMidnight(now.getFullYear(), now.getMonth(), now.getDate());
+        const today = arMidnight(now.getFullYear(), now.getMonth(), now.getDate());
         filteredSales = filteredSales.filter(sale => new Date(sale.fecha) >= today);
         break;
       }
       case 'week': {
-        const weekAgo = utcMidnight(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+        const weekAgo = arMidnight(now.getFullYear(), now.getMonth(), now.getDate() - 7);
         filteredSales = filteredSales.filter(sale => new Date(sale.fecha) >= weekAgo);
         break;
       }
       case 'month': {
-        const monthAgo = utcMidnight(now.getFullYear(), now.getMonth() - 1, now.getDate());
+        const monthAgo = arMidnight(now.getFullYear(), now.getMonth() - 1, now.getDate());
         filteredSales = filteredSales.filter(sale => new Date(sale.fecha) >= monthAgo);
         break;
       }
@@ -170,8 +171,9 @@ const SalesReports = () => {
         if (customDateFrom && customDateTo) {
           const [fy, fm, fd] = customDateFrom.split('-').map(Number);
           const [ty, tm, td] = customDateTo.split('-').map(Number);
-          const fromDate = utcMidnight(fy, fm - 1, fd);
-          const toDate = new Date(Date.UTC(ty, tm - 1, td, 23, 59, 59, 999));
+          const fromDate = arMidnight(fy, fm - 1, fd);
+          // End of the selected Argentina day = start of next Argentina day - 1ms
+          const toDate = new Date(Date.UTC(ty, tm - 1, td + 1, 3, 0, 0) - 1);
           filteredSales = filteredSales.filter(sale => {
             const saleDate = new Date(sale.fecha);
             return saleDate >= fromDate && saleDate <= toDate;
