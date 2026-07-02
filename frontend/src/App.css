@@ -1246,6 +1246,27 @@ html.dark .invoice-section-btn:hover {
   padding: 0.5rem 1rem;
 }
 
+.cart-item-wrap {
+  position: relative;
+  overflow: hidden;
+}
+
+.cart-item-wrap:last-child .cart-item {
+  border-bottom: none;
+}
+
+.cart-item-inner {
+  transition: transform 0.22s ease-out;
+}
+
+.no-animations .cart-item-inner {
+  transition: none;
+}
+
+.cart-item-inner.discount-open {
+  transform: translateX(-58px);
+}
+
 .cart-item {
   display: flex;
   align-items: center;
@@ -1260,8 +1281,72 @@ html.dark .invoice-section-btn:hover {
   to   { opacity: 1; transform: scale(1)    translateX(0);    }
 }
 
-.cart-item:last-child {
-  border-bottom: none;
+.cart-item-discount-panel {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 58px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 4px;
+  background: var(--gray-50, #f9fafb);
+  border-left: 2px solid var(--primary, #16a34a);
+  transform: translateX(100%);
+  transition: transform 0.22s ease-out;
+}
+
+.no-animations .cart-item-discount-panel {
+  transition: none;
+}
+
+.cart-item-discount-panel.discount-open {
+  transform: translateX(0);
+}
+
+.cart-item-discount-panel input {
+  width: 32px;
+  text-align: right;
+  padding: 3px 4px;
+  border: 1px solid var(--gray-200);
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: var(--gray-800);
+  background: white;
+  font-family: inherit;
+}
+
+.cart-item-discount-panel input::-webkit-outer-spin-button,
+.cart-item-discount-panel input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.cart-item-discount-panel input[type=number] {
+  -moz-appearance: textfield;
+}
+
+.cart-item-discount-panel span {
+  font-size: 0.875rem;
+  color: var(--gray-500);
+}
+
+.item-discount-trigger {
+  font-size: 0.65rem !important;
+  font-weight: 600 !important;
+  width: 1.75rem !important;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.item-discount-trigger.has-discount {
+  background: #16a34a !important;
+  border-color: #16a34a !important;
+  color: white !important;
+  border-radius: 999px !important;
 }
 
 .cart-item-info {

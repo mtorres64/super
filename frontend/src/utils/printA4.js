@@ -25,12 +25,13 @@ export function printDocumentA4(sale, {
   const sym          = config.currency_symbol || '$';
   const isAfipFact   = sale.afip_estado === 'autorizado' && sale.tipo_comprobante;
   const letraComp    = TIPO_CBTE_LETRA[sale.tipo_comprobante] || '';
-  const totalReturns = returns.reduce((s, r) => s + r.total, 0);
-  const netSubtotal  = sale.subtotal - totalReturns;
-  const pct          = (config.payment_method_adjustments || {})[sale.metodo_pago] ?? 0;
-  const storedAdj    = sale.total - sale.subtotal - (sale.impuestos || 0);
-  const netAdj       = totalReturns > 0 ? (netSubtotal * pct / 100) : storedAdj;
-  const netTotal     = netSubtotal + (sale.impuestos || 0) + netAdj;
+  const totalReturns  = returns.reduce((s, r) => s + r.total, 0);
+  const netSubtotal   = sale.subtotal - totalReturns;
+  const pct           = (config.payment_method_adjustments || {})[sale.metodo_pago] ?? 0;
+  const saleDescuento = sale.descuento || 0;
+  const storedAdj     = sale.total - sale.subtotal - (sale.impuestos || 0);
+  const paymentAdj    = totalReturns > 0 ? (netSubtotal * pct / 100) : storedAdj + saleDescuento;
+  const netTotal      = netSubtotal + (sale.impuestos || 0) - saleDescuento + paymentAdj;
 
   const pdf    = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const W      = 210;
@@ -184,15 +185,18 @@ export function printDocumentA4(sale, {
   checkY(15);
   hline(y, [80, 80, 80]); y += 2;
 
+  const hasItemDiscounts = sale.items.some(it => it.descuento > 0);
+
   pdf.setFillColor(40, 40, 40);
   pdf.rect(margin, y, right - margin, 7, 'F');
   pdf.setTextColor(255, 255, 255);
   pdf.setFontSize(8);
   pdf.setFont('helvetica', 'bold');
-  pdf.text('PRODUCTO',   margin + 2,   y + 5);
-  pdf.text('CANT.',      margin + 100, y + 5, { align: 'right' });
-  pdf.text('P.UNIT.',    margin + 135, y + 5, { align: 'right' });
-  pdf.text('TOTAL',      right - 2,    y + 5, { align: 'right' });
+  pdf.text('PRODUCTO',  margin + 2,   y + 5);
+  pdf.text('CANT.',     margin + 97,  y + 5, { align: 'right' });
+  pdf.text('P.UNIT.',   margin + 128, y + 5, { align: 'right' });
+  if (hasItemDiscounts) pdf.text('DESC.', margin + 150, y + 5, { align: 'right' });
+  pdf.text('TOTAL',     right - 2,    y + 5, { align: 'right' });
   pdf.setTextColor(0, 0, 0);
   y += 8;
 
@@ -204,11 +208,18 @@ export function printDocumentA4(sale, {
       pdf.rect(margin, y - 1, right - margin, 7, 'F');
     }
     pdf.setFontSize(8);
-    const nameLines = pdf.splitTextToSize(item.nombre, 94);
+    const nameLines = pdf.splitTextToSize(item.nombre, 91);
     pdf.text(nameLines[0], margin + 2, y + 4);
-    pdf.text(String(item.cantidad),                           margin + 100, y + 4, { align: 'right' });
-    pdf.text(`${sym}${formatAmount(item.precio_unitario)}`,   margin + 135, y + 4, { align: 'right' });
-    pdf.text(`${sym}${formatAmount(item.subtotal)}`,          right - 2,    y + 4, { align: 'right' });
+    pdf.text(String(item.cantidad),                          margin + 97,  y + 4, { align: 'right' });
+    pdf.text(`${sym}${formatAmount(item.precio_unitario)}`,  margin + 128, y + 4, { align: 'right' });
+    if (hasItemDiscounts) {
+      if (item.descuento > 0) {
+        pdf.setTextColor(22, 163, 74);
+        pdf.text(`${item.descuento}%`, margin + 150, y + 4, { align: 'right' });
+        pdf.setTextColor(0, 0, 0);
+      }
+    }
+    pdf.text(`${sym}${formatAmount(item.subtotal)}`,         right - 2,    y + 4, { align: 'right' });
     y += 7;
   });
 
@@ -258,19 +269,27 @@ export function printDocumentA4(sale, {
     y += 6;
   };
 
-  totRow('Subtotal:', `${sym}${formatAmount(netSubtotal)}`);
+  totRow('Subtotal:', `${sym}${formatAmount(netSubtotal + (sale.descuento_items || 0))}`);
+
+  if ((sale.descuento_items || 0) > 0) {
+    totRow('Desc. por producto:', `-${sym}${formatAmount(sale.descuento_items)}`, false, [22, 163, 74]);
+  }
+
+  if (saleDescuento > 0) {
+    totRow('Desc. general:', `-${sym}${formatAmount(saleDescuento)}`, false, [22, 163, 74]);
+  }
 
   if (sale.impuestos > 0) {
     const pctStr = ((config.tax_rate ?? 0) * 100).toFixed(0);
     totRow(`Impuestos (${pctStr}%):`, `${sym}${formatAmount(sale.impuestos)}`);
   }
 
-  if (Math.abs(netAdj) >= 0.001) {
+  if (Math.abs(paymentAdj) >= 0.001) {
     const adjLabel = pct < 0
       ? `Descuento efectivo (${Math.abs(pct)}%):`
       : `Recargo ${sale.metodo_pago} (${pct}%):`;
-    totRow(adjLabel, `${netAdj < 0 ? '-' : '+'}${sym}${formatAmount(Math.abs(netAdj))}`,
-      false, netAdj < 0 ? [22, 163, 74] : [220, 38, 38]);
+    totRow(adjLabel, `${paymentAdj < 0 ? '-' : '+'}${sym}${formatAmount(Math.abs(paymentAdj))}`,
+      false, paymentAdj < 0 ? [22, 163, 74] : [220, 38, 38]);
   }
 
   pdf.setDrawColor(0);

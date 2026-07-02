@@ -409,10 +409,11 @@ const SalesReportsView = ({
                       {sale.items.length} productos
                     </span>
                   </td>
-                  <td className="hidden lg:table-cell text-right" data-label="Subtotal">${formatAmount(sale.subtotal)}</td>
+                  <td className="hidden lg:table-cell text-right" data-label="Subtotal">${formatAmount(sale.subtotal + (sale.descuento_items || 0))}</td>
                   <td className="hidden lg:table-cell text-right" data-label="Desc./Recargo">
                     {(() => {
-                      const adj = sale.total - sale.subtotal - (sale.impuestos || 0);
+                      const originalSubtotal = sale.subtotal + (sale.descuento_items || 0);
+                      const adj = sale.total - originalSubtotal - (sale.impuestos || 0);
                       if (Math.abs(adj) < 0.01) return <span className="text-gray-300">—</span>;
                       return (
                         <span className={adj < 0 ? 'text-green-600' : 'text-red-600'}>

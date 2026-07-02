@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { formatAmount } from '../../lib/utils';
 import BarcodeScanner from '../BarcodeScanner';
@@ -82,6 +82,7 @@ const POSView = ({
   getEffectivePrice,
   updateQuantity,
   removeFromCart,
+  updateItemDiscount,
   config,
   calculateSubtotal,
   calculateTax,
@@ -126,6 +127,8 @@ const POSView = ({
   showInvoicePanel,
   setShowInvoicePanel,
   calculateDiscount,
+  calculateItemDiscounts,
+  calculateOriginalSubtotal,
   calculateImpuestosExtra,
   tieneFacturacion = true,
   tieneClientes = true,
@@ -137,6 +140,17 @@ const POSView = ({
   cancelModification,
 }) => {
   const [slideDir, setSlideDir] = useState('right');
+  const [openDiscountItemId, setOpenDiscountItemId] = useState(null);
+  const discountBlurTimer = useRef(null);
+
+  useEffect(() => {
+    if (openDiscountItemId === null) return;
+    const timer = setTimeout(() => {
+      document.querySelector(`[data-discount-input="${openDiscountItemId}"]`)?.focus({ preventScroll: true });
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [openDiscountItemId]);
+
   const handleTabSwitch = (tabId) => {
     const oldIdx = tabs.findIndex(t => t.id === activeTabId);
     const newIdx = tabs.findIndex(t => t.id === tabId);
@@ -691,64 +705,125 @@ const POSView = ({
                 </div>
               </div>
             ) : (
-              cart.map(item => (
-                <div key={item.id} className="cart-item">
-                  <div className="cart-item-info">
-                    <div className="cart-item-name">{item.nombre}</div>
-                    <div className="cart-item-price">
-                      {config?.currency_symbol || '$'}{formatAmount(getEffectivePrice(item))}{item.tipo === 'por_peso' ? '/kg' : ''} x {item.tipo === 'por_peso' ? `${item.quantity}kg` : item.quantity} =
-                      {config?.currency_symbol || '$'}{formatAmount(getEffectivePrice(item) * item.quantity)}
+              cart.map(item => {
+                const discountOpen = openDiscountItemId === item.id;
+                return (
+                  <div key={item.id} className="cart-item-wrap">
+                    <div className={`cart-item-inner${discountOpen ? ' discount-open' : ''}`}>
+                      <div className="cart-item">
+                        <div className="cart-item-info">
+                          <div className="cart-item-name">{item.nombre}</div>
+                          <div className="cart-item-price">
+                            {(() => {
+                              const originalPrice = item.tipo === 'por_peso' && item.precio_por_peso ? item.precio_por_peso : item.precio;
+                              const originalTotal = originalPrice * item.quantity;
+                              const effectiveTotal = getEffectivePrice(item) * item.quantity;
+                              const sym = config?.currency_symbol || '$';
+                              return (
+                                <>
+                                  {sym}{formatAmount(originalPrice)}{item.tipo === 'por_peso' ? '/kg' : ''} x {item.tipo === 'por_peso' ? `${item.quantity}kg` : item.quantity} ={' '}
+                                  {item.descuento > 0 ? (
+                                    <>
+                                      <span style={{ textDecoration: 'line-through', opacity: 0.5 }}>{sym}{formatAmount(originalTotal)}</span>
+                                      {' '}
+                                      <span style={{ color: '#16a34a', fontSize: '0.8em', fontWeight: 600 }}>{sym}{formatAmount(effectiveTotal)}</span>
+                                    </>
+                                  ) : (
+                                    <>{sym}{formatAmount(originalTotal)}</>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </div>
+                        </div>
+
+                        <div className="cart-item-controls">
+                          <button
+                            onClick={() => {
+                              setWeightInputDraft(prev => { const next = { ...prev }; delete next[item.id]; return next; });
+                              updateQuantity(item.id, parseFloat((item.quantity - (item.tipo === 'por_peso' ? 0.1 : 1)).toFixed(3)));
+                            }}
+                            className="quantity-btn"
+                          >
+                            <Minus className="w-4 h-4" />
+                          </button>
+
+                          <input
+                            type="number"
+                            min={item.tipo === 'por_peso' ? '0.001' : '1'}
+                            step={item.tipo === 'por_peso' ? '0.001' : '1'}
+                            value={weightInputDraft[item.id] !== undefined ? weightInputDraft[item.id] : item.quantity}
+                            onChange={(e) => {
+                              if (item.tipo === 'por_peso') {
+                                setWeightInputDraft(prev => ({ ...prev, [item.id]: e.target.value }));
+                              } else {
+                                updateQuantity(item.id, parseInt(e.target.value) || 1);
+                              }
+                            }}
+                            onBlur={() => commitWeightDraft(item.id)}
+                            onClick={(e) => e.target.select()}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.target.blur(); } }}
+                            className="quantity-input"
+                          />
+
+                          <button
+                            onClick={() => {
+                              setWeightInputDraft(prev => { const next = { ...prev }; delete next[item.id]; return next; });
+                              updateQuantity(item.id, parseFloat((item.quantity + (item.tipo === 'por_peso' ? 0.1 : 1)).toFixed(3)));
+                            }}
+                            className="quantity-btn"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            onClick={() => removeFromCart(item.id)}
+                            className="quantity-btn text-red-600 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            className={`quantity-btn item-discount-trigger${item.descuento > 0 ? ' has-discount' : ''}`}
+                            onClick={() => {
+                              clearTimeout(discountBlurTimer.current);
+                              setOpenDiscountItemId(prev => prev === item.id ? null : item.id);
+                            }}
+                            title="Descuento por ítem"
+                          >
+                            {item.descuento > 0 ? `${item.descuento}%` : '%'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className={`cart-item-discount-panel${discountOpen ? ' discount-open' : ''}`}>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={item.descuento || ''}
+                        placeholder="0"
+                        data-discount-input={item.id}
+                        onChange={e => {
+                          const val = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0));
+                          updateItemDiscount(item.id, val);
+                        }}
+                        onBlur={() => { discountBlurTimer.current = setTimeout(() => setOpenDiscountItemId(null), 150); }}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const val = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0));
+                            updateItemDiscount(item.id, val);
+                            setOpenDiscountItemId(null);
+                          }
+                        }}
+                      />
+                      <span>%</span>
                     </div>
                   </div>
-
-                  <div className="cart-item-controls">
-                    <button
-                      onClick={() => {
-                        setWeightInputDraft(prev => { const next = { ...prev }; delete next[item.id]; return next; });
-                        updateQuantity(item.id, parseFloat((item.quantity - (item.tipo === 'por_peso' ? 0.1 : 1)).toFixed(3)));
-                      }}
-                      className="quantity-btn"
-                    >
-                      <Minus className="w-4 h-4" />
-                    </button>
-
-                    <input
-                      type="number"
-                      min={item.tipo === 'por_peso' ? '0.001' : '1'}
-                      step={item.tipo === 'por_peso' ? '0.001' : '1'}
-                      value={weightInputDraft[item.id] !== undefined ? weightInputDraft[item.id] : item.quantity}
-                      onChange={(e) => {
-                        if (item.tipo === 'por_peso') {
-                          setWeightInputDraft(prev => ({ ...prev, [item.id]: e.target.value }));
-                        } else {
-                          updateQuantity(item.id, parseInt(e.target.value) || 1);
-                        }
-                      }}
-                      onBlur={() => commitWeightDraft(item.id)}
-                      onClick={(e) => e.target.select()}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.target.blur(); } }}
-                      className="quantity-input"
-                    />
-
-                    <button
-                      onClick={() => {
-                        setWeightInputDraft(prev => { const next = { ...prev }; delete next[item.id]; return next; });
-                        updateQuantity(item.id, parseFloat((item.quantity + (item.tipo === 'por_peso' ? 0.1 : 1)).toFixed(3)));
-                      }}
-                      className="quantity-btn"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-
-                    <button
-                      onClick={() => removeFromCart(item.id)}
-                      className="quantity-btn text-red-600 hover:bg-red-50"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
 
@@ -757,8 +832,14 @@ const POSView = ({
               <div className="cart-total">
                 <div className="total-row">
                   <span className="total-label">Subtotal:</span>
-                  <span className="total-value">{config?.currency_symbol || '$'}{formatAmount(calculateSubtotal())}</span>
+                  <span className="total-value">{config?.currency_symbol || '$'}{formatAmount(calculateOriginalSubtotal())}</span>
                 </div>
+                {calculateItemDiscounts() > 0 && (
+                  <div className="total-row" style={{ color: '#16a34a' }}>
+                    <span className="total-label">Desc. por producto:</span>
+                    <span className="total-value">-{config?.currency_symbol || '$'}{formatAmount(calculateItemDiscounts())}</span>
+                  </div>
+                )}
                 {(config?.tax_rate ?? 0) > 0 && (
                 <div className="total-row">
                   <span className="total-label">Impuestos ({((config?.tax_rate ?? 0.12) * 100).toFixed(1)}%):</span>
@@ -782,7 +863,7 @@ const POSView = ({
                 })()}
                 {!tieneFacturacion && (
                   <div className="total-row">
-                    <span className="total-label">Descuento:</span>
+                    <span className="total-label">Desc. general:</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
                       <input
                         type="number"

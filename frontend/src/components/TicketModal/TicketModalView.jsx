@@ -20,12 +20,13 @@ const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, t
   const sym = config?.currency_symbol || '$';
   const handlePrint = onPrint || (() => window.print());
 
-  const totalReturns = returns.reduce((s, r) => s + r.total, 0);
-  const netSubtotal  = sale.subtotal - totalReturns;
-  const pct          = (config?.payment_method_adjustments || {})[sale.metodo_pago] ?? 0;
-  const storedAdj    = sale.total - sale.subtotal - (sale.impuestos || 0);
-  const netAdj       = totalReturns > 0 ? (netSubtotal * pct / 100) : storedAdj;
-  const netTotal     = netSubtotal + (sale.impuestos || 0) + netAdj;
+  const totalReturns  = returns.reduce((s, r) => s + r.total, 0);
+  const netSubtotal   = sale.subtotal - totalReturns;
+  const pct           = (config?.payment_method_adjustments || {})[sale.metodo_pago] ?? 0;
+  const saleDescuento = sale.descuento || 0;
+  const storedAdj     = sale.total - sale.subtotal - (sale.impuestos || 0);
+  const paymentAdj    = totalReturns > 0 ? (netSubtotal * pct / 100) : storedAdj + saleDescuento;
+  const netTotal      = netSubtotal + (sale.impuestos || 0) - saleDescuento + paymentAdj;
 
   const isAfipFactura  = sale.afip_estado === 'autorizado' && sale.tipo_comprobante;
   const letraComp      = TIPO_CBTE_LETRA[sale.tipo_comprobante] || '';
@@ -240,22 +241,34 @@ const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, t
           {/* ── Totales ── */}
           <div className="ticket-total-row">
             <span>Subtotal:</span>
-            <span>{sym}{formatAmount(netSubtotal)}</span>
+            <span>{sym}{formatAmount(netSubtotal + (sale.descuento_items || 0))}</span>
           </div>
+          {sale.descuento_items > 0 && (
+            <div className="ticket-total-row" style={{ color: '#16a34a' }}>
+              <span>Desc. por producto:</span>
+              <span>-{sym}{formatAmount(sale.descuento_items)}</span>
+            </div>
+          )}
+          {saleDescuento > 0 && (
+            <div className="ticket-total-row" style={{ color: '#16a34a' }}>
+              <span>Desc. general:</span>
+              <span>-{sym}{formatAmount(saleDescuento)}</span>
+            </div>
+          )}
           {sale.impuestos > 0 && (
             <div className="ticket-total-row">
               <span>Impuestos ({((config?.tax_rate ?? 0) * 100).toFixed(0)}%):</span>
               <span>{sym}{formatAmount(sale.impuestos)}</span>
             </div>
           )}
-          {Math.abs(netAdj) >= 0.001 && (() => {
+          {Math.abs(paymentAdj) >= 0.001 && (() => {
             const label = pct < 0
               ? `Descuento efectivo (${Math.abs(pct)}%):`
               : `Recargo ${sale.metodo_pago} (${pct}%):`;
             return (
-              <div className="ticket-total-row" style={{ color: netAdj < 0 ? '#16a34a' : '#dc2626' }}>
+              <div className="ticket-total-row" style={{ color: paymentAdj < 0 ? '#16a34a' : '#dc2626' }}>
                 <span>{label}</span>
-                <span>{netAdj < 0 ? '-' : '+'}{sym}{formatAmount(Math.abs(netAdj))}</span>
+                <span>{paymentAdj < 0 ? '-' : '+'}{sym}{formatAmount(Math.abs(paymentAdj))}</span>
               </div>
             );
           })()}

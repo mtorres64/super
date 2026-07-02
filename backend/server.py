@@ -867,6 +867,7 @@ class SaleItem(BaseModel):
     precio_unitario: float
     subtotal: Optional[float] = None
     total: Optional[float] = None
+    descuento: Optional[float] = 0.0
 
     @property
     def total_item(self):
@@ -896,6 +897,7 @@ class Sale(BaseModel):
     cuit_receptor: Optional[str] = None
     cliente_id: Optional[str] = None
     descuento: float = 0.0
+    descuento_items: float = 0.0
     impuestos_extra_total: float = 0.0
     condicion_iva_receptor: Optional[str] = None
     observaciones_comprobante: Optional[str] = None
@@ -908,6 +910,7 @@ class SaleCreate(BaseModel):
     cuit_receptor: Optional[str] = None         # requerido si tipo_comprobante = 1
     cliente_id: Optional[str] = None
     descuento: Optional[float] = 0.0
+    descuento_items: Optional[float] = 0.0
     impuestos_extra_total: Optional[float] = 0.0
     condicion_iva_receptor: Optional[str] = None
     observaciones_comprobante: Optional[str] = None
@@ -3497,7 +3500,8 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
             nombre=product_nombre,
             cantidad=item.cantidad,
             precio_unitario=precio_unitario,
-            subtotal=subtotal
+            subtotal=subtotal,
+            descuento=item.descuento or 0.0,
         ))
         total_amount += subtotal
 
@@ -3539,6 +3543,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
         numero_factura=numero_factura,
         cliente_id=sale_data.cliente_id,
         descuento=descuento,
+        descuento_items=sale_data.descuento_items or 0.0,
         impuestos_extra_total=impuestos_extra_total,
         condicion_iva_receptor=sale_data.condicion_iva_receptor,
         observaciones_comprobante=sale_data.observaciones_comprobante,
@@ -3730,7 +3735,7 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
         if precio_unitario is None:
             raise HTTPException(status_code=400, detail=f"No se pudo determinar el precio para {product_nombre or item.producto_id}")
         subtotal_item = item.cantidad * precio_unitario
-        validated_items.append(SaleItem(producto_id=item.producto_id, nombre=product_nombre, cantidad=item.cantidad, precio_unitario=precio_unitario, subtotal=subtotal_item))
+        validated_items.append(SaleItem(producto_id=item.producto_id, nombre=product_nombre, cantidad=item.cantidad, precio_unitario=precio_unitario, subtotal=subtotal_item, descuento=item.descuento or 0.0))
         total_amount += subtotal_item
 
     # Recalculate totals
@@ -3773,6 +3778,8 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
 @api_router.get("/sales", response_model=List[Sale])
 async def get_sales(customer_id: Optional[str] = None, user: User = Depends(get_current_user)):
     query: dict = {"empresa_id": user.empresa_id}
+    if user.branch_id:
+        query["branch_id"] = user.branch_id
     if user.rol == UserRole.CAJERO:
         query["cajero_id"] = user.id
     if customer_id:

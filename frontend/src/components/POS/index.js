@@ -104,6 +104,7 @@ const POS = () => {
         cantidad: item.quantity,
         precio_unitario: getEffectivePrice(item),
         subtotal: getEffectivePrice(item) * item.quantity,
+        ...(item.descuento > 0 && { descuento: item.descuento }),
       })),
       subtotal: sub,
       impuestos: tax,
@@ -612,14 +613,22 @@ const POS = () => {
   };
 
   const getEffectivePrice = (item) => {
+    let price;
     if (item.tipo === 'por_peso' && item.precio_por_peso) {
-      return item.precio_por_peso;
+      price = item.precio_por_peso;
+    } else {
+      price = item.precio;
     }
-    return item.precio;
+    if (item.descuento) price = price * (1 - item.descuento / 100);
+    return price;
   };
 
   const removeFromCart = (productId) => {
     setCart(cart.filter(item => item.id !== productId));
+  };
+
+  const updateItemDiscount = (itemId, descuento) => {
+    setCart(cart.map(item => item.id === itemId ? { ...item, descuento } : item));
   };
 
   const clearCart = () => {
@@ -629,6 +638,21 @@ const POS = () => {
 
   const calculateSubtotal = () => {
     return cart.reduce((sum, item) => sum + (getEffectivePrice(item) * item.quantity), 0);
+  };
+
+  const calculateOriginalSubtotal = () => {
+    return cart.reduce((sum, item) => {
+      const originalPrice = item.tipo === 'por_peso' && item.precio_por_peso ? item.precio_por_peso : item.precio;
+      return sum + originalPrice * item.quantity;
+    }, 0);
+  };
+
+  const calculateItemDiscounts = () => {
+    return cart.reduce((sum, item) => {
+      if (!item.descuento) return sum;
+      const originalPrice = item.tipo === 'por_peso' && item.precio_por_peso ? item.precio_por_peso : item.precio;
+      return sum + (originalPrice - getEffectivePrice(item)) * item.quantity;
+    }, 0);
   };
 
   const calculateTax = () => {
@@ -684,13 +708,15 @@ const POS = () => {
           producto_id: item.product_id || item.id,
           cantidad: item.quantity,
           precio_unitario: getEffectivePrice(item),
-          subtotal: getEffectivePrice(item) * item.quantity
+          subtotal: getEffectivePrice(item) * item.quantity,
+          ...(item.descuento > 0 && { descuento: item.descuento }),
         })),
         metodo_pago: paymentMethod,
         ...(selectedCustomer && selectedCustomer.id && { cliente_id: selectedCustomer.id }),
         ...(tipoAfip && { tipo_comprobante: tipoAfip }),
         ...(invoiceConfig.cuit_receptor && { cuit_receptor: invoiceConfig.cuit_receptor }),
         ...(descuento > 0 && { descuento }),
+        ...(calculateItemDiscounts() > 0 && { descuento_items: calculateItemDiscounts() }),
         ...(impuestosExtraTotal > 0 && { impuestos_extra_total: impuestosExtraTotal }),
         ...(invoiceConfig.condicion_iva_receptor !== 'consumidor_final' && { condicion_iva_receptor: invoiceConfig.condicion_iva_receptor }),
         ...(invoiceConfig.observaciones && { observaciones_comprobante: invoiceConfig.observaciones }),
@@ -990,6 +1016,7 @@ const POS = () => {
       getEffectivePrice={getEffectivePrice}
       updateQuantity={updateQuantity}
       removeFromCart={removeFromCart}
+      updateItemDiscount={updateItemDiscount}
       config={config}
       calculateSubtotal={calculateSubtotal}
       calculateTax={calculateTax}
@@ -1034,6 +1061,8 @@ const POS = () => {
       showInvoicePanel={showInvoicePanel}
       setShowInvoicePanel={setShowInvoicePanel}
       calculateDiscount={calculateDiscount}
+      calculateItemDiscounts={calculateItemDiscounts}
+      calculateOriginalSubtotal={calculateOriginalSubtotal}
       calculateImpuestosExtra={calculateImpuestosExtra}
       tieneFacturacion={tieneFacturacion}
       tieneClientes={tieneClientes}
