@@ -24,8 +24,8 @@ const CustomerPickerModal = ({ onSelect, onClose, closing }) => {
       setResults([]);
       return;
     }
-    if (searchTerm.length >= 2) {
-      searchTimerRef.current = setTimeout(() => doSearch(searchTerm), 300);
+    if (searchTerm.trim().length >= 2) {
+      searchTimerRef.current = setTimeout(() => doSearch(searchTerm.trim()), 300);
     }
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
   }, [searchTerm]);
@@ -90,7 +90,7 @@ const CustomerPickerModal = ({ onSelect, onClose, closing }) => {
               placeholder="Buscar por nombre, documento, email, teléfono..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && searchTerm.length >= 2) doSearch(searchTerm); }}
+              onKeyDown={e => { if (e.key === 'Enter' && searchTerm.trim().length >= 2) doSearch(searchTerm.trim()); }}
             />
             {searching && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2">

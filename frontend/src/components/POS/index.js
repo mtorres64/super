@@ -210,12 +210,13 @@ const POS = () => {
   // Auto-search while typing (from 2nd character), with debounce
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    if (searchTerm.length === 0) {
+    const trimmed = searchTerm.trim();
+    if (trimmed.length === 0) {
       setDebouncedSearch('');
       setCurrentPage(1);
-    } else if (searchTerm.length >= 2) {
+    } else if (trimmed.length >= 2) {
       searchTimerRef.current = setTimeout(() => {
-        setDebouncedSearch(searchTerm);
+        setDebouncedSearch(trimmed);
         setCurrentPage(1);
       }, 350);
     }
@@ -256,7 +257,7 @@ const POS = () => {
       setIsAutoScanning(false);
       return;
     }
-    setDebouncedSearch(searchTerm);
+    setDebouncedSearch(searchTerm.trim());
     setCurrentPage(1);
   };
 
@@ -927,6 +928,14 @@ const POS = () => {
 
       const targetTabHasItems = activeTab.cart.length > 0;
 
+      const saleInvoiceConfig = {
+        ...defaultInvoiceConfig,
+        ...(sale.descuento > 0 && { descuento_tipo: 'monto', descuento_valor: sale.descuento }),
+        ...(sale.condicion_iva_receptor && { condicion_iva_receptor: sale.condicion_iva_receptor }),
+        ...(sale.cuit_receptor && { cuit_receptor: sale.cuit_receptor }),
+        ...(sale.observaciones_comprobante && { observaciones: sale.observaciones_comprobante }),
+      };
+
       if (targetTabHasItems) {
         // Open in a new tab
         const newId = nextTabId;
@@ -938,7 +947,7 @@ const POS = () => {
             paymentMethod: sale.metodo_pago || 'efectivo',
             colorIndex: prev.length % TAB_COLORS.length,
             customer: null,
-            invoiceConfig: { ...defaultInvoiceConfig },
+            invoiceConfig: saleInvoiceConfig,
             modifyingSaleId: sale.id,
             modifyingInvoiceNum: sale.numero_factura,
             createdForModification: true,
@@ -950,6 +959,7 @@ const POS = () => {
         // Load in current tab
         setCart(cartItems);
         setPaymentMethod(sale.metodo_pago || 'efectivo');
+        setInvoiceConfig(saleInvoiceConfig);
         setModifyingSale(sale.id, sale.numero_factura);
       }
 

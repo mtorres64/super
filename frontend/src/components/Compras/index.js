@@ -729,13 +729,13 @@ const Compras = () => {
   // ── Filters ───────────────────────────────────────────────────────────────────
 
   const filteredCompras = compras.filter(c =>
-    c.numero_factura.toLowerCase().includes(searchCompra.toLowerCase()) ||
-    (c.proveedor_nombre && c.proveedor_nombre.toLowerCase().includes(searchCompra.toLowerCase()))
+    c.numero_factura.toLowerCase().includes(searchCompra.trim().toLowerCase()) ||
+    (c.proveedor_nombre && c.proveedor_nombre.toLowerCase().includes(searchCompra.trim().toLowerCase()))
   );
 
   const filteredProveedores = proveedores.filter(p =>
-    p.nombre.toLowerCase().includes(searchProveedor.toLowerCase()) ||
-    (p.ruc_cuit && p.ruc_cuit.includes(searchProveedor))
+    p.nombre.toLowerCase().includes(searchProveedor.trim().toLowerCase()) ||
+    (p.ruc_cuit && p.ruc_cuit.includes(searchProveedor.trim()))
   );
 
   const { sortedItems: sortedCompras, sortConfig: comprasSortConfig, requestSort: comprasRequestSort } = useSortableData(filteredCompras, { key: 'created_at', direction: 'desc' }, 'desc');

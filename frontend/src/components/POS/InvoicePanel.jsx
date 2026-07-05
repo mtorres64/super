@@ -79,7 +79,7 @@ const InvoicePanel = ({
     searchTimerRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await axios.get(`${API}/customers`, { params: { search: searchTerm, per_page: 10, page: 1 } });
+        const res = await axios.get(`${API}/customers`, { params: { search: searchTerm.trim(), per_page: 10, page: 1 } });
         setSearchResults(res.data.items || []);
       } catch { setSearchResults([]); }
       finally { setSearching(false); }
@@ -351,6 +351,7 @@ const InvoicePanel = ({
                   min="0"
                   max={discountType === 'porcentaje' ? 100 : undefined}
                   step="0.01"
+                  autoComplete="off"
                   className="form-input form-input-sm flex-1"
                   value={discountVal || ''}
                   onChange={e => setInvoiceConfig(prev => ({ ...prev, descuento_valor: parseFloat(e.target.value) || 0 }))}

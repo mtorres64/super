@@ -315,8 +315,8 @@ const ClientesListView = ({ clientes, onSelect, onRefresh, onCreateCliente }) =>
   const filtered = clientes
     .filter(c => {
       const matchSearch = !search ||
-        c.nombre.toLowerCase().includes(search.toLowerCase()) ||
-        (c.admin_email || '').toLowerCase().includes(search.toLowerCase());
+        c.nombre.toLowerCase().includes(search.trim().toLowerCase()) ||
+        (c.admin_email || '').toLowerCase().includes(search.trim().toLowerCase());
       const status = c.suscripcion?.status || 'sin_suscripcion';
       const matchStatus = filterStatus === 'all' || status === filterStatus;
       return matchSearch && matchStatus;
@@ -1508,8 +1508,8 @@ const CobrosView = ({ token }) => {
 
   const preFiltered = pagos.filter(p => {
     const matchSearch = !search ||
-      (p.empresa_nombre || '').toLowerCase().includes(search.toLowerCase()) ||
-      (p.concepto || '').toLowerCase().includes(search.toLowerCase());
+      (p.empresa_nombre || '').toLowerCase().includes(search.trim().toLowerCase()) ||
+      (p.concepto || '').toLowerCase().includes(search.trim().toLowerCase());
     const matchMes = !filterMes || (p.fecha && new Date(p.fecha).toISOString().startsWith(filterMes));
     return matchSearch && matchMes;
   });

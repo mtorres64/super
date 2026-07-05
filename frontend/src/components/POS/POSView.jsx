@@ -869,6 +869,7 @@ const POSView = ({
                         type="number"
                         min="0"
                         max="100"
+                        autoComplete="off"
                         value={invoiceConfig?.descuento_valor || ''}
                         placeholder="0"
                         onChange={e => {

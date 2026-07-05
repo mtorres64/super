@@ -75,9 +75,9 @@ const CustomerManagement = () => {
     if (searchTerm.length === 0) {
       setDebouncedSearch('');
       setCurrentPage(1);
-    } else if (searchTerm.length >= 2) {
+    } else if (searchTerm.trim().length >= 2) {
       searchTimerRef.current = setTimeout(() => {
-        setDebouncedSearch(searchTerm);
+        setDebouncedSearch(searchTerm.trim());
         setCurrentPage(1);
       }, 350);
     }
@@ -86,7 +86,7 @@ const CustomerManagement = () => {
 
   const commitSearch = () => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    setDebouncedSearch(searchTerm);
+    setDebouncedSearch(searchTerm.trim());
     setCurrentPage(1);
   };
 
