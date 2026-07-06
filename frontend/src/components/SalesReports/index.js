@@ -42,6 +42,7 @@ const SalesReports = () => {
   const [page, setPage] = useState(1);
   const [customDateFrom, setCustomDateFrom] = useState('');
   const [customDateTo, setCustomDateTo] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [returnModal, setReturnModal] = useState(null);
   const [reprintSale, setReprintSale] = useState(null);
   const [reprintReturns, setReprintReturns] = useState([]);
@@ -182,6 +183,16 @@ const SalesReports = () => {
         break;
       default:
         break;
+    }
+
+    if (searchQuery.trim()) {
+      const terms = searchQuery.trim().toLowerCase().split(/[\s,;]+/).filter(Boolean);
+      filteredSales = filteredSales.filter(sale =>
+        terms.every(term =>
+          sale.numero_factura?.toLowerCase().includes(term) ||
+          sale.items?.some(item => item.nombre?.toLowerCase().includes(term))
+        )
+      );
     }
 
     return filteredSales.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
@@ -575,6 +586,8 @@ const SalesReports = () => {
       allCreditNotes={allCreditNotes}
       saleCreditNotesMap={saleCreditNotesMap}
       TIPO_CBTE_NOMBRES={TIPO_CBTE_NOMBRES}
+      searchQuery={searchQuery}
+      onSetSearchQuery={(val) => { setSearchQuery(val); setPage(1); }}
       onSetDateFilter={(val) => { setDateFilter(val); setPage(1); }}
       onSetBranchFilter={(val) => { setBranchFilter(val); setPage(1); }}
       onSetUserFilter={(val) => { setUserFilter(val); setPage(1); }}
