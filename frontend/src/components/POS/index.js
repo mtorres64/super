@@ -928,9 +928,12 @@ const POS = () => {
 
       const targetTabHasItems = activeTab.cart.length > 0;
 
+      const descuentoPct = (sale.descuento > 0 && sale.subtotal > 0)
+        ? Math.round(sale.descuento / sale.subtotal * 10000) / 100
+        : 0;
       const saleInvoiceConfig = {
         ...defaultInvoiceConfig,
-        ...(sale.descuento > 0 && { descuento_tipo: 'monto', descuento_valor: sale.descuento }),
+        ...(descuentoPct > 0 && { descuento_tipo: 'porcentaje', descuento_valor: descuentoPct }),
         ...(sale.condicion_iva_receptor && { condicion_iva_receptor: sale.condicion_iva_receptor }),
         ...(sale.cuit_receptor && { cuit_receptor: sale.cuit_receptor }),
         ...(sale.observaciones_comprobante && { observaciones: sale.observaciones_comprobante }),
