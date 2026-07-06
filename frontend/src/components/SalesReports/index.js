@@ -66,7 +66,7 @@ const SalesReports = () => {
   const fetchSales = async () => {
     try {
       const [salesRes, returnsRes, creditNotesRes] = await Promise.all([
-        axios.get(`${API}/sales`),
+        axios.get(`${API}/sales`, { params: { for_report: true } }),
         axios.get(`${API}/returns`),
         axios.get(`${API}/credit-notes`),
       ]);

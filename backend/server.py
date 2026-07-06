@@ -3780,7 +3780,7 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
 
 
 @api_router.get("/sales", response_model=List[Sale])
-async def get_sales(customer_id: Optional[str] = None, user: User = Depends(get_current_user)):
+async def get_sales(customer_id: Optional[str] = None, for_report: bool = False, user: User = Depends(get_current_user)):
     query: dict = {"empresa_id": user.empresa_id}
     if user.branch_id and user.rol not in [UserRole.ADMIN, UserRole.SUPERVISOR]:
         query["branch_id"] = user.branch_id
@@ -3788,7 +3788,10 @@ async def get_sales(customer_id: Optional[str] = None, user: User = Depends(get_
         query["cajero_id"] = user.id
     if customer_id:
         query["cliente_id"] = customer_id
-    limit = 500 if customer_id else (100 if user.rol == UserRole.CAJERO else 1000)
+    if for_report and user.rol in [UserRole.ADMIN, UserRole.SUPERVISOR]:
+        limit = None
+    else:
+        limit = 500 if customer_id else (100 if user.rol == UserRole.CAJERO else 1000)
     sales = await db.sales.find(query).sort("fecha", -1).to_list(limit)
 
     result = []
