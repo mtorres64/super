@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   Building2,
   Plus,
@@ -26,6 +26,36 @@ import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
 import { getCategoryIcon } from '../../utils/categoryIcons';
 import BranchBulkEditModal from './BranchBulkEditModal';
+
+function NumericInput({ value, onCommit, ...props }) {
+  const [localValue, setLocalValue] = useState(value ?? '');
+  const focused = useRef(false);
+
+  useEffect(() => {
+    if (!focused.current) {
+      setLocalValue(value ?? '');
+    }
+  }, [value]);
+
+  return (
+    <input
+      {...props}
+      type="number"
+      value={localValue}
+      onChange={(e) => setLocalValue(e.target.value)}
+      onFocus={() => { focused.current = true; }}
+      onBlur={(e) => {
+        focused.current = false;
+        const parsed = parseFloat(e.target.value);
+        if (!isNaN(parsed)) {
+          onCommit(parsed);
+        } else {
+          setLocalValue(value ?? '');
+        }
+      }}
+    />
+  );
+}
 
 const BranchManagementView = ({
   loading,
@@ -614,68 +644,54 @@ const BranchManagementView = ({
                         })()}
                       </td>
                       <td data-label="Precio Costo" className={`text-center transition-colors ${isSelected ? 'bg-yellow-100' : 'bg-yellow-50 group-hover:bg-[#fefbd6]'}`}>
-                        <input
-                          type="number"
+                        <NumericInput
                           step="0.01"
                           min="0"
                           className={`w-24 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.costo_calculado !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}`}
                           value={changes.costo_calculado != null ? changes.costo_calculado : (product.costo_sucursal ?? '')}
                           placeholder="—"
-                          onChange={(e) => {
-                            const costo = parseFloat(e.target.value);
-                            if (!isNaN(costo)) onPendingCostoChange(product.product_id, costo, product.margen_sucursal);
-                          }}
+                          onCommit={(costo) => onPendingCostoChange(product.product_id, costo, product.margen_sucursal)}
                         />
                       </td>
                       <td data-label="Margen %" className={`text-center transition-colors ${isSelected ? 'bg-yellow-100' : 'bg-yellow-50 group-hover:bg-[#fefbd6]'}`}>
                         <div className="flex items-center justify-center gap-1">
-                          <input
-                            type="number"
+                          <NumericInput
                             step="0.01"
                             className={`w-20 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.margen !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}`}
                             value={currentMargen}
-                            onChange={(e) => {
-                              const parsed = parseFloat(e.target.value);
-                              if (!isNaN(parsed)) onPendingMargenChange(product.product_id, parsed, product.costo_sucursal, product.precio_sucursal, product.precio_global);
-                            }}
+                            onCommit={(parsed) => onPendingMargenChange(product.product_id, parsed, product.costo_sucursal, product.precio_sucursal, product.precio_global)}
                           />
                           <span className="text-sm text-gray-500">%</span>
                         </div>
                       </td>
                       <td data-label="Precio Sucursal" className={`text-center transition-colors ${isSelected ? 'bg-yellow-100' : 'bg-yellow-50 group-hover:bg-[#fefbd6]'}`}>
-                        <input
-                          type="number"
+                        <NumericInput
                           step="0.01"
                           min="0"
                           className={`w-28 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.precio !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}`}
                           value={currentPrice}
-                          onChange={(e) => {
-                            const parsed = parseFloat(e.target.value);
-                            if (!isNaN(parsed)) onPendingPrecioChange(product.product_id, parsed, product.costo_sucursal, product.margen_sucursal);
-                          }}
+                          onCommit={(parsed) => onPendingPrecioChange(product.product_id, parsed, product.costo_sucursal, product.margen_sucursal)}
                           placeholder={product.precio_global?.toFixed(2)}
                         />
                         {product.tipo === 'por_peso' && (
                           <div className="mt-1">
-                            <input
-                              type="number"
+                            <NumericInput
                               step="0.01"
                               min="0"
                               className="w-28 text-center border border-gray-200 rounded px-2 py-1 text-xs bg-white"
                               value={changes.precio_por_peso !== undefined ? changes.precio_por_peso : (product.precio_por_peso_sucursal ?? '')}
-                              onChange={(e) => { const p = parseFloat(e.target.value); if (!isNaN(p)) onProductFieldChange(product.product_id, 'precio_por_peso', p); }}
+                              onCommit={(p) => onProductFieldChange(product.product_id, 'precio_por_peso', p)}
                               placeholder="precio/kg"
                             />
                           </div>
                         )}
                       </td>
                       <td data-label="Stock" className={`text-center transition-colors ${isSelected ? 'bg-yellow-100' : 'bg-yellow-50 group-hover:bg-[#fefbd6]'}`}>
-                        <input
-                          type="number"
+                        <NumericInput
                           min="0"
                           className={`w-20 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.stock !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}`}
                           value={currentStock}
-                          onChange={(e) => { const s = parseInt(e.target.value); if (!isNaN(s)) onProductFieldChange(product.product_id, 'stock', s); }}
+                          onCommit={(s) => onProductFieldChange(product.product_id, 'stock', Math.round(s))}
                         />
                       </td>
                       <td data-label="Stock Mínimo" className="text-center">
