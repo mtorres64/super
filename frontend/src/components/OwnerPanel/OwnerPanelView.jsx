@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Users, LogOut, BarChart3, RefreshCw, CheckCircle,
   AlertTriangle, Clock, Ban, ChevronRight, ChevronDown,
   ArrowLeft, Plus, Edit3, ToggleLeft, ToggleRight,
   DollarSign, Shield, Settings, Bell, TrendingUp,
-  CreditCard, Search, Zap, ZapOff, CheckCircle2, LogIn, X, Eye, EyeOff, Trash2,
+  CreditCard, Search, Zap, ZapOff, CheckCircle2, LogIn, X, Eye, EyeOff, Trash2, Calendar,
 } from 'lucide-react';
 import { ownerAxios, formatDate, formatMoney } from './index';
 import SortIcon from '../ui/SortIcon';
@@ -658,7 +658,7 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
   const [deleteError, setDeleteError] = useState('');
   const [showPagoModal, setShowPagoModal] = useState(false);
   const [showSuscModal, setShowSuscModal] = useState(false);
-  const [pagoForm, setPagoForm] = useState({ monto: '', concepto: '', plan_tipo: 'mensual', fecha_pago: new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) });
+  const [pagoForm, setPagoForm] = useState({ monto: '', concepto: '', plan_tipo: 'mensual', fecha_pago: new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }), descuento_transferencia: false });
   const [suscForm, setSuscForm] = useState({ status: '', dias_extra: '', fecha_vencimiento: '', precio: '', descuento_pct: '0', dia_facturacion: '' });
   const [extMsg, setExtMsg] = useState(null);
   const [cancelandoPreapproval, setCancelandoPreapproval] = useState(false);
@@ -772,19 +772,30 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
     e.preventDefault();
     setActionLoading(true);
     try {
+      const conceptoFinal = pagoForm.concepto + (pagoForm.descuento_transferencia ? ' (transferencia)' : '');
       await ownerAxios.post(`/clientes/${clienteId}/pago`, {
         monto: parseFloat(pagoForm.monto),
-        concepto: pagoForm.concepto,
+        concepto: conceptoFinal,
         plan_tipo: pagoForm.plan_tipo,
         fecha_pago: (() => { const [d, m, y] = pagoForm.fecha_pago.split('/'); return d && m && y ? `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}T12:00:00Z` : undefined; })(),
       }, authHeader);
       setShowPagoModal(false);
-      setPagoForm({ monto: '', concepto: '', plan_tipo: 'mensual', fecha_pago: new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) });
+      setPagoForm({ monto: '', concepto: '', plan_tipo: 'mensual', fecha_pago: new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }), descuento_transferencia: false });
       await loadCliente();
     } catch (err) {
       alert(err.response?.data?.detail || 'Error al registrar pago');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const eliminarPago = async (pagoId) => {
+    if (!window.confirm('¿Eliminar este pago del historial?')) return;
+    try {
+      await ownerAxios.delete(`/clientes/${clienteId}/pago/${pagoId}`, authHeader);
+      await loadCliente();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Error al eliminar el pago');
     }
   };
 
@@ -889,6 +900,11 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
   };
 
   const { sortedItems: sortedClientePagos, sortConfig: pagosSortConfig, requestSort: pagosRequestSort } = useSortableData(cliente?.pagos || []);
+  const ultimoPagoId = useMemo(() => {
+    const pagos = cliente?.pagos || [];
+    if (!pagos.length) return null;
+    return pagos.reduce((a, b) => new Date(a.fecha) > new Date(b.fecha) ? a : b).id;
+  }, [cliente?.pagos]);
 
   if (loading) return (
     <div className="flex justify-center py-24">
@@ -1245,6 +1261,7 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
                   <th className="text-left py-2 px-2 text-gray-600 font-medium">Tipo</th>
                   <th onClick={() => pagosRequestSort('estado')} className="text-left py-2 px-2 text-gray-600 font-medium cursor-pointer select-none hover:bg-gray-800/50">Estado <SortIcon columnKey="estado" sortConfig={pagosSortConfig} dark /></th>
                   <th className="text-left py-2 px-2 text-gray-600 font-medium">Período</th>
+                  <th className="py-2 px-2"></th>
                 </tr>
               </thead>
               <tbody>
@@ -1267,6 +1284,17 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
                       {p.periodo_inicio && p.periodo_fin
                         ? `${formatDate(p.periodo_inicio)} → ${formatDate(p.periodo_fin)}`
                         : '—'}
+                    </td>
+                    <td className="py-3 px-2">
+                      {p.id === ultimoPagoId && (
+                        <button
+                          onClick={() => eliminarPago(p.id)}
+                          className="text-gray-600 hover:text-red-400 transition-colors"
+                          title="Eliminar pago"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -1368,16 +1396,31 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
               </div>
               <div>
                 <label className="block text-sm text-gray-400 mb-1.5">Fecha del pago</label>
-                <input
-                  type="text"
-                  value={pagoForm.fecha_pago}
-                  onChange={e => setPagoForm({ ...pagoForm, fecha_pago: e.target.value })}
-                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="dd/mm/aaaa"
-                  pattern="\d{2}/\d{2}/\d{4}"
-                  required
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={pagoForm.fecha_pago}
+                    onChange={e => setPagoForm({ ...pagoForm, fecha_pago: e.target.value })}
+                    className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 pr-10 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="dd/mm/aaaa"
+                    pattern="\d{2}/\d{2}/\d{4}"
+                    required
+                  />
+                  <label className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer">
+                    <Calendar className="w-4 h-4 text-gray-500 hover:text-gray-300 transition-colors" />
+                    <input type="date" className="sr-only" onChange={e => { if (e.target.value) { const [y,m,d] = e.target.value.split('-'); setPagoForm(f => ({ ...f, fecha_pago: `${d}/${m}/${y}` })); } }} />
+                  </label>
+                </div>
               </div>
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={pagoForm.descuento_transferencia}
+                  onChange={e => setPagoForm({ ...pagoForm, descuento_transferencia: e.target.checked })}
+                  className="w-4 h-4 rounded accent-emerald-500"
+                />
+                <span className="text-sm text-gray-300">10% de descuento por transferencia</span>
+              </label>
               <div className="flex gap-3 pt-1">
                 <button
                   type="button"
@@ -1432,14 +1475,20 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
               </div>
               <div>
                 <label className="block text-sm text-gray-400 mb-1.5">O establecer fecha exacta de vencimiento</label>
-                <input
-                  type="text"
-                  value={suscForm.fecha_vencimiento}
-                  onChange={e => setSuscForm({ ...suscForm, fecha_vencimiento: e.target.value })}
-                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="dd/mm/aaaa"
-                  pattern="\d{2}/\d{2}/\d{4}"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={suscForm.fecha_vencimiento}
+                    onChange={e => setSuscForm({ ...suscForm, fecha_vencimiento: e.target.value })}
+                    className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 pr-10 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="dd/mm/aaaa"
+                    pattern="\d{2}/\d{2}/\d{4}"
+                  />
+                  <label className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer">
+                    <Calendar className="w-4 h-4 text-gray-500 hover:text-gray-300 transition-colors" />
+                    <input type="date" className="sr-only" onChange={e => { if (e.target.value) { const [y,m,d] = e.target.value.split('-'); setSuscForm(f => ({ ...f, fecha_vencimiento: `${d}/${m}/${y}` })); } }} />
+                  </label>
+                </div>
               </div>
               <div>
                 <label className="block text-sm text-gray-400 mb-1.5">Precio del plan (ARS)</label>

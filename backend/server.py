@@ -146,6 +146,15 @@ def calcular_siguiente_vencimiento(dia_facturacion: int, meses: int, desde: date
     tz = desde.tzinfo or timezone.utc
     return datetime(anio, mes, dia, 0, 0, 0, tzinfo=tz)
 
+def calcular_periodo_inicio(dia_facturacion: int, meses: int, periodo_fin: datetime) -> datetime:
+    """Inicio del período: dia_facturacion, meses meses antes de periodo_fin."""
+    mes = periodo_fin.month - meses
+    anio = periodo_fin.year + (mes - 1) // 12
+    mes = ((mes - 1) % 12) + 1
+    ultimo_dia = calendar.monthrange(anio, mes)[1]
+    tz = periodo_fin.tzinfo or timezone.utc
+    return datetime(anio, mes, min(dia_facturacion, ultimo_dia), 0, 0, 0, tzinfo=tz)
+
 def _aplicar_renovacion(suscripcion: dict, meses: int, now: datetime):
     """Modelo 1 - aniversario: el vencimiento siempre cae en dia_facturacion del mes.
     Si está activa o venció dentro del periodo de gracia, extiende desde el vencimiento
@@ -5560,7 +5569,7 @@ async def simular_pago_aprobado(
         estado="approved",
         concepto=f"[TEST] {plan_nombre} - {empresa_nombre}",
         mp_payment_id=fake_payment_id,
-        periodo_inicio=base,
+        periodo_inicio=calcular_periodo_inicio(dia_facturacion, meses, nueva_fecha),
         periodo_fin=nueva_fecha,
         plan_tipo=plan_tipo,
     )
@@ -5612,9 +5621,10 @@ async def _procesar_pago_aprobado(empresa_id: str, payment_id: str, monto: float
             update_fields["tipo_cobro"] = "automatico"
             update_fields["mp_preapproval_id"] = preapproval_id
         await db.suscripciones.update_one({"empresa_id": empresa_id}, {"$set": update_fields})
+        dia_sus = suscripcion.get("dia_facturacion") or min(base.day, 28)
         await db.pagos_suscripcion.update_one(
             {"empresa_id": empresa_id, "mp_payment_id": payment_id},
-            {"$set": {"periodo_inicio": base, "periodo_fin": nueva_fecha}},
+            {"$set": {"periodo_inicio": calcular_periodo_inicio(dia_sus, meses, nueva_fecha), "periodo_fin": nueva_fecha}},
         )
     else:
         dia_facturacion = min(now.day, 28)
@@ -6139,9 +6149,10 @@ async def owner_registrar_pago(
                 "fue_pagada": True,
             }}
         )
+        dia_sus = suscripcion.get("dia_facturacion") or min(base.day, 28)
         await db.pagos_suscripcion.update_one(
             {"id": pago.id},
-            {"$set": {"periodo_inicio": base, "periodo_fin": nueva_fecha}}
+            {"$set": {"periodo_inicio": calcular_periodo_inicio(dia_sus, meses, nueva_fecha), "periodo_fin": nueva_fecha}}
         )
     else:
         dia_facturacion = min(fecha_pago.day, 28)
@@ -6158,6 +6169,40 @@ async def owner_registrar_pago(
         )
         await db.suscripciones.insert_one(nueva_sus.dict())
     return {"message": "Pago registrado y suscripción renovada"}
+
+@owner_router.delete("/clientes/{empresa_id}/pago/{pago_id}")
+async def owner_eliminar_pago(empresa_id: str, pago_id: str, _=Depends(verify_owner_token)):
+    pago = await db.pagos_suscripcion.find_one({"id": pago_id, "empresa_id": empresa_id})
+    if not pago:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    # Verificar que sea el último pago
+    ultimo = await db.pagos_suscripcion.find_one(
+        {"empresa_id": empresa_id},
+        sort=[("fecha", -1)]
+    )
+    if not ultimo or ultimo["id"] != pago_id:
+        raise HTTPException(status_code=400, detail="Solo se puede eliminar el último pago registrado")
+    await db.pagos_suscripcion.delete_one({"id": pago_id})
+    # Rollback: revertir el vencimiento al inicio del período del pago eliminado
+    suscripcion = await db.suscripciones.find_one({"empresa_id": empresa_id})
+    if suscripcion:
+        periodo_inicio = pago.get("periodo_inicio")
+        if isinstance(periodo_inicio, str):
+            periodo_inicio = datetime.fromisoformat(periodo_inicio)
+        if periodo_inicio and not periodo_inicio.tzinfo:
+            periodo_inicio = periodo_inicio.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        # Verificar si quedan otros pagos aprobados
+        pagos_restantes = await db.pagos_suscripcion.count_documents({"empresa_id": empresa_id, "estado": "approved"})
+        if periodo_inicio:
+            nuevo_status = SuscripcionStatus.ACTIVA if periodo_inicio > now else (
+                SuscripcionStatus.TRIAL if pagos_restantes == 0 and suscripcion.get("status") == SuscripcionStatus.TRIAL else SuscripcionStatus.VENCIDA
+            )
+            await db.suscripciones.update_one(
+                {"empresa_id": empresa_id},
+                {"$set": {"fecha_vencimiento": periodo_inicio, "status": nuevo_status, "fue_pagada": pagos_restantes > 0}}
+            )
+    return {"message": "Pago eliminado y suscripción revertida"}
 
 @owner_router.post("/clientes/{empresa_id}/suscripcion/cancelar-preapproval")
 async def owner_cancelar_preapproval(empresa_id: str, _=Depends(verify_owner_token)):
