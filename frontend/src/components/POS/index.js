@@ -83,6 +83,7 @@ const POS = () => {
   const [priceCheckResult, setPriceCheckResult] = useState(null);
   const [branchCount, setBranchCount] = useState(0);
   const [receiptClosing, setReceiptClosing] = useState(false);
+  const [weightModalProduct, setWeightModalProduct] = useState(null);
   const { user, activeBranch, modulosActivos } = useContext(AuthContext);
   const tieneFacturacion = modulosActivos.includes('facturacion');
   const tieneClientes = modulosActivos.includes('clientes');
@@ -547,7 +548,7 @@ const POS = () => {
     }
   }, [selectedCustomer, invoiceConfig.tipo_comprobante]);
 
-  const addToCart = (product, quantity = 1) => {
+  const _addToCart = (product, quantity = 1) => {
     if (!currentSession) {
       const sucursal = activeBranch?.nombre || 'esta sucursal';
       toast.error(`No hay caja abierta en ${sucursal}. Abrí la caja desde Gestión de Caja para poder vender.`);
@@ -586,6 +587,27 @@ const POS = () => {
     if (searchTerm) clearSearch();
     focusSearch();
     return true;
+  };
+
+  const addToCart = (product, quantity = 1) => {
+    if (product.tipo === 'por_peso') {
+      setWeightModalProduct(product);
+      return;
+    }
+    return _addToCart(product, quantity);
+  };
+
+  const confirmWeightModal = (weight) => {
+    if (weightModalProduct && weight > 0) {
+      const added = _addToCart(weightModalProduct, weight);
+      if (added) playSuccessSound();
+    }
+    setWeightModalProduct(null);
+  };
+
+  const cancelWeightModal = () => {
+    setWeightModalProduct(null);
+    focusSearch();
   };
 
   const updateQuantity = (productId, newQuantity) => {
@@ -1079,6 +1101,9 @@ const POS = () => {
       calculateImpuestosExtra={calculateImpuestosExtra}
       tieneFacturacion={tieneFacturacion}
       tieneClientes={tieneClientes}
+      weightModalProduct={weightModalProduct}
+      confirmWeightModal={confirmWeightModal}
+      cancelWeightModal={cancelWeightModal}
     />
   );
 };

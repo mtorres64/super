@@ -32,6 +32,7 @@ import {
   ChevronUp,
   Receipt,
   Edit2,
+  Scale,
 } from 'lucide-react';
 
 const POSView = ({
@@ -138,6 +139,9 @@ const POSView = ({
   modifyingSaleId,
   modifyingInvoiceNum,
   cancelModification,
+  weightModalProduct,
+  confirmWeightModal,
+  cancelWeightModal,
 }) => {
   const [slideDir, setSlideDir] = useState('right');
   const [openDiscountItemId, setOpenDiscountItemId] = useState(null);
@@ -159,7 +163,16 @@ const POSView = ({
   };
 
   const [weightInputDraft, setWeightInputDraft] = React.useState({});
+  const [weightInput, setWeightInput] = React.useState('');
+  const weightInputRef = React.useRef(null);
   const [focusedIdx, setFocusedIdx] = React.useState(-1);
+
+  React.useEffect(() => {
+    if (weightModalProduct) {
+      setWeightInput('');
+      setTimeout(() => weightInputRef.current?.focus(), 50);
+    }
+  }, [weightModalProduct]);
   const [priceCheckFocusedIdx, setPriceCheckFocusedIdx] = React.useState(-1);
   const priceCheckListRef = React.useRef(null);
 
@@ -1158,6 +1171,84 @@ const POSView = ({
           </div>
         </div>
       )}
+
+      {/* Weight Input Modal */}
+      {weightModalProduct && (() => {
+        const priceKg = weightModalProduct.precio_por_peso || weightModalProduct.precio;
+        const parsedWeight = parseFloat(weightInput);
+        const validWeight = !isNaN(parsedWeight) && parsedWeight > 0;
+
+        const handleWeightConfirm = () => {
+          if (validWeight) {
+            confirmWeightModal(parsedWeight);
+            setWeightInput('');
+          }
+        };
+
+        const handleWeightKeyDown = (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            handleWeightConfirm();
+          } else if (e.key === 'Escape') {
+            cancelWeightModal();
+            setWeightInput('');
+          }
+        };
+
+        return (
+          <div className="weight-modal-overlay" onClick={() => { cancelWeightModal(); setWeightInput(''); }}>
+            <div className="weight-modal" onClick={e => e.stopPropagation()}>
+              <div className="weight-modal-header">
+                <Scale className="w-5 h-5" />
+                <span>Ingresar Peso</span>
+              </div>
+              <div className="weight-modal-product">
+                <div className="weight-modal-name">{weightModalProduct.nombre}</div>
+                <div className="weight-modal-price">
+                  {config?.currency_symbol || '$'}{formatAmount(priceKg)}<span className="weight-modal-per-kg">/kg</span>
+                </div>
+              </div>
+              <div className="weight-modal-input-section">
+                <label className="weight-modal-label">Peso</label>
+                <div className="weight-modal-input-row">
+                  <input
+                    ref={weightInputRef}
+                    type="number"
+                    className="weight-modal-input"
+                    value={weightInput}
+                    onChange={e => setWeightInput(e.target.value)}
+                    onKeyDown={handleWeightKeyDown}
+                    step="0.001"
+                    min="0.001"
+                    placeholder="0.000"
+                  />
+                  <span className="weight-modal-unit">kg</span>
+                </div>
+                {validWeight && (
+                  <div className="weight-modal-subtotal">
+                    Total: {config?.currency_symbol || '$'}{formatAmount(priceKg * parsedWeight)}
+                  </div>
+                )}
+              </div>
+              <div className="weight-modal-actions">
+                <button
+                  className="weight-modal-cancel"
+                  onClick={() => { cancelWeightModal(); setWeightInput(''); }}
+                >
+                  Cancelar <kbd className="weight-modal-hint">Esc</kbd>
+                </button>
+                <button
+                  className="weight-modal-confirm"
+                  onClick={handleWeightConfirm}
+                  disabled={!validWeight}
+                >
+                  Agregar <kbd className="weight-modal-hint">Enter</kbd>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Barcode Scanner Modal */}
       {showBarcodeScanner && (

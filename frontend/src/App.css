@@ -951,6 +951,188 @@ body.no-animations .product-card:hover {
 }
 
 /* ================================================
+   WEIGHT INPUT MODAL
+   ================================================ */
+.weight-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1050;
+  animation: overlay-in 0.15s ease both;
+}
+
+.weight-modal {
+  background: #ffffff;
+  border-radius: var(--radius-xl);
+  padding: 1.75rem;
+  width: 360px;
+  max-width: 92vw;
+  box-shadow: var(--shadow-xl);
+  animation: ticket-modal-bounce 0.35s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+.weight-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--gray-800);
+  margin-bottom: 1rem;
+}
+
+.weight-modal-product {
+  background: var(--gray-50);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+  text-align: center;
+}
+
+.weight-modal-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--gray-800);
+  margin-bottom: 0.25rem;
+}
+
+.weight-modal-price {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--primary);
+  line-height: 1.2;
+}
+
+.weight-modal-per-kg {
+  font-size: 0.9rem;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.weight-modal-input-section {
+  margin-bottom: 0.25rem;
+}
+
+.weight-modal-label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--gray-500);
+  margin-bottom: 0.5rem;
+}
+
+.weight-modal-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.weight-modal-input {
+  flex: 1;
+  font-size: 2rem;
+  font-weight: 700;
+  text-align: right;
+  padding: 0.5rem 0.75rem;
+  border: 2px solid var(--primary);
+  border-radius: var(--radius-lg);
+  outline: none;
+  color: var(--gray-800);
+  background: #fff;
+  min-width: 0;
+}
+
+.weight-modal-input:focus {
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
+
+.weight-modal-unit {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--gray-400);
+  flex-shrink: 0;
+}
+
+.weight-modal-subtotal {
+  margin-top: 0.5rem;
+  text-align: right;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--gray-700);
+  min-height: 1.4em;
+}
+
+.weight-modal-actions {
+  display: flex;
+  gap: 0.625rem;
+  margin-top: 1.25rem;
+}
+
+.weight-modal-cancel {
+  flex: 1;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  color: var(--gray-600);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+}
+
+.weight-modal-cancel:hover {
+  background: var(--gray-50);
+}
+
+.weight-modal-confirm {
+  flex: 2;
+  padding: 0.625rem 0.875rem;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+}
+
+.weight-modal-confirm:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.weight-modal-confirm:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.weight-modal-hint {
+  font-size: 0.7rem;
+  font-weight: 400;
+  font-family: monospace;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.weight-modal-cancel .weight-modal-hint {
+  background: var(--gray-100);
+  color: var(--gray-500);
+  border-color: var(--gray-200);
+}
+
+/* ================================================
    SALES TABS BAR
    ================================================ */
 .sales-tabs-bar {
@@ -2488,6 +2670,7 @@ html.dark body {
 html.dark .sidebar,
 html.dark .modal-content,
 html.dark .price-check-modal,
+html.dark .weight-modal,
 html.dark .ticket-modal-container,
 html.dark .stat-card,
 html.dark .pos-search,
@@ -2498,6 +2681,19 @@ html.dark .mobile-topbar,
 html.dark .login-card,
 html.dark .login-panel-right {
   background: #1e1e1e;
+}
+
+html.dark .weight-modal-input {
+  background: #121212;
+  color: #e8e8e8;
+}
+html.dark .weight-modal-cancel {
+  background: #2e2e2e;
+  border-color: #3d3d3d;
+  color: #d0d0d0;
+}
+html.dark .weight-modal-cancel:hover {
+  background: #3d3d3d;
 }
 
 html.dark .form-input,
@@ -2563,6 +2759,8 @@ html.dark .ticket-separator    { color: #5c5c5c; }
 .no-animations .price-check-overlay.closing,
 .no-animations .price-check-modal,
 .no-animations .price-check-modal.closing,
+.no-animations .weight-modal-overlay,
+.no-animations .weight-modal,
 .no-animations .ticket-modal-overlay,
 .no-animations .ticket-modal-overlay.closing,
 .no-animations .ticket-modal-container,
