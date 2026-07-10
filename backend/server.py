@@ -147,21 +147,18 @@ def calcular_siguiente_vencimiento(dia_facturacion: int, meses: int, desde: date
     return datetime(anio, mes, dia, 0, 0, 0, tzinfo=tz)
 
 def _aplicar_renovacion(suscripcion: dict, meses: int, now: datetime):
-    """Calcula (base, nueva_fecha) respetando día de facturación fijo. No acumulativo.
-    Durante el periodo de gracia (suscripción paga vencida hace <= GRACE_DAYS días),
-    usa la fecha de vencimiento como base para respetar el ciclo de facturación.
-    Ej: venció el 1, paga el día 10 (gracia) → renueva hasta el 1 del mes siguiente."""
+    """Modelo 1 - aniversario: el vencimiento siempre cae en dia_facturacion del mes.
+    Si está activa o venció dentro del periodo de gracia, extiende desde el vencimiento
+    original (el cliente no pierde días). Más allá de la gracia, arranca desde now."""
     vencimiento = suscripcion["fecha_vencimiento"]
     if isinstance(vencimiento, str):
         vencimiento = datetime.fromisoformat(vencimiento)
     if not vencimiento.tzinfo:
         vencimiento = vencimiento.replace(tzinfo=timezone.utc)
-    fue_pagada = suscripcion.get("fue_pagada", False)
-    # Si fue paga y venció dentro del periodo de gracia, respetar el ciclo de facturación
-    if fue_pagada and vencimiento < now and (now - vencimiento).days <= GRACE_DAYS:
+    if vencimiento >= now or (now - vencimiento).days <= GRACE_DAYS:
         base = vencimiento
     else:
-        base = vencimiento if vencimiento > now else now
+        base = now
     dia = suscripcion.get("dia_facturacion") or min(base.day, 28)
     nueva_fecha = calcular_siguiente_vencimiento(dia, meses, base)
     return base, nueva_fecha
@@ -5019,14 +5016,15 @@ async def _get_or_create_suscripcion(empresa_id: str) -> dict:
     doc = await db.suscripciones.find_one({"empresa_id": empresa_id})
     if not doc:
         now = datetime.now(timezone.utc)
-        dia_facturacion = min(now.day, 28)
+        trial_fin = now + timedelta(days=await get_trial_dias())
+        dia_facturacion = min(trial_fin.day, 28)
         suscripcion = Suscripcion(
             empresa_id=empresa_id,
             plan_nombre=await get_plan_nombre_suscripcion(),
             precio=await get_precio_suscripcion(),
             status=SuscripcionStatus.TRIAL,
             fecha_inicio=now,
-            fecha_vencimiento=now + timedelta(days=await get_trial_dias()),
+            fecha_vencimiento=trial_fin,
             dia_facturacion=dia_facturacion,
             plan_tipo="mensual",
         )
@@ -5847,6 +5845,7 @@ class SuscripcionUpdate(BaseModel):
     precio: Optional[float] = None
     dias_extra: Optional[int] = None
     descuento_pct: Optional[int] = None
+    dia_facturacion: Optional[int] = None
 
 class ModulosUpdate(BaseModel):
     modules_extra: Optional[List[str]] = None
@@ -5856,6 +5855,7 @@ class PagoManual(BaseModel):
     monto: float
     concepto: str
     plan_tipo: str = "mensual"  # "mensual" | "anual"
+    fecha_pago: Optional[datetime] = None
 
 class ClienteDatosUpdate(BaseModel):
     empresa_nombre: Optional[str] = None
@@ -6069,6 +6069,8 @@ async def owner_update_suscripcion(
         update["precio"] = data.precio
     if data.descuento_pct is not None:
         update["descuento_pct"] = max(0, min(100, data.descuento_pct))
+    if data.dia_facturacion is not None:
+        update["dia_facturacion"] = max(1, min(28, data.dia_facturacion))
     if data.dias_extra and data.dias_extra > 0:
         if suscripcion:
             vencimiento = suscripcion.get("fecha_vencimiento")
@@ -6090,13 +6092,16 @@ async def owner_update_suscripcion(
             await db.suscripciones.update_one({"empresa_id": empresa_id}, {"$set": update})
         else:
             now = datetime.now(timezone.utc)
+            fv = update.get("fecha_vencimiento", now + timedelta(days=await get_trial_dias()))
+            dia_fact = update.get("dia_facturacion") or min(fv.day if hasattr(fv, "day") else now.day, 28)
             nueva = Suscripcion(
                 empresa_id=empresa_id,
                 plan_nombre=update.get("plan_nombre", SUSCRIPCION_PLAN_NOMBRE),
                 precio=update.get("precio", SUSCRIPCION_PRECIO),
                 status=update.get("status", SuscripcionStatus.ACTIVA),
                 fecha_inicio=now,
-                fecha_vencimiento=update.get("fecha_vencimiento", now + timedelta(days=await get_trial_dias())),
+                fecha_vencimiento=fv,
+                dia_facturacion=dia_fact,
             )
             await db.suscripciones.insert_one(nueva.dict())
     return {"message": "Suscripción actualizada"}
@@ -6110,6 +6115,8 @@ async def owner_registrar_pago(
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
     plan_tipo = data.plan_tipo if data.plan_tipo in ("mensual", "anual") else "mensual"
     meses = 1 if plan_tipo == "mensual" else 12
+    now = datetime.now(timezone.utc)
+    fecha_pago = data.fecha_pago.replace(tzinfo=timezone.utc) if data.fecha_pago and not data.fecha_pago.tzinfo else (data.fecha_pago or now)
     pago = PagoSuscripcion(
         empresa_id=empresa_id,
         monto=data.monto,
@@ -6117,18 +6124,19 @@ async def owner_registrar_pago(
         estado="approved",
         concepto=data.concepto,
         plan_tipo=plan_tipo,
+        fecha=fecha_pago,
     )
     await db.pagos_suscripcion.insert_one(pago.dict())
     suscripcion = await db.suscripciones.find_one({"empresa_id": empresa_id})
-    now = datetime.now(timezone.utc)
     if suscripcion:
-        base, nueva_fecha = _aplicar_renovacion(suscripcion, meses, now)
+        base, nueva_fecha = _aplicar_renovacion(suscripcion, meses, fecha_pago)
         await db.suscripciones.update_one(
             {"empresa_id": empresa_id},
             {"$set": {
                 "status": SuscripcionStatus.ACTIVA,
                 "fecha_vencimiento": nueva_fecha,
                 "plan_tipo": plan_tipo,
+                "fue_pagada": True,
             }}
         )
         await db.pagos_suscripcion.update_one(
@@ -6136,14 +6144,14 @@ async def owner_registrar_pago(
             {"$set": {"periodo_inicio": base, "periodo_fin": nueva_fecha}}
         )
     else:
-        dia_facturacion = min(now.day, 28)
-        nueva_fecha = calcular_siguiente_vencimiento(dia_facturacion, meses, now)
+        dia_facturacion = min(fecha_pago.day, 28)
+        nueva_fecha = calcular_siguiente_vencimiento(dia_facturacion, meses, fecha_pago)
         nueva_sus = Suscripcion(
             empresa_id=empresa_id,
             plan_nombre=await get_plan_nombre_suscripcion(),
             precio=data.monto,
             status=SuscripcionStatus.ACTIVA,
-            fecha_inicio=now,
+            fecha_inicio=fecha_pago,
             fecha_vencimiento=nueva_fecha,
             dia_facturacion=dia_facturacion,
             plan_tipo=plan_tipo,

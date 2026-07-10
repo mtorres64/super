@@ -658,8 +658,8 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
   const [deleteError, setDeleteError] = useState('');
   const [showPagoModal, setShowPagoModal] = useState(false);
   const [showSuscModal, setShowSuscModal] = useState(false);
-  const [pagoForm, setPagoForm] = useState({ monto: '', concepto: '', plan_tipo: 'mensual' });
-  const [suscForm, setSuscForm] = useState({ status: '', dias_extra: '', fecha_vencimiento: '', precio: '', descuento_pct: '0' });
+  const [pagoForm, setPagoForm] = useState({ monto: '', concepto: '', plan_tipo: 'mensual', fecha_pago: new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) });
+  const [suscForm, setSuscForm] = useState({ status: '', dias_extra: '', fecha_vencimiento: '', precio: '', descuento_pct: '0', dia_facturacion: '' });
   const [extMsg, setExtMsg] = useState(null);
   const [cancelandoPreapproval, setCancelandoPreapproval] = useState(false);
   const [moduleMsg, setModuleMsg] = useState(null);
@@ -776,9 +776,10 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
         monto: parseFloat(pagoForm.monto),
         concepto: pagoForm.concepto,
         plan_tipo: pagoForm.plan_tipo,
+        fecha_pago: (() => { const [d, m, y] = pagoForm.fecha_pago.split('/'); return d && m && y ? `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}T12:00:00Z` : undefined; })(),
       }, authHeader);
       setShowPagoModal(false);
-      setPagoForm({ monto: '', concepto: '', plan_tipo: 'mensual' });
+      setPagoForm({ monto: '', concepto: '', plan_tipo: 'mensual', fecha_pago: new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) });
       await loadCliente();
     } catch (err) {
       alert(err.response?.data?.detail || 'Error al registrar pago');
@@ -866,9 +867,10 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
     const payload = {};
     if (suscForm.status) payload.status = suscForm.status;
     if (suscForm.dias_extra) payload.dias_extra = parseInt(suscForm.dias_extra);
-    if (suscForm.fecha_vencimiento) payload.fecha_vencimiento = suscForm.fecha_vencimiento + 'T12:00:00Z';
+    if (suscForm.fecha_vencimiento) { const [d, m, y] = suscForm.fecha_vencimiento.split('/'); if (d && m && y) payload.fecha_vencimiento = `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}T12:00:00Z`; }
     if (suscForm.precio !== '') payload.precio = parseFloat(suscForm.precio);
     if (suscForm.descuento_pct !== '') payload.descuento_pct = parseInt(suscForm.descuento_pct);
+    if (suscForm.dia_facturacion !== '') payload.dia_facturacion = parseInt(suscForm.dia_facturacion);
     try {
       await ownerAxios.put(`/clientes/${clienteId}/suscripcion`, payload, authHeader);
       setShowSuscModal(false);
@@ -940,7 +942,7 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
             <Plus className="w-4 h-4" /> Registrar pago
           </button>
           <button
-            onClick={() => setShowSuscModal(true)}
+            onClick={() => { setSuscForm({ status: '', dias_extra: '', fecha_vencimiento: '', precio: '', descuento_pct: String(sus?.descuento_pct ?? '0'), dia_facturacion: String(sus?.dia_facturacion ?? '') }); setShowSuscModal(true); }}
             className="flex items-center gap-1.5 bg-indigo-700 hover:bg-indigo-600 text-white text-sm px-3 py-2 rounded-lg transition-colors"
           >
             <Edit3 className="w-4 h-4" /> Suscripción
@@ -1364,6 +1366,18 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
                   <option value="anual">Anual (12 meses desde día de facturación)</option>
                 </select>
               </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1.5">Fecha del pago</label>
+                <input
+                  type="text"
+                  value={pagoForm.fecha_pago}
+                  onChange={e => setPagoForm({ ...pagoForm, fecha_pago: e.target.value })}
+                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="dd/mm/aaaa"
+                  pattern="\d{2}/\d{2}/\d{4}"
+                  required
+                />
+              </div>
               <div className="flex gap-3 pt-1">
                 <button
                   type="button"
@@ -1419,10 +1433,12 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
               <div>
                 <label className="block text-sm text-gray-400 mb-1.5">O establecer fecha exacta de vencimiento</label>
                 <input
-                  type="date"
+                  type="text"
                   value={suscForm.fecha_vencimiento}
                   onChange={e => setSuscForm({ ...suscForm, fecha_vencimiento: e.target.value })}
                   className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="dd/mm/aaaa"
+                  pattern="\d{2}/\d{2}/\d{4}"
                 />
               </div>
               <div>
@@ -1448,6 +1464,19 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
                   max="100"
                 />
                 <p className="text-xs text-gray-600 mt-1">El cliente verá el precio con este descuento y sus pagos se calcularán con él.</p>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1.5">Día de facturación (1–28)</label>
+                <input
+                  type="number"
+                  value={suscForm.dia_facturacion}
+                  onChange={e => setSuscForm({ ...suscForm, dia_facturacion: e.target.value })}
+                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Dejar vacío para no cambiar"
+                  min="1"
+                  max="28"
+                />
+                <p className="text-xs text-gray-600 mt-1">El débito automático se ejecutará este día cada mes.</p>
               </div>
               <div className="flex gap-3 pt-1">
                 <button
