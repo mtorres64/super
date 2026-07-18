@@ -92,6 +92,7 @@ const POS = () => {
   const [branchCount, setBranchCount] = useState(0);
   const [receiptClosing, setReceiptClosing] = useState(false);
   const navigate = useNavigate();
+  const [weightModalProduct, setWeightModalProduct] = useState(null);
   const { user, activeBranch, modulosActivos } = useContext(AuthContext);
   const tieneFacturacion = modulosActivos.includes('facturacion');
   const tieneClientes = modulosActivos.includes('clientes');
@@ -113,6 +114,7 @@ const POS = () => {
         cantidad: item.quantity,
         precio_unitario: getEffectivePrice(item),
         subtotal: getEffectivePrice(item) * item.quantity,
+        ...(item.descuento > 0 && { descuento: item.descuento }),
       })),
       subtotal: sub,
       impuestos: tax,
@@ -242,12 +244,13 @@ const POS = () => {
   // Auto-search while typing (from 2nd character), with debounce
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    if (searchTerm.length === 0) {
+    const trimmed = searchTerm.trim();
+    if (trimmed.length === 0) {
       setDebouncedSearch('');
       setCurrentPage(1);
-    } else if (searchTerm.length >= 2) {
+    } else if (trimmed.length >= 2) {
       searchTimerRef.current = setTimeout(() => {
-        setDebouncedSearch(searchTerm);
+        setDebouncedSearch(trimmed);
         setCurrentPage(1);
       }, 350);
     }
@@ -288,7 +291,7 @@ const POS = () => {
       setIsAutoScanning(false);
       return;
     }
-    setDebouncedSearch(searchTerm);
+    setDebouncedSearch(searchTerm.trim());
     setCurrentPage(1);
   };
 
@@ -578,7 +581,7 @@ const POS = () => {
     }
   }, [selectedCustomer, invoiceConfig.tipo_comprobante]);
 
-  const addToCart = (product, quantity = 1) => {
+  const _addToCart = (product, quantity = 1) => {
     if (!currentSession) {
       const sucursal = activeBranch?.nombre || 'esta sucursal';
       toast.error(`No hay caja abierta en ${sucursal}. Abrí la caja desde Gestión de Caja para poder vender.`);
@@ -619,6 +622,27 @@ const POS = () => {
     return true;
   };
 
+  const addToCart = (product, quantity = 1) => {
+    if (product.tipo === 'por_peso') {
+      setWeightModalProduct(product);
+      return;
+    }
+    return _addToCart(product, quantity);
+  };
+
+  const confirmWeightModal = (weight) => {
+    if (weightModalProduct && weight > 0) {
+      const added = _addToCart(weightModalProduct, weight);
+      if (added) playSuccessSound();
+    }
+    setWeightModalProduct(null);
+  };
+
+  const cancelWeightModal = () => {
+    setWeightModalProduct(null);
+    focusSearch();
+  };
+
   const updateQuantity = (productId, newQuantity) => {
     if (newQuantity <= 0) {
       removeFromCart(productId);
@@ -645,14 +669,22 @@ const POS = () => {
   };
 
   const getEffectivePrice = (item) => {
+    let price;
     if (item.tipo === 'por_peso' && item.precio_por_peso) {
-      return item.precio_por_peso;
+      price = item.precio_por_peso;
+    } else {
+      price = item.precio;
     }
-    return item.precio;
+    if (item.descuento) price = price * (1 - item.descuento / 100);
+    return price;
   };
 
   const removeFromCart = (productId) => {
     setCart(cart.filter(item => item.id !== productId));
+  };
+
+  const updateItemDiscount = (itemId, descuento) => {
+    setCart(cart.map(item => item.id === itemId ? { ...item, descuento } : item));
   };
 
   const clearCart = () => {
@@ -662,6 +694,21 @@ const POS = () => {
 
   const calculateSubtotal = () => {
     return cart.reduce((sum, item) => sum + (getEffectivePrice(item) * item.quantity), 0);
+  };
+
+  const calculateOriginalSubtotal = () => {
+    return cart.reduce((sum, item) => {
+      const originalPrice = item.tipo === 'por_peso' && item.precio_por_peso ? item.precio_por_peso : item.precio;
+      return sum + originalPrice * item.quantity;
+    }, 0);
+  };
+
+  const calculateItemDiscounts = () => {
+    return cart.reduce((sum, item) => {
+      if (!item.descuento) return sum;
+      const originalPrice = item.tipo === 'por_peso' && item.precio_por_peso ? item.precio_por_peso : item.precio;
+      return sum + (originalPrice - getEffectivePrice(item)) * item.quantity;
+    }, 0);
   };
 
   const calculateTax = () => {
@@ -717,13 +764,15 @@ const POS = () => {
           producto_id: item.product_id || item.id,
           cantidad: item.quantity,
           precio_unitario: getEffectivePrice(item),
-          subtotal: getEffectivePrice(item) * item.quantity
+          subtotal: getEffectivePrice(item) * item.quantity,
+          ...(item.descuento > 0 && { descuento: item.descuento }),
         })),
         metodo_pago: paymentMethod,
         ...(selectedCustomer && selectedCustomer.id && { cliente_id: selectedCustomer.id }),
         ...(tipoAfip && { tipo_comprobante: tipoAfip }),
         ...(invoiceConfig.cuit_receptor && { cuit_receptor: invoiceConfig.cuit_receptor }),
         ...(descuento > 0 && { descuento }),
+        ...(calculateItemDiscounts() > 0 && { descuento_items: calculateItemDiscounts() }),
         ...(impuestosExtraTotal > 0 && { impuestos_extra_total: impuestosExtraTotal }),
         ...(invoiceConfig.condicion_iva_receptor !== 'consumidor_final' && { condicion_iva_receptor: invoiceConfig.condicion_iva_receptor }),
         ...(invoiceConfig.observaciones && { observaciones_comprobante: invoiceConfig.observaciones }),
@@ -749,6 +798,7 @@ const POS = () => {
         setSelectedCustomer(null);
         setInvoiceConfig({ ...defaultInvoiceConfig });
         setModifyingSale(null, null);
+        setPaymentMethod('efectivo');
       }
       if (config?.print_receipt_auto) {
         setSaleReceipt(receiptData);
@@ -941,6 +991,17 @@ const POS = () => {
 
       const targetTabHasItems = activeTab.cart.length > 0;
 
+      const descuentoPct = (sale.descuento > 0 && sale.subtotal > 0)
+        ? Math.round(sale.descuento / sale.subtotal * 10000) / 100
+        : 0;
+      const saleInvoiceConfig = {
+        ...defaultInvoiceConfig,
+        ...(descuentoPct > 0 && { descuento_tipo: 'porcentaje', descuento_valor: descuentoPct }),
+        ...(sale.condicion_iva_receptor && { condicion_iva_receptor: sale.condicion_iva_receptor }),
+        ...(sale.cuit_receptor && { cuit_receptor: sale.cuit_receptor }),
+        ...(sale.observaciones_comprobante && { observaciones: sale.observaciones_comprobante }),
+      };
+
       if (targetTabHasItems) {
         // Open in a new tab
         const newId = nextTabId;
@@ -952,7 +1013,7 @@ const POS = () => {
             paymentMethod: sale.metodo_pago || 'efectivo',
             colorIndex: prev.length % TAB_COLORS.length,
             customer: null,
-            invoiceConfig: { ...defaultInvoiceConfig },
+            invoiceConfig: saleInvoiceConfig,
             modifyingSaleId: sale.id,
             modifyingInvoiceNum: sale.numero_factura,
             createdForModification: true,
@@ -964,6 +1025,7 @@ const POS = () => {
         // Load in current tab
         setCart(cartItems);
         setPaymentMethod(sale.metodo_pago || 'efectivo');
+        setInvoiceConfig(saleInvoiceConfig);
         setModifyingSale(sale.id, sale.numero_factura);
       }
 
@@ -1030,6 +1092,7 @@ const POS = () => {
       getEffectivePrice={getEffectivePrice}
       updateQuantity={updateQuantity}
       removeFromCart={removeFromCart}
+      updateItemDiscount={updateItemDiscount}
       config={config}
       calculateSubtotal={calculateSubtotal}
       calculateTax={calculateTax}
@@ -1074,11 +1137,16 @@ const POS = () => {
       showInvoicePanel={showInvoicePanel}
       setShowInvoicePanel={setShowInvoicePanel}
       calculateDiscount={calculateDiscount}
+      calculateItemDiscounts={calculateItemDiscounts}
+      calculateOriginalSubtotal={calculateOriginalSubtotal}
       calculateImpuestosExtra={calculateImpuestosExtra}
       tieneFacturacion={tieneFacturacion}
       tieneClientes={tieneClientes}
       tiendaPedido={tiendaPedido}
       dismissTiendaPedido={dismissTiendaPedido}
+      weightModalProduct={weightModalProduct}
+      confirmWeightModal={confirmWeightModal}
+      cancelWeightModal={cancelWeightModal}
     />
   );
 };

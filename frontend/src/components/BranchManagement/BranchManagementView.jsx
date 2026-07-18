@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   Building2,
   Plus,
@@ -21,6 +21,7 @@ import {
   Layers,
   CircleDot,
   Store,
+  Upload,
 } from 'lucide-react';
 import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
@@ -33,6 +34,36 @@ const driveToProxyUrl = (url) => {
   const m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
   return m ? `${_BACKEND_URL}/api/drive-image?file_id=${m[1]}` : url;
 };
+
+function NumericInput({ value, onCommit, ...props }) {
+  const [localValue, setLocalValue] = useState(value ?? '');
+  const focused = useRef(false);
+
+  useEffect(() => {
+    if (!focused.current) {
+      setLocalValue(value ?? '');
+    }
+  }, [value]);
+
+  return (
+    <input
+      {...props}
+      type="number"
+      value={localValue}
+      onChange={(e) => setLocalValue(e.target.value)}
+      onFocus={() => { focused.current = true; }}
+      onBlur={(e) => {
+        focused.current = false;
+        const parsed = parseFloat(e.target.value);
+        if (!isNaN(parsed)) {
+          onCommit(parsed);
+        } else {
+          setLocalValue(value ?? '');
+        }
+      }}
+    />
+  );
+}
 
 const BranchManagementView = ({
   loading,
@@ -150,6 +181,22 @@ const BranchManagementView = ({
   onToggleMostrarEnTienda,
   onBulkSetMostrarEnTienda,
   limiteAlcanzado = false,
+  showBranchImportModal,
+  onSetShowBranchImportModal,
+  branchImportFile,
+  onSetBranchImportFile,
+  branchImportLoading,
+  branchImportProgress,
+  branchImportResult,
+  onSetBranchImportResult,
+  branchTemplateLoading,
+  branchImportFileRef,
+  onBranchImport,
+  onDownloadBranchTemplate,
+  totalActivosSucursal,
+  totalTodosSucursal,
+  listaCompleta,
+  onSetListaCompleta,
 }) => {
   const [focusedIdx, setFocusedIdx] = React.useState(-1);
   const [showCategoryFilter, setShowCategoryFilter] = React.useState(false);
@@ -221,11 +268,27 @@ const BranchManagementView = ({
                   <Building2 className="w-6 h-6 text-green-600 flex-shrink-0" />
                   <span className="truncate">{selectedBranch.nombre}</span>
                 </h1>
-                <p className="text-gray-500 text-sm truncate">{selectedBranch.direccion}</p>
+                <div className="flex items-center gap-3">
+                  <p className="text-gray-500 text-sm truncate">{selectedBranch.direccion}</p>
+                  {totalTodosSucursal !== null && (
+                    <span className="text-xs text-gray-400 whitespace-nowrap">
+                      <span className="font-semibold text-green-600">{totalActivosSucursal} activos</span>
+                      <span className="text-gray-400"> de {totalTodosSucursal} productos</span>
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
-            {/* Exportar — siempre visible, derecha */}
-            <div className="relative flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+            {/* Importar y Exportar — siempre visible, derecha */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => { onSetBranchImportResult(null); onSetShowBranchImportModal(true); }}
+              className="btn btn-secondary"
+            >
+              <Upload className="w-4 h-4" />
+              Importar
+            </button>
+            <div className="relative" onClick={(e) => e.stopPropagation()}>
               <button
                 onClick={() => onSetShowExportMenu(prev => !prev)}
                 className="btn btn-secondary"
@@ -252,6 +315,7 @@ const BranchManagementView = ({
                   </button>
                 </div>
               )}
+            </div>
             </div>
           </div>
           {/* Cambios pendientes */}
@@ -629,68 +693,54 @@ const BranchManagementView = ({
                         })()}
                       </td>
                       <td data-label="Precio Costo" className={`text-center transition-colors ${isSelected ? 'bg-yellow-100' : 'bg-yellow-50 group-hover:bg-[#fefbd6]'}`}>
-                        <input
-                          type="number"
+                        <NumericInput
                           step="0.01"
                           min="0"
                           className={`w-24 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.costo_calculado !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}`}
                           value={changes.costo_calculado != null ? changes.costo_calculado : (product.costo_sucursal ?? '')}
                           placeholder="—"
-                          onChange={(e) => {
-                            const costo = parseFloat(e.target.value);
-                            if (!isNaN(costo)) onPendingCostoChange(product.product_id, costo, product.margen_sucursal);
-                          }}
+                          onCommit={(costo) => onPendingCostoChange(product.product_id, costo, product.margen_sucursal)}
                         />
                       </td>
                       <td data-label="Margen %" className={`text-center transition-colors ${isSelected ? 'bg-yellow-100' : 'bg-yellow-50 group-hover:bg-[#fefbd6]'}`}>
                         <div className="flex items-center justify-center gap-1">
-                          <input
-                            type="number"
+                          <NumericInput
                             step="0.01"
                             className={`w-20 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.margen !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}`}
                             value={currentMargen}
-                            onChange={(e) => {
-                              const parsed = parseFloat(e.target.value);
-                              if (!isNaN(parsed)) onPendingMargenChange(product.product_id, parsed, product.costo_sucursal, product.precio_sucursal, product.precio_global);
-                            }}
+                            onCommit={(parsed) => onPendingMargenChange(product.product_id, parsed, product.costo_sucursal, product.precio_sucursal, product.precio_global)}
                           />
                           <span className="text-sm text-gray-500">%</span>
                         </div>
                       </td>
                       <td data-label="Precio Sucursal" className={`text-center transition-colors ${isSelected ? 'bg-yellow-100' : 'bg-yellow-50 group-hover:bg-[#fefbd6]'}`}>
-                        <input
-                          type="number"
+                        <NumericInput
                           step="0.01"
                           min="0"
                           className={`w-28 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.precio !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}`}
                           value={currentPrice}
-                          onChange={(e) => {
-                            const parsed = parseFloat(e.target.value);
-                            if (!isNaN(parsed)) onPendingPrecioChange(product.product_id, parsed, product.costo_sucursal, product.margen_sucursal);
-                          }}
+                          onCommit={(parsed) => onPendingPrecioChange(product.product_id, parsed, product.costo_sucursal, product.margen_sucursal)}
                           placeholder={product.precio_global?.toFixed(2)}
                         />
                         {product.tipo === 'por_peso' && (
                           <div className="mt-1">
-                            <input
-                              type="number"
+                            <NumericInput
                               step="0.01"
                               min="0"
                               className="w-28 text-center border border-gray-200 rounded px-2 py-1 text-xs bg-white"
                               value={changes.precio_por_peso !== undefined ? changes.precio_por_peso : (product.precio_por_peso_sucursal ?? '')}
-                              onChange={(e) => { const p = parseFloat(e.target.value); if (!isNaN(p)) onProductFieldChange(product.product_id, 'precio_por_peso', p); }}
+                              onCommit={(p) => onProductFieldChange(product.product_id, 'precio_por_peso', p)}
                               placeholder="precio/kg"
                             />
                           </div>
                         )}
                       </td>
                       <td data-label="Stock" className={`text-center transition-colors ${isSelected ? 'bg-yellow-100' : 'bg-yellow-50 group-hover:bg-[#fefbd6]'}`}>
-                        <input
-                          type="number"
+                        <NumericInput
                           min="0"
                           className={`w-20 text-center border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 ${hasChange && changes.stock !== undefined ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}`}
                           value={currentStock}
-                          onChange={(e) => { const s = parseInt(e.target.value); if (!isNaN(s)) onProductFieldChange(product.product_id, 'stock', s); }}
+                          onCommit={(s) => onProductFieldChange(product.product_id, 'stock', Math.round(s))}
                         />
                       </td>
                       <td data-label="Stock Mínimo" className="text-center">
@@ -1127,6 +1177,153 @@ const BranchManagementView = ({
           </div>
         </div>
       )}
+      {/* Modal Importar precios/stock por sucursal */}
+      {showBranchImportModal && (
+        <div className="modal-overlay" onClick={() => onSetShowBranchImportModal(false)}>
+          <div className="modal-content modal-content-bounce" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Importar Precios y Stock — {selectedBranch?.nombre}</h3>
+              <button onClick={() => onSetShowBranchImportModal(false)} className="modal-close">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {!branchImportResult ? (
+              <form onSubmit={onBranchImport}>
+                <div className="space-y-4">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <p className="font-medium mb-1">Formato requerido (XLSX o CSV):</p>
+                        <p className="font-mono text-xs">nombre, tipo, precio_venta, categoria, precio_costo, <strong>codigo_barras</strong>, stock, stock_minimo, clase</p>
+                        <p className="mt-1 text-xs">• <strong>codigo_barras</strong>: obligatorio — identifica el producto. Si no existe en el sistema, se crea.</p>
+                        <p className="text-xs">• <strong>nombre, tipo, categoria</strong>: obligatorios solo para productos nuevos</p>
+                        <p className="text-xs">• <strong>precio_venta, precio_costo, stock, stock_minimo</strong>: actualizan esta sucursal</p>
+                        <p className="text-xs text-blue-600 mt-1">La plantilla ya incluye los productos actuales de la sucursal.</p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={branchTemplateLoading}
+                        onClick={onDownloadBranchTemplate}
+                        className="flex items-center gap-1.5 text-xs font-medium text-blue-700 border border-blue-300 rounded-md px-2.5 py-1.5 hover:bg-blue-100 transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
+                      >
+                        {branchTemplateLoading ? (
+                          <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-blue-700" />
+                        ) : (
+                          <Download className="w-3.5 h-3.5" />
+                        )}
+                        {branchTemplateLoading ? 'Descargando...' : 'Descargar plantilla'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Archivo (XLSX o CSV)</label>
+                    <input
+                      ref={branchImportFileRef}
+                      type="file"
+                      accept=".csv,.xlsx,.xls"
+                      className="form-input"
+                      onChange={e => onSetBranchImportFile(e.target.files[0])}
+                      required
+                    />
+                  </div>
+
+                  <label className="flex items-start gap-3 cursor-pointer select-none p-3 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 transition-colors">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-amber-500 focus:ring-amber-400"
+                      checked={listaCompleta}
+                      onChange={e => onSetListaCompleta(e.target.checked)}
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-amber-800">Lista completa de la sucursal</p>
+                      <p className="text-xs text-amber-600 mt-0.5">Los productos del catálogo global que <strong>no estén en este archivo</strong> quedarán <strong>inactivos</strong> en esta sucursal. Los productos nuevos se crearán como inactivos en las otras sucursales.</p>
+                    </div>
+                  </label>
+                </div>
+
+                {branchImportLoading && (
+                  <div className="mt-4 space-y-1">
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Procesando productos...</span>
+                      <span>{branchImportProgress}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                      <div
+                        className="h-2.5 rounded-full bg-green-500 transition-all duration-200"
+                        style={{ width: `${branchImportProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button type="button" onClick={() => onSetShowBranchImportModal(false)} className="btn btn-secondary" disabled={branchImportLoading}>
+                    Cancelar
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={branchImportLoading || !branchImportFile}>
+                    {branchImportLoading ? (
+                      <span className="flex items-center gap-2">
+                        <div className="spinner w-4 h-4" />
+                        Procesando... {branchImportProgress}%
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <Upload className="w-4 h-4" />
+                        Importar
+                      </span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="space-y-4">
+                <div className={`grid gap-3 text-center ${(branchImportResult.desactivados ?? 0) > 0 ? 'grid-cols-5' : 'grid-cols-4'}`}>
+                  <div className="bg-green-50 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-green-700">{branchImportResult.created ?? 0}</div>
+                    <div className="text-xs text-green-600">Creados</div>
+                  </div>
+                  <div className="bg-blue-50 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-blue-700">{branchImportResult.updated}</div>
+                    <div className="text-xs text-blue-600">Actualizados</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-gray-500">{branchImportResult.skipped}</div>
+                    <div className="text-xs text-gray-400">Sin cambios</div>
+                  </div>
+                  {(branchImportResult.desactivados ?? 0) > 0 && (
+                    <div className="bg-amber-50 rounded-lg p-3">
+                      <div className="text-2xl font-bold text-amber-700">{branchImportResult.desactivados}</div>
+                      <div className="text-xs text-amber-600">Desactivados</div>
+                    </div>
+                  )}
+                  <div className="bg-red-50 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-red-700">{branchImportResult.errors?.length ?? 0}</div>
+                    <div className="text-xs text-red-600">Errores</div>
+                  </div>
+                </div>
+
+                {branchImportResult.errors?.length > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 max-h-40 overflow-y-auto">
+                    <p className="font-medium text-red-800 text-sm mb-1">Errores:</p>
+                    {branchImportResult.errors.map((err, i) => (
+                      <p key={i} className="text-xs text-red-700">{err}</p>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex justify-end">
+                  <button onClick={() => onSetShowBranchImportModal(false)} className="btn btn-primary">
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       </div>
     );
   }

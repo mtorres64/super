@@ -154,22 +154,28 @@ def calcular_siguiente_vencimiento(dia_facturacion: int, meses: int, desde: date
     tz = desde.tzinfo or timezone.utc
     return datetime(anio, mes, dia, 0, 0, 0, tzinfo=tz)
 
+def calcular_periodo_inicio(dia_facturacion: int, meses: int, periodo_fin: datetime) -> datetime:
+    """Inicio del período: dia_facturacion, meses meses antes de periodo_fin."""
+    mes = periodo_fin.month - meses
+    anio = periodo_fin.year + (mes - 1) // 12
+    mes = ((mes - 1) % 12) + 1
+    ultimo_dia = calendar.monthrange(anio, mes)[1]
+    tz = periodo_fin.tzinfo or timezone.utc
+    return datetime(anio, mes, min(dia_facturacion, ultimo_dia), 0, 0, 0, tzinfo=tz)
+
 def _aplicar_renovacion(suscripcion: dict, meses: int, now: datetime):
-    """Calcula (base, nueva_fecha) respetando día de facturación fijo. No acumulativo.
-    Durante el periodo de gracia (suscripción paga vencida hace <= GRACE_DAYS días),
-    usa la fecha de vencimiento como base para respetar el ciclo de facturación.
-    Ej: venció el 1, paga el día 10 (gracia) → renueva hasta el 1 del mes siguiente."""
+    """Modelo 1 - aniversario: el vencimiento siempre cae en dia_facturacion del mes.
+    Si está activa o venció dentro del periodo de gracia, extiende desde el vencimiento
+    original (el cliente no pierde días). Más allá de la gracia, arranca desde now."""
     vencimiento = suscripcion["fecha_vencimiento"]
     if isinstance(vencimiento, str):
         vencimiento = datetime.fromisoformat(vencimiento)
     if not vencimiento.tzinfo:
         vencimiento = vencimiento.replace(tzinfo=timezone.utc)
-    fue_pagada = suscripcion.get("fue_pagada", False)
-    # Si fue paga y venció dentro del periodo de gracia, respetar el ciclo de facturación
-    if fue_pagada and vencimiento < now and (now - vencimiento).days <= GRACE_DAYS:
+    if vencimiento >= now or (now - vencimiento).days <= GRACE_DAYS:
         base = vencimiento
     else:
-        base = vencimiento if vencimiento > now else now
+        base = now
     dia = suscripcion.get("dia_facturacion") or min(base.day, 28)
     nueva_fecha = calcular_siguiente_vencimiento(dia, meses, base)
     return base, nueva_fecha
@@ -527,6 +533,7 @@ class Suscripcion(BaseModel):
     addon_tienda: bool = False
     sucursales_extra: int = 0       # sucursales adicionales sobre las 3 base del plan empresarial
     usuarios_extra_packs: int = 0   # packs de 5 usuarios adicionales sobre los 15 base
+    descuento_pct: int = 0          # porcentaje de descuento personalizado asignado por owner (0-100)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class PagoSuscripcion(BaseModel):
@@ -715,6 +722,7 @@ class Configuration(BaseModel):
     date_format: str = "DD/MM/YYYY"
     time_format: str = "24h"
     language: str = "es"
+    session_duration_minutes: int = 480
 
     # Receipt Settings
     print_receipt_auto: bool = False
@@ -781,6 +789,7 @@ class ConfigurationUpdate(BaseModel):
     date_format: Optional[str] = None
     time_format: Optional[str] = None
     language: Optional[str] = None
+    session_duration_minutes: Optional[int] = None
     print_receipt_auto: Optional[bool] = None
     show_receipt_after_sale: Optional[bool] = None
     receipt_width: Optional[int] = None
@@ -948,6 +957,7 @@ class SaleItem(BaseModel):
     precio_unitario: float
     subtotal: Optional[float] = None
     total: Optional[float] = None
+    descuento: Optional[float] = 0.0
 
     @property
     def total_item(self):
@@ -977,6 +987,7 @@ class Sale(BaseModel):
     cuit_receptor: Optional[str] = None
     cliente_id: Optional[str] = None
     descuento: float = 0.0
+    descuento_items: float = 0.0
     impuestos_extra_total: float = 0.0
     condicion_iva_receptor: Optional[str] = None
     observaciones_comprobante: Optional[str] = None
@@ -989,6 +1000,7 @@ class SaleCreate(BaseModel):
     cuit_receptor: Optional[str] = None         # requerido si tipo_comprobante = 1
     cliente_id: Optional[str] = None
     descuento: Optional[float] = 0.0
+    descuento_items: Optional[float] = 0.0
     impuestos_extra_total: Optional[float] = 0.0
     condicion_iva_receptor: Optional[str] = None
     observaciones_comprobante: Optional[str] = None
@@ -1173,6 +1185,12 @@ class DistribucionCreate(BaseModel):
     items: List[DistribucionItem]
 
 # Utility functions
+async def get_empresa_session_duration(empresa_id: str) -> int:
+    cfg = await db.configuration.find_one({"empresa_id": empresa_id})
+    if cfg:
+        return int(cfg.get("session_duration_minutes") or 480)
+    return 480
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
@@ -1216,8 +1234,8 @@ def require_role(required_roles: List[UserRole]):
 @api_router.post("/branches", response_model=Branch)
 async def create_branch(branch_data: BranchCreate, user: User = Depends(require_role([UserRole.ADMIN]))):
     empresa = await db.empresas.find_one({"id": user.empresa_id})
-    plan = (empresa or {}).get("plan", "emprendedor")
     suscripcion_doc = await db.suscripciones.find_one({"empresa_id": user.empresa_id})
+    plan = (suscripcion_doc or {}).get("plan_tier") or (empresa or {}).get("plan", "emprendedor")
     suc_extra = int((suscripcion_doc or {}).get("sucursales_extra", 0))
     limite_base = {"empresarial": 3, "profesional": 1, "emprendedor": 1}.get(plan, 1)
     limite_sucursales = limite_base + (suc_extra if plan == "empresarial" else 0)
@@ -1772,7 +1790,7 @@ async def register_empresa(data: EmpresaRegister):
         await db.categories.insert_one(category.dict())
 
     # Return token (auto-login)
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(minutes=await get_empresa_session_duration(empresa.id))
     access_token = create_access_token(
         data={"sub": user.id, "empresa_id": empresa.id},
         expires_delta=access_token_expires
@@ -1782,8 +1800,8 @@ async def register_empresa(data: EmpresaRegister):
 @api_router.post("/auth/register", response_model=User)
 async def register(user_data: UserCreate, current_user: User = Depends(require_role([UserRole.ADMIN]))):
     empresa = await db.empresas.find_one({"id": current_user.empresa_id})
-    plan = (empresa or {}).get("plan", "emprendedor")
     suscripcion_doc = await db.suscripciones.find_one({"empresa_id": current_user.empresa_id})
+    plan = (suscripcion_doc or {}).get("plan_tier") or (empresa or {}).get("plan", "emprendedor")
     usr_extra_packs = int((suscripcion_doc or {}).get("usuarios_extra_packs", 0))
     limite_base = {"empresarial": 15, "profesional": 5, "emprendedor": 2}.get(plan, 2)
     limite_usuarios = limite_base + (usr_extra_packs * 5 if plan == "empresarial" else 0)
@@ -1919,7 +1937,7 @@ async def login(user_data: UserLogin):
     if empresa_doc and not empresa_doc.get('email_verificado', True):
         raise HTTPException(status_code=403, detail="Correo no verificado. Completá el registro de tu empresa.")
 
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(minutes=await get_empresa_session_duration(user_doc['empresa_id']))
     user = User(**user_doc)
 
     token_data: dict = {"sub": user_doc['id'], "empresa_id": user_doc['empresa_id']}
@@ -1947,7 +1965,7 @@ async def select_branch(data: SelectBranchRequest, current_user: User = Depends(
                 raise HTTPException(status_code=403, detail="Sucursal no encontrada en esta empresa")
         else:
             raise HTTPException(status_code=403, detail="No tiene acceso a esa sucursal")
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(minutes=await get_empresa_session_duration(current_user.empresa_id))
     access_token = create_access_token(
         data={"sub": current_user.id, "empresa_id": current_user.empresa_id, "active_branch_id": data.branch_id},
         expires_delta=access_token_expires
@@ -2861,6 +2879,389 @@ async def upload_product_image(
         raise HTTPException(status_code=502, detail="Error al subir la imagen")
     return {"url": url, "drive_file_id": file_id}
 
+
+@api_router.get("/branch-products/import-template")
+async def get_branch_import_template(
+    branch_id: str,
+    user: User = Depends(require_role([UserRole.ADMIN]))
+):
+    import io as _io
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    branch = await db.branches.find_one({"id": branch_id, "empresa_id": user.empresa_id})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Sucursal no encontrada")
+
+    db_cats = await db.categories.find({"empresa_id": user.empresa_id}).to_list(1000)
+    cat_id_to_name = {c["id"]: c["nombre"] for c in db_cats}
+    cat_names = [c["nombre"] for c in db_cats] if db_cats else ["General"]
+
+    products = await db.products.find({"empresa_id": user.empresa_id, "activo": True}).to_list(5000)
+    branch_prods = await db.branch_products.find({"branch_id": branch_id, "empresa_id": user.empresa_id}).to_list(5000)
+    bp_map = {bp["product_id"]: bp for bp in branch_prods}
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Precios y Stock"
+
+    ws_cats = wb.create_sheet("Categorias")
+    for i, nombre in enumerate(cat_names, start=1):
+        ws_cats.cell(row=i, column=1, value=nombre)
+    ws_cats.sheet_state = "hidden"
+
+    HDR_FILL  = PatternFill("solid", fgColor="1a7a4a")
+    REF_FILL  = PatternFill("solid", fgColor="e8e8e8")
+    REQ_FILL  = PatternFill("solid", fgColor="e8f5e9")
+    OPT_FILL  = PatternFill("solid", fgColor="f3f4f6")
+    THIN = Border(
+        left=Side(style="thin", color="cccccc"), right=Side(style="thin", color="cccccc"),
+        top=Side(style="thin", color="cccccc"),  bottom=Side(style="thin", color="cccccc"),
+    )
+    WHITE_BOLD = Font(bold=True, color="FFFFFF", name="Calibri", size=11)
+    GRAY_BOLD  = Font(bold=True, color="555555", name="Calibri", size=10)
+    NORM       = Font(name="Calibri", size=10)
+
+    cols = [
+        ("nombre",        28, "OBLIGATORIO para nuevos productos."),
+        ("tipo",          18, "OBLIGATORIO para nuevos. Valores: codigo_barras  o  por_peso"),
+        ("precio_venta",  14, "Precio de venta en esta sucursal. Se redondea."),
+        ("categoria",     18, "OBLIGATORIO para nuevos. Seleccionar de la lista."),
+        ("precio_costo",  16, "Opcional. Costo de compra. Recalcula el margen."),
+        ("codigo_barras", 20, "REQUERIDO. Identifica el producto. Si no existe se crea solo en esta sucursal."),
+        ("stock",         12, "Opcional. Stock en esta sucursal."),
+        ("stock_minimo",  14, "Opcional. Stock mínimo de alerta."),
+        ("clase",         14, "Opcional. Normal o Combo."),
+    ]
+
+    for c, (header, width, _) in enumerate(cols, start=1):
+        cell = ws.cell(row=1, column=c, value=header)
+        cell.font = WHITE_BOLD
+        cell.fill = HDR_FILL
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = THIN
+        ws.column_dimensions[get_column_letter(c)].width = width
+    ws.row_dimensions[1].height = 22
+    ws.freeze_panes = "A2"
+
+    dv_tipo = DataValidation(type="list", formula1='"codigo_barras,por_peso"', allow_blank=False)
+    dv_tipo.sqref = "B2:B1000"
+    ws.add_data_validation(dv_tipo)
+
+    n_cats = len(cat_names)
+    dv_cat = DataValidation(type="list", formula1=f"=Categorias!$A$1:$A${n_cats}", allow_blank=True)
+    dv_cat.sqref = "D2:D1000"
+    ws.add_data_validation(dv_cat)
+
+    dv_clase = DataValidation(type="list", formula1='"Normal,Combo"', allow_blank=True)
+    dv_clase.sqref = "I2:I1000"
+    ws.add_data_validation(dv_clase)
+
+    row = 2
+    for prod in sorted(products, key=lambda p: p.get("nombre", "")):
+        if not prod.get("codigo_barras") or prod["codigo_barras"].startswith("INT-"):
+            continue
+        bp = bp_map.get(prod["id"], {})
+        cat_name = cat_id_to_name.get(prod.get("categoria_id", ""), "")
+        kind_str = "Combo" if prod.get("kind") == "combo" else "Normal"
+        cells_data = [
+            (prod.get("nombre", ""),                               REF_FILL, GRAY_BOLD),
+            (prod.get("tipo", "codigo_barras"),                    REF_FILL, GRAY_BOLD),
+            (bp.get("precio", prod.get("precio", "")),             OPT_FILL, NORM),
+            (cat_name,                                             REF_FILL, GRAY_BOLD),
+            (bp.get("costo", ""),                                  OPT_FILL, NORM),
+            (prod.get("codigo_barras", ""),                        REQ_FILL, GRAY_BOLD),
+            (bp.get("stock", ""),                                  OPT_FILL, NORM),
+            (bp.get("stock_minimo", prod.get("stock_minimo", "")), OPT_FILL, NORM),
+            (kind_str,                                             OPT_FILL, NORM),
+        ]
+        for c, (value, fill, font) in enumerate(cells_data, start=1):
+            cell = ws.cell(row=row, column=c, value=value)
+            cell.fill = fill
+            cell.border = THIN
+            cell.font = font
+        ws.row_dimensions[row].height = 18
+        row += 1
+
+    # Filas vacías para nuevos productos
+    for _ in range(20):
+        for c in range(1, len(cols) + 1):
+            cell = ws.cell(row=row, column=c)
+            cell.fill = REQ_FILL if c in (1, 2, 3, 4, 6) else OPT_FILL
+            cell.border = THIN
+            cell.font = NORM
+        ws.row_dimensions[row].height = 18
+        row += 1
+
+    buf = _io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    safe_name = branch.get("nombre", "sucursal").replace(" ", "_")
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=plantilla_precios_{safe_name}.xlsx"},
+    )
+
+
+@api_router.post("/branch-products/import")
+async def import_branch_products(
+    branch_id: str,
+    lista_completa: bool = Query(False),
+    file: UploadFile = File(...),
+    user: User = Depends(require_role([UserRole.ADMIN]))
+):
+    branch = await db.branches.find_one({"id": branch_id, "empresa_id": user.empresa_id})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Sucursal no encontrada")
+
+    content = await file.read()
+    filename = file.filename or ""
+
+    try:
+        if filename.endswith(".xlsx") or filename.endswith(".xls"):
+            df = pd.read_excel(io.BytesIO(content))
+        elif filename.endswith(".csv"):
+            df = pd.read_csv(io.StringIO(content.decode("utf-8-sig")))
+        else:
+            raise HTTPException(status_code=400, detail="Formato no soportado. Use CSV o XLSX.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error al leer el archivo: {str(e)}")
+
+    df.columns = df.columns.str.strip().str.lower()
+
+    if "codigo_barras" not in df.columns:
+        raise HTTPException(status_code=400, detail="Columna 'codigo_barras' es requerida.")
+
+    empresa_id = user.empresa_id
+    total_rows = len(df)
+
+    cfg = await db.configuration.find_one({"empresa_id": empresa_id}) or {}
+    redondeo = cfg.get("redondeo_precio", 100)
+
+    categories = await db.categories.find({"empresa_id": empresa_id}).to_list(1000)
+    cat_map = {c["nombre"].strip().lower(): c["id"] for c in categories}
+
+    def _redondear(valor: float) -> float:
+        import math
+        if not redondeo:
+            return round(valor, 2)
+        return math.ceil(valor / redondeo) * redondeo
+
+    def _parse_float(val):
+        if pd.isna(val) or str(val).strip() in ("", "nan"):
+            return None
+        return float(val)
+
+    def _parse_int(val, default=None):
+        if pd.isna(val) or str(val).strip() in ("", "nan"):
+            return default
+        return int(float(val))
+
+    async def generate():
+        updated = 0
+        created = 0
+        skipped = 0
+        errors = []
+        imported_barcodes = set()   # barcodes procesados con éxito
+        new_product_ids = []        # IDs de productos creados en esta importación
+
+        for idx, row in df.iterrows():
+            try:
+                raw_barcode = row.get("codigo_barras")
+                if pd.isna(raw_barcode) or str(raw_barcode).strip() in ("", "nan"):
+                    skipped += 1
+                    yield f"data: {json.dumps({'progress': int(((idx+1)/total_rows)*100), 'processed': idx+1, 'total': total_rows})}\n\n"
+                    await asyncio.sleep(0)
+                    continue
+
+                try:
+                    codigo_barras = str(int(float(str(raw_barcode).strip())))
+                except (ValueError, OverflowError):
+                    codigo_barras = str(raw_barcode).strip()
+
+                # Parsear campos de sucursal
+                precio_costo = _parse_float(row.get("precio_costo"))
+                raw_precio = _parse_float(row.get("precio_venta"))
+                precio_venta = _redondear(raw_precio) if raw_precio is not None else None
+                raw_stock = _parse_int(row.get("stock"))
+                raw_stock_min = _parse_int(row.get("stock_minimo"))
+
+                margen = None
+                if precio_costo is not None and precio_venta is not None and precio_costo > 0:
+                    margen = round((precio_venta - precio_costo) / precio_costo * 100, 2)
+
+                product = await db.products.find_one({"codigo_barras": codigo_barras, "empresa_id": empresa_id})
+
+                if not product:
+                    # Intentar crear el producto con los datos de la fila
+                    raw_nombre = str(row.get("nombre", "")).strip()
+                    raw_tipo = str(row.get("tipo", "codigo_barras")).strip()
+                    raw_categoria = str(row.get("categoria", "")).strip()
+                    raw_clase = str(row.get("clase", "")).strip().lower()
+
+                    if not raw_nombre or precio_venta is None or not raw_categoria:
+                        errors.append(f"Fila {idx+2}: código '{codigo_barras}' no encontrado. Para crear el producto complete nombre, precio_venta y categoria.")
+                        yield f"data: {json.dumps({'progress': int(((idx+1)/total_rows)*100), 'processed': idx+1, 'total': total_rows})}\n\n"
+                        await asyncio.sleep(0)
+                        continue
+
+                    tipo = raw_tipo if raw_tipo in ("codigo_barras", "por_peso") else "codigo_barras"
+                    kind = "combo" if raw_clase == "combo" else "normal"
+                    stock_minimo_prod = raw_stock_min if raw_stock_min is not None else 10
+
+                    cat_key = raw_categoria.lower()
+                    categoria_id = cat_map.get(cat_key)
+                    if not categoria_id:
+                        new_cat = Category(empresa_id=empresa_id, nombre=raw_categoria)
+                        await db.categories.insert_one(new_cat.dict())
+                        cat_map[cat_key] = new_cat.id
+                        categoria_id = new_cat.id
+
+                    new_product = Product(
+                        empresa_id=empresa_id,
+                        nombre=raw_nombre,
+                        codigo_barras=codigo_barras,
+                        tipo=tipo,
+                        kind=kind,
+                        precio=precio_venta,
+                        categoria_id=categoria_id,
+                        stock=raw_stock if raw_stock is not None else 0,
+                        stock_minimo=stock_minimo_prod,
+                    )
+                    _pdoc = {k: v for k, v in new_product.model_dump().items() if v is not None}
+                    await db.products.insert_one(_pdoc)
+
+                    # Crear branch_product SOLO para esta sucursal (activo)
+                    new_bp = BranchProduct(
+                        empresa_id=empresa_id,
+                        product_id=new_product.id,
+                        branch_id=branch_id,
+                        precio=precio_venta,
+                        stock=raw_stock if raw_stock is not None else 0,
+                        stock_minimo=stock_minimo_prod,
+                        costo=precio_costo,
+                        margen=margen,
+                        activo=True,
+                    )
+                    await db.branch_products.insert_one(new_bp.dict())
+                    imported_barcodes.add(codigo_barras)
+                    new_product_ids.append(new_product.id)
+                    created += 1
+                    yield f"data: {json.dumps({'progress': int(((idx+1)/total_rows)*100), 'processed': idx+1, 'total': total_rows})}\n\n"
+                    await asyncio.sleep(0)
+                    continue
+
+                # Producto existente: actualizar branch_product
+                bp_update = {}
+                if precio_venta is not None:
+                    bp_update["precio"] = precio_venta
+                if precio_costo is not None:
+                    bp_update["costo"] = precio_costo
+                if margen is not None:
+                    bp_update["margen"] = margen
+                elif precio_costo is not None:
+                    existing_bp_pre = await db.branch_products.find_one({"product_id": product["id"], "branch_id": branch_id, "empresa_id": empresa_id})
+                    precio_actual = (existing_bp_pre or {}).get("precio", product.get("precio", 0))
+                    if precio_actual and precio_costo > 0:
+                        bp_update["margen"] = round((precio_actual - precio_costo) / precio_costo * 100, 2)
+                if raw_stock is not None:
+                    bp_update["stock"] = raw_stock
+                if raw_stock_min is not None:
+                    bp_update["stock_minimo"] = raw_stock_min
+
+                if not bp_update:
+                    # Sin datos editables pero el barcode está en el archivo: contar como importado
+                    imported_barcodes.add(codigo_barras)
+                    skipped += 1
+                    yield f"data: {json.dumps({'progress': int(((idx+1)/total_rows)*100), 'processed': idx+1, 'total': total_rows})}\n\n"
+                    await asyncio.sleep(0)
+                    continue
+
+                existing_bp = await db.branch_products.find_one({"product_id": product["id"], "branch_id": branch_id, "empresa_id": empresa_id})
+                if existing_bp:
+                    bp_update["activo"] = True
+                    await db.branch_products.update_one(
+                        {"id": existing_bp["id"], "empresa_id": empresa_id},
+                        {"$set": bp_update}
+                    )
+                else:
+                    new_bp = BranchProduct(
+                        empresa_id=empresa_id,
+                        product_id=product["id"],
+                        branch_id=branch_id,
+                        precio=bp_update.get("precio", product.get("precio", 0)),
+                        stock=bp_update.get("stock", 0),
+                        stock_minimo=bp_update.get("stock_minimo", product.get("stock_minimo", 10)),
+                        costo=bp_update.get("costo"),
+                        margen=bp_update.get("margen"),
+                        activo=True,
+                    )
+                    await db.branch_products.insert_one(new_bp.dict())
+
+                imported_barcodes.add(codigo_barras)
+                updated += 1
+
+            except Exception as e:
+                errors.append(f"Fila {idx+2}: {str(e)}")
+
+            yield f"data: {json.dumps({'progress': int(((idx+1)/total_rows)*100), 'processed': idx+1, 'total': total_rows})}\n\n"
+            await asyncio.sleep(0)
+
+        # --- Lista completa: desactivar lo que no vino en el archivo ---
+        desactivados = 0
+        if lista_completa:
+            all_products = await db.products.find({"empresa_id": empresa_id, "activo": True}).to_list(10000)
+            for prod in all_products:
+                cb = prod.get("codigo_barras") or ""
+                if cb.startswith("INT-") or cb in imported_barcodes:
+                    continue
+                bp_existente = await db.branch_products.find_one({"product_id": prod["id"], "branch_id": branch_id, "empresa_id": empresa_id})
+                if bp_existente:
+                    if bp_existente.get("activo", True):
+                        await db.branch_products.update_one({"id": bp_existente["id"]}, {"$set": {"activo": False}})
+                        desactivados += 1
+                else:
+                    bp_inactivo = BranchProduct(
+                        empresa_id=empresa_id,
+                        product_id=prod["id"],
+                        branch_id=branch_id,
+                        precio=prod.get("precio", 0),
+                        stock=0,
+                        activo=False,
+                    )
+                    await db.branch_products.insert_one(bp_inactivo.dict())
+                    desactivados += 1
+
+            # Nuevos productos creados → inactivos en otras sucursales
+            if new_product_ids:
+                other_branches = await db.branches.find({"empresa_id": empresa_id, "activo": True, "id": {"$ne": branch_id}}).to_list(100)
+                for prod_id in new_product_ids:
+                    new_prod = await db.products.find_one({"id": prod_id, "empresa_id": empresa_id})
+                    if not new_prod:
+                        continue
+                    for ob in other_branches:
+                        exists = await db.branch_products.find_one({"product_id": prod_id, "branch_id": ob["id"], "empresa_id": empresa_id})
+                        if not exists:
+                            bp_ob = BranchProduct(
+                                empresa_id=empresa_id,
+                                product_id=prod_id,
+                                branch_id=ob["id"],
+                                precio=new_prod.get("precio", 0),
+                                stock=0,
+                                activo=False,
+                            )
+                            await db.branch_products.insert_one(bp_ob.dict())
+
+        yield f"data: {json.dumps({'done': True, 'created': created, 'updated': updated, 'skipped': skipped, 'desactivados': desactivados, 'errors': errors, 'total_procesado': created + updated + skipped + len(errors)})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
 @api_router.get("/products/{product_id}", response_model=Product)
 async def get_product(product_id: str, user: User = Depends(get_current_user)):
     product = await db.products.find_one({"id": product_id, "empresa_id": user.empresa_id})
@@ -3529,7 +3930,8 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
             nombre=product_nombre,
             cantidad=item.cantidad,
             precio_unitario=precio_unitario,
-            subtotal=subtotal
+            subtotal=subtotal,
+            descuento=item.descuento or 0.0,
         ))
         total_amount += subtotal
 
@@ -3571,6 +3973,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
         numero_factura=numero_factura,
         cliente_id=sale_data.cliente_id,
         descuento=descuento,
+        descuento_items=sale_data.descuento_items or 0.0,
         impuestos_extra_total=impuestos_extra_total,
         condicion_iva_receptor=sale_data.condicion_iva_receptor,
         observaciones_comprobante=sale_data.observaciones_comprobante,
@@ -3780,7 +4183,7 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
         if precio_unitario is None:
             raise HTTPException(status_code=400, detail=f"No se pudo determinar el precio para {product_nombre or item.producto_id}")
         subtotal_item = item.cantidad * precio_unitario
-        validated_items.append(SaleItem(producto_id=item.producto_id, nombre=product_nombre, cantidad=item.cantidad, precio_unitario=precio_unitario, subtotal=subtotal_item))
+        validated_items.append(SaleItem(producto_id=item.producto_id, nombre=product_nombre, cantidad=item.cantidad, precio_unitario=precio_unitario, subtotal=subtotal_item, descuento=item.descuento or 0.0))
         total_amount += subtotal_item
 
     # Recalculate totals
@@ -3811,23 +4214,32 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
     }
     await db.sales.update_one({"id": sale_id}, {"$set": update_fields})
 
-    # Adjust cash session total
+    # Adjust cash session total and the corresponding movement record
     diff = total - old_total
     if diff != 0:
         await db.cash_sessions.update_one({"id": original_sale['session_id']}, {"$inc": {"monto_ventas": diff}})
+        await db.cash_movements.update_one(
+            {"venta_id": sale_id, "empresa_id": user.empresa_id, "tipo": MovementType.VENTA.value},
+            {"$inc": {"monto": diff}}
+        )
 
     updated = await db.sales.find_one({"id": sale_id})
     return Sale(**updated)
 
 
 @api_router.get("/sales", response_model=List[Sale])
-async def get_sales(customer_id: Optional[str] = None, user: User = Depends(get_current_user)):
+async def get_sales(customer_id: Optional[str] = None, for_report: bool = False, user: User = Depends(get_current_user)):
     query: dict = {"empresa_id": user.empresa_id}
+    if user.branch_id and user.rol not in [UserRole.ADMIN, UserRole.SUPERVISOR]:
+        query["branch_id"] = user.branch_id
     if user.rol == UserRole.CAJERO:
         query["cajero_id"] = user.id
     if customer_id:
         query["cliente_id"] = customer_id
-    limit = 500 if customer_id else (100 if user.rol == UserRole.CAJERO else 1000)
+    if for_report and user.rol in [UserRole.ADMIN, UserRole.SUPERVISOR]:
+        limit = None
+    else:
+        limit = 500 if customer_id else (100 if user.rol == UserRole.CAJERO else 1000)
     sales = await db.sales.find(query).sort("fecha", -1).to_list(limit)
 
     result = []
@@ -4486,8 +4898,9 @@ async def get_cash_session_report(session_id: str, user: User = Depends(get_curr
 async def get_dashboard_stats(user: User = Depends(get_current_user)):
     is_admin_or_supervisor = user.rol in [UserRole.ADMIN, UserRole.SUPERVISOR]
 
-    # Today's sales
-    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    # Today's sales — use Argentina local time (UTC-3) so "today" matches the user's calendar day
+    AR_TZ = timezone(timedelta(hours=-3))
+    today = datetime.now(AR_TZ).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
     tomorrow = today + timedelta(days=1)
 
     sales_filter = {"empresa_id": user.empresa_id, "fecha": {"$gte": today, "$lt": tomorrow}}
@@ -5054,14 +5467,15 @@ async def _get_or_create_suscripcion(empresa_id: str) -> dict:
     doc = await db.suscripciones.find_one({"empresa_id": empresa_id})
     if not doc:
         now = datetime.now(timezone.utc)
-        dia_facturacion = min(now.day, 28)
+        trial_fin = now + timedelta(days=await get_trial_dias())
+        dia_facturacion = min(trial_fin.day, 28)
         suscripcion = Suscripcion(
             empresa_id=empresa_id,
             plan_nombre=await get_plan_nombre_suscripcion(),
             precio=await get_precio_suscripcion(),
             status=SuscripcionStatus.TRIAL,
             fecha_inicio=now,
-            fecha_vencimiento=now + timedelta(days=await get_trial_dias()),
+            fecha_vencimiento=trial_fin,
             dia_facturacion=dia_facturacion,
             plan_tipo="mensual",
         )
@@ -5153,6 +5567,7 @@ async def get_cuenta_status(user: User = Depends(require_role([UserRole.ADMIN]))
         "addon_tienda": doc.get("addon_tienda", False),
         "sucursales_extra": doc.get("sucursales_extra", 0),
         "usuarios_extra_packs": doc.get("usuarios_extra_packs", 0),
+        "descuento_pct": doc.get("descuento_pct", 0),
         **estado,
     }
 
@@ -5190,11 +5605,22 @@ async def get_planes(user: User = Depends(require_role([UserRole.ADMIN]))):
     precio_pro = await get_precio_profesional()
     precio_ent = await get_precio_empresarial()
     whatsapp = await get_whatsapp_numero()
+    suscripcion = await db.suscripciones.find_one({"empresa_id": user.empresa_id})
+    descuento_pct = (suscripcion or {}).get("descuento_pct", 0)
+    def aplicar_descuento(precio: float) -> float:
+        if descuento_pct > 0:
+            return round(precio * (1 - descuento_pct / 100))
+        return precio
     return {
         "tiers": {
-            "emprendedor": {"precio_mensual": precio_emp, "precio_anual": precio_emp * 11},
-            "profesional":  {"precio_mensual": precio_pro, "precio_anual": precio_pro * 11},
-            "empresarial":  {"precio_mensual": precio_ent, "precio_anual": precio_ent * 11},
+            "emprendedor": {"precio_mensual": aplicar_descuento(precio_emp), "precio_anual": aplicar_descuento(precio_emp) * 11, "precio_mensual_original": precio_emp},
+            "profesional":  {"precio_mensual": aplicar_descuento(precio_pro), "precio_anual": aplicar_descuento(precio_pro) * 11, "precio_mensual_original": precio_pro},
+            "empresarial":  {"precio_mensual": aplicar_descuento(precio_ent), "precio_anual": aplicar_descuento(precio_ent) * 11, "precio_mensual_original": precio_ent},
+        },
+        "addon_precios": {
+            "tienda": await get_precio_tienda(),
+            "sucursal_extra": await get_precio_sucursal_extra(),
+            "pack_usuarios": await get_precio_pack_usuarios(),
         },
         "addon_precios": {
             "tienda": await get_precio_tienda(),
@@ -5202,6 +5628,7 @@ async def get_planes(user: User = Depends(require_role([UserRole.ADMIN]))):
             "pack_usuarios": await get_precio_pack_usuarios(),
         },
         "whatsapp_numero": whatsapp,
+        "descuento_pct": descuento_pct,
     }
 
 @api_router.get("/public/planes")
@@ -5299,6 +5726,12 @@ async def crear_pago_suscripcion(data: PagoCreate = PagoCreate(), user: User = D
     plan_tier = data.plan_tier if data.plan_tier in ("emprendedor", "profesional", "empresarial") else "profesional"
     precio_mensual_base = await get_precio_por_tier(plan_tier)
 
+    # Obtener suscripción para descuento y ventana check
+    suscripcion = await db.suscripciones.find_one({"empresa_id": user.empresa_id})
+    descuento_pct = (suscripcion or {}).get("descuento_pct", 0)
+    if descuento_pct > 0:
+        precio_mensual_base = round(precio_mensual_base * (1 - descuento_pct / 100))
+
     # Addons
     addon_tienda = bool(data.addon_tienda)
     sucursales_extra = max(0, min(int(data.sucursales_extra), 9))
@@ -5324,7 +5757,6 @@ async def crear_pago_suscripcion(data: PagoCreate = PagoCreate(), user: User = D
         meses = 1
 
     # Verificar que la suscripción esté próxima a vencer o ya vencida
-    suscripcion = await db.suscripciones.find_one({"empresa_id": user.empresa_id})
     if suscripcion:
         vencimiento = suscripcion.get("fecha_vencimiento")
         if isinstance(vencimiento, str):
@@ -5406,14 +5838,18 @@ async def activar_suscripcion_automatica(user: User = Depends(require_role([User
     admin = await db.users.find_one({"empresa_id": user.empresa_id, "rol": "admin"})
     payer_email = MP_TEST_PAYER_EMAIL or (admin["email"] if admin else user.email)
 
-    precio_mensual = await get_precio_suscripcion()
     nombre_base = await get_plan_nombre_suscripcion()
 
-    # Obtener día de facturación de la suscripción existente
+    # Obtener suscripción para día de facturación, plan tier y descuento
     suscripcion = await db.suscripciones.find_one({"empresa_id": user.empresa_id})
     if suscripcion and suscripcion.get("tipo_cobro") == "automatico" and suscripcion.get("mp_preapproval_id"):
         raise HTTPException(status_code=409, detail="Ya tenés el débito automático activo.")
     dia_facturacion = (suscripcion or {}).get("dia_facturacion") or min(datetime.now(timezone.utc).day, 28)
+    plan_tier = (suscripcion or {}).get("plan_tier", "profesional")
+    precio_mensual = await get_precio_por_tier(plan_tier)
+    descuento_pct = (suscripcion or {}).get("descuento_pct", 0)
+    if descuento_pct > 0:
+        precio_mensual = round(precio_mensual * (1 - descuento_pct / 100))
 
     back_url = f"{FRONTEND_URL}/cuenta?suscripcion=authorized"
     if back_url.startswith("http://localhost") or back_url.startswith("http://127.0.0.1"):
@@ -5580,7 +6016,7 @@ async def simular_pago_aprobado(
         estado="approved",
         concepto=f"[TEST] {plan_nombre} - {empresa_nombre}",
         mp_payment_id=fake_payment_id,
-        periodo_inicio=base,
+        periodo_inicio=calcular_periodo_inicio(dia_facturacion, meses, nueva_fecha),
         periodo_fin=nueva_fecha,
         plan_tipo=plan_tipo,
     )
@@ -5632,9 +6068,10 @@ async def _procesar_pago_aprobado(empresa_id: str, payment_id: str, monto: float
             update_fields["tipo_cobro"] = "automatico"
             update_fields["mp_preapproval_id"] = preapproval_id
         await db.suscripciones.update_one({"empresa_id": empresa_id}, {"$set": update_fields})
+        dia_sus = suscripcion.get("dia_facturacion") or min(base.day, 28)
         await db.pagos_suscripcion.update_one(
             {"empresa_id": empresa_id, "mp_payment_id": payment_id},
-            {"$set": {"periodo_inicio": base, "periodo_fin": nueva_fecha}},
+            {"$set": {"periodo_inicio": calcular_periodo_inicio(dia_sus, meses, nueva_fecha), "periodo_fin": nueva_fecha}},
         )
     else:
         dia_facturacion = min(now.day, 28)
@@ -5864,6 +6301,8 @@ class SuscripcionUpdate(BaseModel):
     plan_tier: Optional[str] = None
     precio: Optional[float] = None
     dias_extra: Optional[int] = None
+    descuento_pct: Optional[int] = None
+    dia_facturacion: Optional[int] = None
 
 class ModulosUpdate(BaseModel):
     modules_extra: Optional[List[str]] = None
@@ -5873,6 +6312,7 @@ class PagoManual(BaseModel):
     monto: float
     concepto: str
     plan_tipo: str = "mensual"  # "mensual" | "anual"
+    fecha_pago: Optional[datetime] = None
 
 class ClienteDatosUpdate(BaseModel):
     empresa_nombre: Optional[str] = None
@@ -5919,7 +6359,7 @@ async def owner_impersonate(empresa_id: str, _=Depends(verify_owner_token)):
 
     access_token = create_access_token(
         data={"sub": admin["id"], "empresa_id": admin["empresa_id"]},
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+        expires_delta=timedelta(minutes=await get_empresa_session_duration(empresa_id)),
     )
     return {
         "access_token": access_token,
@@ -6084,6 +6524,10 @@ async def owner_update_suscripcion(
         update["plan_tier"] = data.plan_tier
     if data.precio is not None:
         update["precio"] = data.precio
+    if data.descuento_pct is not None:
+        update["descuento_pct"] = max(0, min(100, data.descuento_pct))
+    if data.dia_facturacion is not None:
+        update["dia_facturacion"] = max(1, min(28, data.dia_facturacion))
     if data.dias_extra and data.dias_extra > 0:
         if suscripcion:
             vencimiento = suscripcion.get("fecha_vencimiento")
@@ -6105,13 +6549,16 @@ async def owner_update_suscripcion(
             await db.suscripciones.update_one({"empresa_id": empresa_id}, {"$set": update})
         else:
             now = datetime.now(timezone.utc)
+            fv = update.get("fecha_vencimiento", now + timedelta(days=await get_trial_dias()))
+            dia_fact = update.get("dia_facturacion") or min(fv.day if hasattr(fv, "day") else now.day, 28)
             nueva = Suscripcion(
                 empresa_id=empresa_id,
                 plan_nombre=update.get("plan_nombre", SUSCRIPCION_PLAN_NOMBRE),
                 precio=update.get("precio", SUSCRIPCION_PRECIO),
                 status=update.get("status", SuscripcionStatus.ACTIVA),
                 fecha_inicio=now,
-                fecha_vencimiento=update.get("fecha_vencimiento", now + timedelta(days=await get_trial_dias())),
+                fecha_vencimiento=fv,
+                dia_facturacion=dia_fact,
             )
             await db.suscripciones.insert_one(nueva.dict())
     return {"message": "Suscripción actualizada"}
@@ -6125,6 +6572,8 @@ async def owner_registrar_pago(
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
     plan_tipo = data.plan_tipo if data.plan_tipo in ("mensual", "anual") else "mensual"
     meses = 1 if plan_tipo == "mensual" else 12
+    now = datetime.now(timezone.utc)
+    fecha_pago = data.fecha_pago.replace(tzinfo=timezone.utc) if data.fecha_pago and not data.fecha_pago.tzinfo else (data.fecha_pago or now)
     pago = PagoSuscripcion(
         empresa_id=empresa_id,
         monto=data.monto,
@@ -6132,39 +6581,75 @@ async def owner_registrar_pago(
         estado="approved",
         concepto=data.concepto,
         plan_tipo=plan_tipo,
+        fecha=fecha_pago,
     )
     await db.pagos_suscripcion.insert_one(pago.dict())
     suscripcion = await db.suscripciones.find_one({"empresa_id": empresa_id})
-    now = datetime.now(timezone.utc)
     if suscripcion:
-        base, nueva_fecha = _aplicar_renovacion(suscripcion, meses, now)
+        base, nueva_fecha = _aplicar_renovacion(suscripcion, meses, fecha_pago)
         await db.suscripciones.update_one(
             {"empresa_id": empresa_id},
             {"$set": {
                 "status": SuscripcionStatus.ACTIVA,
                 "fecha_vencimiento": nueva_fecha,
                 "plan_tipo": plan_tipo,
+                "fue_pagada": True,
             }}
         )
+        dia_sus = suscripcion.get("dia_facturacion") or min(base.day, 28)
         await db.pagos_suscripcion.update_one(
             {"id": pago.id},
-            {"$set": {"periodo_inicio": base, "periodo_fin": nueva_fecha}}
+            {"$set": {"periodo_inicio": calcular_periodo_inicio(dia_sus, meses, nueva_fecha), "periodo_fin": nueva_fecha}}
         )
     else:
-        dia_facturacion = min(now.day, 28)
-        nueva_fecha = calcular_siguiente_vencimiento(dia_facturacion, meses, now)
+        dia_facturacion = min(fecha_pago.day, 28)
+        nueva_fecha = calcular_siguiente_vencimiento(dia_facturacion, meses, fecha_pago)
         nueva_sus = Suscripcion(
             empresa_id=empresa_id,
             plan_nombre=await get_plan_nombre_suscripcion(),
             precio=data.monto,
             status=SuscripcionStatus.ACTIVA,
-            fecha_inicio=now,
+            fecha_inicio=fecha_pago,
             fecha_vencimiento=nueva_fecha,
             dia_facturacion=dia_facturacion,
             plan_tipo=plan_tipo,
         )
         await db.suscripciones.insert_one(nueva_sus.dict())
     return {"message": "Pago registrado y suscripción renovada"}
+
+@owner_router.delete("/clientes/{empresa_id}/pago/{pago_id}")
+async def owner_eliminar_pago(empresa_id: str, pago_id: str, _=Depends(verify_owner_token)):
+    pago = await db.pagos_suscripcion.find_one({"id": pago_id, "empresa_id": empresa_id})
+    if not pago:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    # Verificar que sea el último pago
+    ultimo = await db.pagos_suscripcion.find_one(
+        {"empresa_id": empresa_id},
+        sort=[("fecha", -1)]
+    )
+    if not ultimo or ultimo["id"] != pago_id:
+        raise HTTPException(status_code=400, detail="Solo se puede eliminar el último pago registrado")
+    await db.pagos_suscripcion.delete_one({"id": pago_id})
+    # Rollback: revertir el vencimiento al inicio del período del pago eliminado
+    suscripcion = await db.suscripciones.find_one({"empresa_id": empresa_id})
+    if suscripcion:
+        periodo_inicio = pago.get("periodo_inicio")
+        if isinstance(periodo_inicio, str):
+            periodo_inicio = datetime.fromisoformat(periodo_inicio)
+        if periodo_inicio and not periodo_inicio.tzinfo:
+            periodo_inicio = periodo_inicio.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        # Verificar si quedan otros pagos aprobados
+        pagos_restantes = await db.pagos_suscripcion.count_documents({"empresa_id": empresa_id, "estado": "approved"})
+        if periodo_inicio:
+            nuevo_status = SuscripcionStatus.ACTIVA if periodo_inicio > now else (
+                SuscripcionStatus.TRIAL if pagos_restantes == 0 and suscripcion.get("status") == SuscripcionStatus.TRIAL else SuscripcionStatus.VENCIDA
+            )
+            await db.suscripciones.update_one(
+                {"empresa_id": empresa_id},
+                {"$set": {"fecha_vencimiento": periodo_inicio, "status": nuevo_status, "fue_pagada": pagos_restantes > 0}}
+            )
+    return {"message": "Pago eliminado y suscripción revertida"}
 
 @owner_router.post("/clientes/{empresa_id}/suscripcion/cancelar-preapproval")
 async def owner_cancelar_preapproval(empresa_id: str, _=Depends(verify_owner_token)):

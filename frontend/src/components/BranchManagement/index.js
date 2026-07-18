@@ -50,6 +50,16 @@ const BranchManagement = () => {
   const [selectedKind, setSelectedKind] = useState('');
   const [selectedActivo, setSelectedActivo] = useState('');
   const [branchProductsCache, setBranchProductsCache] = useState({});
+  const [showBranchImportModal, setShowBranchImportModal] = useState(false);
+  const [branchImportFile, setBranchImportFile] = useState(null);
+  const [branchImportLoading, setBranchImportLoading] = useState(false);
+  const [branchImportProgress, setBranchImportProgress] = useState(0);
+  const [branchImportResult, setBranchImportResult] = useState(null);
+  const [branchTemplateLoading, setBranchTemplateLoading] = useState(false);
+  const [listaCompleta, setListaCompleta] = useState(false);
+  const branchImportFileRef = useRef(null);
+  const [totalActivosSucursal, setTotalActivosSucursal] = useState(null);
+  const [totalTodosSucursal, setTotalTodosSucursal] = useState(null);
 
   const [formData, setFormData] = useState({
     nombre: '',
@@ -57,6 +67,21 @@ const BranchManagement = () => {
     telefono: '',
     margen_ajuste: ''
   });
+
+  useEffect(() => {
+    if (!selectedBranch) return;
+    const fetchCounts = async () => {
+      try {
+        const [rActivos, rTodos] = await Promise.all([
+          axios.get(`${API}/branches/${selectedBranch.id}/products`, { params: { per_page: 1, activo_sucursal: true } }),
+          axios.get(`${API}/branches/${selectedBranch.id}/products`, { params: { per_page: 1 } }),
+        ]);
+        setTotalActivosSucursal(rActivos.data.total);
+        setTotalTodosSucursal(rTodos.data.total);
+      } catch (_) {}
+    };
+    fetchCounts();
+  }, [selectedBranch?.id]);
 
   useEffect(() => {
     fetchBranches();
@@ -82,9 +107,9 @@ const BranchManagement = () => {
     if (searchTerm.length === 0) {
       setDebouncedSearch('');
       setCurrentPage(1);
-    } else if (searchTerm.length >= 2) {
+    } else if (searchTerm.trim().length >= 2) {
       searchTimerRef.current = setTimeout(() => {
-        setDebouncedSearch(searchTerm);
+        setDebouncedSearch(searchTerm.trim());
         setCurrentPage(1);
       }, 350);
     }
@@ -94,7 +119,7 @@ const BranchManagement = () => {
   // Confirm text search on Enter press (immediate, no debounce)
   const commitSearch = () => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    setDebouncedSearch(searchTerm);
+    setDebouncedSearch(searchTerm.trim());
     setCurrentPage(1);
   };
 
@@ -816,6 +841,89 @@ const BranchManagement = () => {
     });
   };
 
+  const handleDownloadBranchTemplate = async () => {
+    if (!selectedBranch) return;
+    setBranchTemplateLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get(`${API}/branch-products/import-template`, {
+        params: { branch_id: selectedBranch.id },
+        responseType: 'blob',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `plantilla_precios_${selectedBranch.nombre.replace(/\s+/g, '_')}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Error al descargar la plantilla');
+    } finally {
+      setBranchTemplateLoading(false);
+    }
+  };
+
+  const handleBranchImport = async (e) => {
+    e.preventDefault();
+    if (!branchImportFile || !selectedBranch) return;
+    setBranchImportLoading(true);
+    setBranchImportProgress(0);
+    setBranchImportResult(null);
+    try {
+      const token = localStorage.getItem('token');
+      const formDataFile = new FormData();
+      formDataFile.append('file', branchImportFile);
+      const url = `${API}/branch-products/import?branch_id=${selectedBranch.id}${listaCompleta ? '&lista_completa=true' : ''}`;
+      const response = await fetch(url,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formDataFile }
+      );
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || 'Error al importar');
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.progress !== undefined) setBranchImportProgress(data.progress);
+            if (data.done) {
+              setBranchImportResult(data);
+              const creados = data.created ?? 0;
+              const actualizados = data.updated ?? 0;
+              const desactivados = data.desactivados ?? 0;
+              toast.success(`Importación completada: ${creados > 0 ? `${creados} creados, ` : ''}${actualizados} actualizados${desactivados > 0 ? `, ${desactivados} desactivados` : ''}`);
+              // Recargar productos y conteos
+              setCurrentPage(1);
+              setBranchProductsCache({});
+              try {
+                const [rA, rT] = await Promise.all([
+                  axios.get(`${API}/branches/${selectedBranch.id}/products`, { params: { per_page: 1, activo_sucursal: true } }),
+                  axios.get(`${API}/branches/${selectedBranch.id}/products`, { params: { per_page: 1 } }),
+                ]);
+                setTotalActivosSucursal(rA.data.total);
+                setTotalTodosSucursal(rT.data.total);
+              } catch (_) {}
+            }
+          } catch { /* ignore */ }
+        }
+      }
+    } catch (error) {
+      toast.error(error.message || 'Error al importar');
+    } finally {
+      setBranchImportLoading(false);
+    }
+  };
+
   return (
     <BranchManagementView
       loading={loading}
@@ -934,6 +1042,22 @@ const BranchManagement = () => {
       onToggleMostrarEnTienda={toggleMostrarEnTienda}
       onBulkSetMostrarEnTienda={bulkSetMostrarEnTienda}
       limiteAlcanzado={branches.length >= 3}
+      showBranchImportModal={showBranchImportModal}
+      onSetShowBranchImportModal={setShowBranchImportModal}
+      branchImportFile={branchImportFile}
+      onSetBranchImportFile={setBranchImportFile}
+      branchImportLoading={branchImportLoading}
+      branchImportProgress={branchImportProgress}
+      branchImportResult={branchImportResult}
+      onSetBranchImportResult={setBranchImportResult}
+      branchTemplateLoading={branchTemplateLoading}
+      branchImportFileRef={branchImportFileRef}
+      onBranchImport={handleBranchImport}
+      onDownloadBranchTemplate={handleDownloadBranchTemplate}
+      totalActivosSucursal={totalActivosSucursal}
+      totalTodosSucursal={totalTodosSucursal}
+      listaCompleta={listaCompleta}
+      onSetListaCompleta={setListaCompleta}
     />
   );
 };
