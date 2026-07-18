@@ -1246,7 +1246,7 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
       </div>
 
       {/* Payment History */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-5">
         <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">
           Historial de Pagos ({cliente.pagos?.length ?? 0})
         </h3>
@@ -1957,6 +1957,7 @@ const EmpresaConfigPanel = ({ empresaId, token }) => {
         items_per_page: String(d.items_per_page ?? 10),
         date_format: d.date_format ?? 'DD/MM/YYYY',
         time_format: d.time_format ?? '24h',
+        session_duration_minutes: String(d.session_duration_minutes ?? 480),
         pay_efectivo: String(d.payment_method_adjustments?.efectivo ?? 0),
         pay_tarjeta: String(d.payment_method_adjustments?.tarjeta ?? 0),
         pay_transferencia: String(d.payment_method_adjustments?.transferencia ?? 0),
@@ -2006,6 +2007,7 @@ const EmpresaConfigPanel = ({ empresaId, token }) => {
         items_per_page: parseInt(cfg.items_per_page) || null,
         date_format: cfg.date_format || null,
         time_format: cfg.time_format || null,
+        session_duration_minutes: parseInt(cfg.session_duration_minutes) || 480,
         payment_method_adjustments: {
           efectivo: parseFloat(cfg.pay_efectivo) || 0,
           tarjeta: parseFloat(cfg.pay_tarjeta) || 0,
@@ -2157,6 +2159,11 @@ const EmpresaConfigPanel = ({ empresaId, token }) => {
               {/* Sistema */}
               <div>
                 <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-4">Sistema</p>
+                <div className="mb-4">
+                  <label className="block text-xs text-gray-500 mb-1">Duración de sesión (minutos)</label>
+                  <input type="number" value={cfg.session_duration_minutes} onChange={set('session_duration_minutes')} className={inputCls} min="5" max="10080" />
+                  <p className="text-xs text-gray-600 mt-1">Tiempo antes de que el token expire y el usuario deba volver a iniciar sesión. Por defecto: 480 min (8 hs).</p>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Ítems por página</label>

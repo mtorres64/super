@@ -671,6 +671,7 @@ class Configuration(BaseModel):
     date_format: str = "DD/MM/YYYY"
     time_format: str = "24h"
     language: str = "es"
+    session_duration_minutes: int = 480
 
     # Receipt Settings
     print_receipt_auto: bool = False
@@ -724,6 +725,7 @@ class ConfigurationUpdate(BaseModel):
     date_format: Optional[str] = None
     time_format: Optional[str] = None
     language: Optional[str] = None
+    session_duration_minutes: Optional[int] = None
     print_receipt_auto: Optional[bool] = None
     show_receipt_after_sale: Optional[bool] = None
     receipt_width: Optional[int] = None
@@ -1101,6 +1103,12 @@ class DistribucionCreate(BaseModel):
     items: List[DistribucionItem]
 
 # Utility functions
+async def get_empresa_session_duration(empresa_id: str) -> int:
+    cfg = await db.configuration.find_one({"empresa_id": empresa_id})
+    if cfg:
+        return int(cfg.get("session_duration_minutes") or 480)
+    return 480
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
@@ -1698,7 +1706,7 @@ async def register_empresa(data: EmpresaRegister):
         await db.categories.insert_one(category.dict())
 
     # Return token (auto-login)
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(minutes=await get_empresa_session_duration(empresa.id))
     access_token = create_access_token(
         data={"sub": user.id, "empresa_id": empresa.id},
         expires_delta=access_token_expires
@@ -1845,7 +1853,7 @@ async def login(user_data: UserLogin):
     if empresa_doc and not empresa_doc.get('email_verificado', True):
         raise HTTPException(status_code=403, detail="Correo no verificado. Completá el registro de tu empresa.")
 
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(minutes=await get_empresa_session_duration(user_doc['empresa_id']))
     user = User(**user_doc)
 
     token_data: dict = {"sub": user_doc['id'], "empresa_id": user_doc['empresa_id']}
@@ -1873,7 +1881,7 @@ async def select_branch(data: SelectBranchRequest, current_user: User = Depends(
                 raise HTTPException(status_code=403, detail="Sucursal no encontrada en esta empresa")
         else:
             raise HTTPException(status_code=403, detail="No tiene acceso a esa sucursal")
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(minutes=await get_empresa_session_duration(current_user.empresa_id))
     access_token = create_access_token(
         data={"sub": current_user.id, "empresa_id": current_user.empresa_id, "active_branch_id": data.branch_id},
         expires_delta=access_token_expires
@@ -5912,7 +5920,7 @@ async def owner_impersonate(empresa_id: str, _=Depends(verify_owner_token)):
 
     access_token = create_access_token(
         data={"sub": admin["id"], "empresa_id": admin["empresa_id"]},
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+        expires_delta=timedelta(minutes=await get_empresa_session_duration(empresa_id)),
     )
     return {
         "access_token": access_token,
