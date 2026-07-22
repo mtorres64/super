@@ -4935,10 +4935,13 @@ async def distribuir_compra(
                 ya_distribuido[pid] = ya_distribuido.get(pid, 0) + float(it.get("cantidad", 0))
 
     original_qty: dict = {}
+    costo_por_producto: dict = {}
     for it in compra.get("items", []):
         pid = it.get("product_id")
         if pid:
             original_qty[pid] = original_qty.get(pid, 0) + float(it.get("cantidad", 0))
+            if it.get("precio_unitario") is not None:
+                costo_por_producto[pid] = float(it["precio_unitario"])
 
     # Validar saldo
     for item in data.items:
@@ -4964,14 +4967,20 @@ async def distribuir_compra(
         })
 
         update_op: dict = {}
+        set_fields: dict = {}
+
+        costo = costo_por_producto.get(item.product_id)
+        if costo is not None:
+            set_fields["costo"] = costo
+
         if item.actualizar_precio:
-            set_fields: dict = {}
             if item.nuevo_precio is not None:
                 set_fields["precio"] = item.nuevo_precio
             if item.nuevo_margen is not None:
                 set_fields["margen"] = item.nuevo_margen
-            if set_fields:
-                update_op["$set"] = set_fields
+
+        if set_fields:
+            update_op["$set"] = set_fields
 
         if item.actualizar_stock and item.cantidad > 0:
             update_op.setdefault("$inc", {})["stock"] = int(item.cantidad)
@@ -4993,6 +5002,7 @@ async def distribuir_compra(
                         precio=item.nuevo_precio or global_product.get("precio", 0),
                         stock=int(item.cantidad) if item.actualizar_stock else 0,
                         stock_minimo=global_product.get("stock_minimo", 10),
+                        costo=costo_por_producto.get(item.product_id, global_product.get("costo", 0)),
                     )
                     if item.nuevo_margen is not None:
                         bp_data["margen"] = item.nuevo_margen
