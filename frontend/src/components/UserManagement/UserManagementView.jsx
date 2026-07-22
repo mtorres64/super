@@ -10,6 +10,17 @@ import {
   Building2,
 } from 'lucide-react';
 import SortIcon from '../ui/SortIcon';
+import { useFormValidation } from '../../hooks/useFormValidation';
+import FieldError from '../ui/FieldError';
+
+const USER_CREATE_RULES = {
+  nombre: { required: true, message: 'El nombre es obligatorio' },
+  email: { required: true, message: 'El email es obligatorio' },
+  password: { required: true, message: 'La contraseña es obligatoria' },
+};
+const USER_EDIT_RULES = {
+  nombre: { required: true, message: 'El nombre es obligatorio' },
+};
 
 const UserManagementView = ({
   users,
@@ -31,6 +42,8 @@ const UserManagementView = ({
   requestSort,
   limiteAlcanzado = false,
 }) => {
+  const userV = useFormValidation(editingUser ? USER_EDIT_RULES : USER_CREATE_RULES);
+
   if (loading) {
     return (
       <div className="p-6 flex items-center justify-center h-64">
@@ -156,7 +169,13 @@ const UserManagementView = ({
               </button>
             </div>
 
-            <form onSubmit={handleSubmit}>
+            <form noValidate onSubmit={(e) => {
+              e.preventDefault();
+              const data = editingUser
+                ? { nombre: formData.nombre }
+                : { nombre: formData.nombre, email: formData.email, password: formData.password };
+              if (userV.validate(data)) handleSubmit(e);
+            }}>
               <div className="space-y-4">
                 <div className="form-group">
                   <label className="form-label">Nombre *</label>
@@ -164,9 +183,10 @@ const UserManagementView = ({
                     type="text"
                     className="form-input"
                     value={formData.nombre}
-                    onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                    onChange={(e) => { setFormData({ ...formData, nombre: e.target.value }); userV.clearError('nombre'); }}
                     required
                   />
+                  <FieldError error={userV.errors.nombre} />
                 </div>
 
                 {!editingUser && (
@@ -177,9 +197,10 @@ const UserManagementView = ({
                         type="email"
                         className="form-input"
                         value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value.toLowerCase() })}
+                        onChange={(e) => { setFormData({ ...formData, email: e.target.value.toLowerCase() }); userV.clearError('email'); }}
                         required
                       />
+                      <FieldError error={userV.errors.email} />
                     </div>
                     <div className="form-group">
                       <label className="form-label">Contraseña *</label>
@@ -187,9 +208,10 @@ const UserManagementView = ({
                         type="password"
                         className="form-input"
                         value={formData.password}
-                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        onChange={(e) => { setFormData({ ...formData, password: e.target.value }); userV.clearError('password'); }}
                         required
                       />
+                      <FieldError error={userV.errors.password} />
                     </div>
                   </>
                 )}

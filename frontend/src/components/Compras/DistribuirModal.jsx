@@ -1,5 +1,11 @@
 import React from 'react';
 import { X, GitBranch, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { useFormValidation } from '../../hooks/useFormValidation';
+import FieldError from '../ui/FieldError';
+
+const DISTRIBUIR_RULES = {
+  sucursal_id: { required: true, message: 'Seleccioná una sucursal' },
+};
 
 const DistribuirModal = ({
   compra,
@@ -15,6 +21,7 @@ const DistribuirModal = ({
   formatMoney,
 }) => {
   const itemsSinProducto = compra.items.filter(it => !it.product_id);
+  const distribuirV = useFormValidation(DISTRIBUIR_RULES);
 
   return (
     <div className={`modal-overlay${closing ? ' closing' : ''}`} onClick={onClose}>
@@ -33,7 +40,7 @@ const DistribuirModal = ({
           </button>
         </div>
 
-        <form onSubmit={onSubmit} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '1.25rem 1.5rem 0' }}>
+        <form noValidate onSubmit={(e) => { e.preventDefault(); if (distribuirV.validate({ sucursal_id: form.sucursal_id })) onSubmit(e); }} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '1.25rem 1.5rem 0' }}>
 
           {/* Sucursal + opciones — fijo arriba */}
           <div className="flex gap-4 items-end mb-5 flex-shrink-0">
@@ -42,7 +49,7 @@ const DistribuirModal = ({
               <select
                 className="form-input"
                 value={form.sucursal_id}
-                onChange={e => onSucursalChange(e.target.value)}
+                onChange={e => { onSucursalChange(e.target.value); distribuirV.clearError('sucursal_id'); }}
                 required
               >
                 <option value="">— Seleccioná una sucursal —</option>
@@ -50,6 +57,7 @@ const DistribuirModal = ({
                   <option key={b.id} value={b.id}>{b.nombre}</option>
                 ))}
               </select>
+              <FieldError error={distribuirV.errors.sucursal_id} />
             </div>
             <div className="flex gap-5 items-center pb-1">
               <label className="flex items-center gap-2 cursor-pointer select-none text-sm">

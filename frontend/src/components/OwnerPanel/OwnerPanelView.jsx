@@ -9,6 +9,40 @@ import {
 import { ownerAxios, formatDate, formatMoney } from './index';
 import SortIcon from '../ui/SortIcon';
 import { useSortableData } from '../../hooks/useSortableData';
+import { useFormValidation } from '../../hooks/useFormValidation';
+import FieldError from '../ui/FieldError';
+
+const OWNER_LOGIN_RULES = {
+  username: { required: true, message: 'Ingresá tu usuario' },
+  password: { required: true, message: 'Ingresá tu contraseña' },
+};
+const OWNER_CREATE_RULES = {
+  empresa_nombre: { required: true, message: 'El nombre de la empresa es obligatorio' },
+  admin_nombre: { required: true, message: 'El nombre del administrador es obligatorio' },
+  admin_email: { required: true, message: 'El email es obligatorio' },
+  admin_password: { required: true, message: 'La contraseña es obligatoria', minLength: 6, minLengthMessage: 'Mínimo 6 caracteres' },
+};
+const DATOS_RULES = {
+  empresa_nombre: { required: true, message: 'El nombre de la empresa es obligatorio' },
+  admin_nombre: { required: true, message: 'El nombre es obligatorio' },
+  admin_email: { required: true, message: 'El email es obligatorio' },
+};
+const PAGO_RULES = {
+  monto: { required: true, message: 'El monto es obligatorio' },
+  descripcion: { required: true, message: 'La descripción es obligatoria' },
+  fecha: { required: true, message: 'La fecha es obligatoria' },
+};
+const CONFIG_RULES = {
+  saas_nombre: { required: true, message: 'El nombre del SaaS es obligatorio' },
+  suscripcion_plan_nombre: { required: true, message: 'El nombre del plan es obligatorio' },
+  precio_emprendedor: { required: true, message: 'Requerido' },
+  precio_profesional: { required: true, message: 'Requerido' },
+  precio_empresarial: { required: true, message: 'Requerido' },
+  trial_dias: { required: true, message: 'Requerido' },
+  grace_days: { required: true, message: 'Requerido' },
+  dias_alerta_1: { required: true, message: 'Requerido' },
+  dias_alerta_2: { required: true, message: 'Requerido' },
+};
 
 // ─── StatusBadge ─────────────────────────────────────────────────────────────
 
@@ -34,9 +68,11 @@ const LoginView = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const loginV = useFormValidation(OWNER_LOGIN_RULES);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!loginV.validate({ username, password })) return;
     setError('');
     setLoading(true);
     try {
@@ -59,7 +95,7 @@ const LoginView = ({ onLogin }) => {
           <h1 className="text-2xl font-bold text-white">Panel del Sistema</h1>
           <p className="text-gray-500 mt-1 text-sm">Acceso exclusivo para el administrador del sistema</p>
         </div>
-        <form onSubmit={handleSubmit} className="bg-gray-900 border border-gray-800 rounded-2xl p-7 shadow-2xl">
+        <form noValidate onSubmit={handleSubmit} className="bg-gray-900 border border-gray-800 rounded-2xl p-7 shadow-2xl">
           {error && (
             <div className="mb-4 bg-red-950/50 border border-red-800 text-red-300 rounded-lg p-3 text-sm">
               {error}
@@ -71,22 +107,24 @@ const LoginView = ({ onLogin }) => {
               <input
                 type="text"
                 value={username}
-                onChange={e => setUsername(e.target.value)}
+                onChange={e => { setUsername(e.target.value); loginV.clearError('username'); }}
                 className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder-gray-600"
                 placeholder="Usuario del sistema"
                 required
               />
+              <FieldError error={loginV.errors.username} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-1.5">Contraseña</label>
               <input
                 type="password"
                 value={password}
-                onChange={e => setPassword(e.target.value)}
+                onChange={e => { setPassword(e.target.value); loginV.clearError('password'); }}
                 className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder-gray-600"
                 placeholder="••••••••"
                 required
               />
+              <FieldError error={loginV.errors.password} />
             </div>
           </div>
           <button
@@ -278,9 +316,11 @@ const ClientesListView = ({ clientes, onSelect, onRefresh, onCreateCliente }) =>
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const createV = useFormValidation(OWNER_CREATE_RULES);
 
   const handleCreate = async (e) => {
     e.preventDefault();
+    if (!createV.validate(createForm)) return;
     setCreateError('');
     setCreateLoading(true);
     try {
@@ -369,17 +409,18 @@ const ClientesListView = ({ clientes, onSelect, onRefresh, onCreateCliente }) =>
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleCreate} className="p-5 space-y-4">
+            <form noValidate onSubmit={handleCreate} className="p-5 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">Nombre de la empresa</label>
                 <input
                   type="text"
                   required
                   value={createForm.empresa_nombre}
-                  onChange={e => setCreateForm(f => ({ ...f, empresa_nombre: e.target.value }))}
+                  onChange={e => { setCreateForm(f => ({ ...f, empresa_nombre: e.target.value })); createV.clearError('empresa_nombre'); }}
                   className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder="Ej: Almacén Don Pedro"
                 />
+                <FieldError error={createV.errors.empresa_nombre} />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">Nombre del administrador</label>
@@ -387,10 +428,11 @@ const ClientesListView = ({ clientes, onSelect, onRefresh, onCreateCliente }) =>
                   type="text"
                   required
                   value={createForm.admin_nombre}
-                  onChange={e => setCreateForm(f => ({ ...f, admin_nombre: e.target.value }))}
+                  onChange={e => { setCreateForm(f => ({ ...f, admin_nombre: e.target.value })); createV.clearError('admin_nombre'); }}
                   className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder="Ej: Pedro García"
                 />
+                <FieldError error={createV.errors.admin_nombre} />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">Email</label>
@@ -398,10 +440,11 @@ const ClientesListView = ({ clientes, onSelect, onRefresh, onCreateCliente }) =>
                   type="email"
                   required
                   value={createForm.admin_email}
-                  onChange={e => setCreateForm(f => ({ ...f, admin_email: e.target.value }))}
+                  onChange={e => { setCreateForm(f => ({ ...f, admin_email: e.target.value })); createV.clearError('admin_email'); }}
                   className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder="admin@empresa.com"
                 />
+                <FieldError error={createV.errors.admin_email} />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">Contraseña</label>
@@ -411,7 +454,7 @@ const ClientesListView = ({ clientes, onSelect, onRefresh, onCreateCliente }) =>
                     required
                     minLength={6}
                     value={createForm.admin_password}
-                    onChange={e => setCreateForm(f => ({ ...f, admin_password: e.target.value }))}
+                    onChange={e => { setCreateForm(f => ({ ...f, admin_password: e.target.value })); createV.clearError('admin_password'); }}
                     className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     placeholder="Mínimo 6 caracteres"
                   />
@@ -419,6 +462,7 @@ const ClientesListView = ({ clientes, onSelect, onRefresh, onCreateCliente }) =>
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                <FieldError error={createV.errors.admin_password} />
               </div>
               {createError && <p className="text-red-400 text-sm">{createError}</p>}
               <div className="flex gap-3 pt-1">
@@ -669,6 +713,8 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
   const [datosForm, setDatosForm] = useState({ empresa_nombre: '', admin_nombre: '', admin_email: '' });
   const [datosLoading, setDatosLoading] = useState(false);
   const [datosMsg, setDatosMsg] = useState(null);
+  const datosV = useFormValidation(DATOS_RULES);
+  const pagoV = useFormValidation(PAGO_RULES);
 
   const authHeader = { headers: { Authorization: `Bearer ${token}` } };
 
@@ -708,6 +754,7 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
 
   const handleSaveDatos = async (e) => {
     e.preventDefault();
+    if (!datosV.validate(datosForm)) return;
     setDatosLoading(true);
     setDatosMsg(null);
     try {
@@ -770,6 +817,7 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
 
   const submitPago = async (e) => {
     e.preventDefault();
+    if (!pagoV.validate({ monto: pagoForm.monto, descripcion: pagoForm.concepto, fecha: pagoForm.fecha_pago })) return;
     setActionLoading(true);
     try {
       const conceptoFinal = pagoForm.concepto + (pagoForm.descuento_transferencia ? ' (transferencia)' : '');
@@ -1077,36 +1125,39 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
             )}
           </div>
           {editingDatos ? (
-            <form onSubmit={handleSaveDatos} className="space-y-3">
+            <form noValidate onSubmit={handleSaveDatos} className="space-y-3">
               <div>
                 <label className="text-xs text-gray-500 block mb-1">Nombre empresa</label>
                 <input
                   type="text"
                   value={datosForm.empresa_nombre}
-                  onChange={e => setDatosForm(f => ({ ...f, empresa_nombre: e.target.value }))}
+                  onChange={e => { setDatosForm(f => ({ ...f, empresa_nombre: e.target.value })); datosV.clearError('empresa_nombre'); }}
                   className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-indigo-500"
                   required
                 />
+                <FieldError error={datosV.errors.empresa_nombre} />
               </div>
               <div>
                 <label className="text-xs text-gray-500 block mb-1">Nombre administrador</label>
                 <input
                   type="text"
                   value={datosForm.admin_nombre}
-                  onChange={e => setDatosForm(f => ({ ...f, admin_nombre: e.target.value }))}
+                  onChange={e => { setDatosForm(f => ({ ...f, admin_nombre: e.target.value })); datosV.clearError('admin_nombre'); }}
                   className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-indigo-500"
                   required
                 />
+                <FieldError error={datosV.errors.admin_nombre} />
               </div>
               <div>
                 <label className="text-xs text-gray-500 block mb-1">Email administrador</label>
                 <input
                   type="email"
                   value={datosForm.admin_email}
-                  onChange={e => setDatosForm(f => ({ ...f, admin_email: e.target.value }))}
+                  onChange={e => { setDatosForm(f => ({ ...f, admin_email: e.target.value })); datosV.clearError('admin_email'); }}
                   className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-indigo-500"
                   required
                 />
+                <FieldError error={datosV.errors.admin_email} />
               </div>
               {datosMsg && (
                 <p className={`text-xs ${datosMsg.ok ? 'text-green-400' : 'text-red-400'}`}>{datosMsg.text}</p>
@@ -1359,29 +1410,31 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-md shadow-2xl">
             <h3 className="text-lg font-bold text-white mb-5">Registrar Pago Manual</h3>
-            <form onSubmit={submitPago} className="space-y-4">
+            <form noValidate onSubmit={submitPago} className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-400 mb-1.5">Monto (ARS)</label>
                 <input
                   type="number"
                   value={pagoForm.monto}
-                  onChange={e => setPagoForm({ ...pagoForm, monto: e.target.value })}
+                  onChange={e => { setPagoForm({ ...pagoForm, monto: e.target.value }); pagoV.clearError('monto'); }}
                   className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder="20000"
                   min="0"
                   required
                 />
+                <FieldError error={pagoV.errors.monto} />
               </div>
               <div>
                 <label className="block text-sm text-gray-400 mb-1.5">Concepto</label>
                 <input
                   type="text"
                   value={pagoForm.concepto}
-                  onChange={e => setPagoForm({ ...pagoForm, concepto: e.target.value })}
+                  onChange={e => { setPagoForm({ ...pagoForm, concepto: e.target.value }); pagoV.clearError('descripcion'); }}
                   className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder={`Plan Mensual - ${new Date().toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}`}
                   required
                 />
+                <FieldError error={pagoV.errors.descripcion} />
               </div>
               <div>
                 <label className="block text-sm text-gray-400 mb-1.5">Tipo de plan</label>
@@ -1400,7 +1453,7 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
                   <input
                     type="text"
                     value={pagoForm.fecha_pago}
-                    onChange={e => setPagoForm({ ...pagoForm, fecha_pago: e.target.value })}
+                    onChange={e => { setPagoForm({ ...pagoForm, fecha_pago: e.target.value }); pagoV.clearError('fecha'); }}
                     className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 pr-10 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     placeholder="dd/mm/aaaa"
                     pattern="\d{2}/\d{2}/\d{4}"
@@ -1411,6 +1464,7 @@ const ClienteDetalleView = ({ clienteId, token, onBack, onDelete }) => {
                     <input type="date" className="sr-only" onChange={e => { if (e.target.value) { const [y,m,d] = e.target.value.split('-'); setPagoForm(f => ({ ...f, fecha_pago: `${d}/${m}/${y}` })); } }} />
                   </label>
                 </div>
+                <FieldError error={pagoV.errors.fecha} />
               </div>
               <label className="flex items-center gap-3 cursor-pointer select-none">
                 <input
@@ -1718,10 +1772,11 @@ const ConfigSection = ({ title, children }) => (
   </div>
 );
 
-const ConfigField = ({ label, hint, children }) => (
+const ConfigField = ({ label, hint, children, error }) => (
   <div>
     <label className="block text-sm text-gray-400 mb-1.5">{label}</label>
     {children}
+    {error && <p className="text-red-400 text-xs mt-1">{error}</p>}
     {hint && <p className="text-xs text-gray-600 mt-1">{hint}</p>}
   </div>
 );
@@ -1735,6 +1790,7 @@ const ConfigView = ({ token }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
+  const configV = useFormValidation(CONFIG_RULES);
 
   useEffect(() => {
     ownerAxios.get('/config', authHeader).then(res => {
@@ -1764,7 +1820,7 @@ const ConfigView = ({ token }) => {
     }).finally(() => setLoading(false));
   }, []); // eslint-disable-line
 
-  const set = (field) => (e) => setCfg(prev => ({ ...prev, [field]: e.target.value }));
+  const set = (field) => (e) => { setCfg(prev => ({ ...prev, [field]: e.target.value })); configV.clearError(field); };
 
   const precioAnual = cfg.suscripcion_precio
     ? Math.round(parseFloat(cfg.suscripcion_precio) * 12 * (1 - (parseFloat(cfg.descuento_anual_pct) || 20) / 100))
@@ -1772,6 +1828,7 @@ const ConfigView = ({ token }) => {
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if (!configV.validate(cfg)) return;
     setSaving(true);
     setMsg(null);
     try {
@@ -1818,10 +1875,10 @@ const ConfigView = ({ token }) => {
   return (
     <div>
       <h2 className="text-lg font-bold text-white mb-6">Configuración del Sistema</h2>
-      <form onSubmit={handleSave} className="max-w-lg">
+      <form noValidate onSubmit={handleSave} className="max-w-lg">
 
         <ConfigSection title="Identidad">
-          <ConfigField label="Nombre del SaaS" hint="Se muestra en emails de verificación y recuperación de contraseña.">
+          <ConfigField label="Nombre del SaaS" hint="Se muestra en emails de verificación y recuperación de contraseña." error={configV.errors.saas_nombre}>
             <input type="text" value={cfg.saas_nombre} onChange={set('saas_nombre')} className={inputCls} required />
           </ConfigField>
           <ConfigField label="WhatsApp de contacto / pagos" hint="Formato internacional, ej: +5493815156095. Se muestra en la página de Cuenta.">
@@ -1830,19 +1887,19 @@ const ConfigView = ({ token }) => {
         </ConfigSection>
 
         <ConfigSection title="Suscripciones y Precios">
-          <ConfigField label="Nombre del plan">
+          <ConfigField label="Nombre del plan" error={configV.errors.suscripcion_plan_nombre}>
             <input type="text" value={cfg.suscripcion_plan_nombre} onChange={set('suscripcion_plan_nombre')} className={inputCls} required />
           </ConfigField>
           <div className="mb-4">
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Precio mensual por tier (ARS)</p>
             <div className="grid grid-cols-3 gap-3">
-              <ConfigField label="Emprendedor">
+              <ConfigField label="Emprendedor" error={configV.errors.precio_emprendedor}>
                 <input type="number" value={cfg.precio_emprendedor} onChange={set('precio_emprendedor')} className={inputCls} min="0" required />
               </ConfigField>
-              <ConfigField label="Profesional">
+              <ConfigField label="Profesional" error={configV.errors.precio_profesional}>
                 <input type="number" value={cfg.precio_profesional} onChange={set('precio_profesional')} className={inputCls} min="0" required />
               </ConfigField>
-              <ConfigField label="Empresarial">
+              <ConfigField label="Empresarial" error={configV.errors.precio_empresarial}>
                 <input type="number" value={cfg.precio_empresarial} onChange={set('precio_empresarial')} className={inputCls} min="0" required />
               </ConfigField>
             </div>
@@ -1862,19 +1919,19 @@ const ConfigView = ({ token }) => {
               </ConfigField>
             </div>
           </div>
-          <ConfigField label="Días del período de prueba (trial)" hint="Días de acceso gratuito al registrar una empresa nueva.">
+          <ConfigField label="Días del período de prueba (trial)" hint="Días de acceso gratuito al registrar una empresa nueva." error={configV.errors.trial_dias}>
             <input type="number" value={cfg.trial_dias} onChange={set('trial_dias')} className={inputCls} min="1" max="365" required />
           </ConfigField>
         </ConfigSection>
 
         <ConfigSection title="Vencimientos">
-          <ConfigField label="Período de gracia (días)" hint="Días extra de acceso para suscripciones pagas vencidas, antes de bloquear.">
+          <ConfigField label="Período de gracia (días)" hint="Días extra de acceso para suscripciones pagas vencidas, antes de bloquear." error={configV.errors.grace_days}>
             <input type="number" value={cfg.grace_days} onChange={set('grace_days')} className={inputCls} min="0" max="90" required />
           </ConfigField>
-          <ConfigField label="Umbral de alerta 1 (días)" hint="Se genera notificación cuando faltan este número de días o menos para vencer.">
+          <ConfigField label="Umbral de alerta 1 (días)" hint="Se genera notificación cuando faltan este número de días o menos para vencer." error={configV.errors.dias_alerta_1}>
             <input type="number" value={cfg.dias_alerta_1} onChange={set('dias_alerta_1')} className={inputCls} min="1" max="60" required />
           </ConfigField>
-          <ConfigField label="Umbral de alerta 2 (días)" hint="Segundo umbral, más urgente. Debe ser menor que el primero.">
+          <ConfigField label="Umbral de alerta 2 (días)" hint="Segundo umbral, más urgente. Debe ser menor que el primero." error={configV.errors.dias_alerta_2}>
             <input type="number" value={cfg.dias_alerta_2} onChange={set('dias_alerta_2')} className={inputCls} min="1" max="60" required />
           </ConfigField>
         </ConfigSection>

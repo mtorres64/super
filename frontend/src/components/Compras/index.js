@@ -85,6 +85,11 @@ const Compras = () => {
   const [editingProveedor, setEditingProveedor] = useState(null);
   const [proveedorForm, setProveedorForm] = useState(emptyProveedorForm);
   const [searchProveedor, setSearchProveedor] = useState('');
+  const [currentComprasPage, setCurrentComprasPage] = useState(1);
+  const [currentProveedoresPage, setCurrentProveedoresPage] = useState(1);
+
+  useEffect(() => { setCurrentComprasPage(1); }, [searchCompra]);
+  useEffect(() => { setCurrentProveedoresPage(1); }, [searchProveedor]);
 
   useEffect(() => {
     fetchCompras();
@@ -741,6 +746,13 @@ const Compras = () => {
   const { sortedItems: sortedCompras, sortConfig: comprasSortConfig, requestSort: comprasRequestSort } = useSortableData(filteredCompras, { key: 'created_at', direction: 'desc' }, 'desc');
   const { sortedItems: sortedProveedores, sortConfig: proveedoresSortConfig, requestSort: proveedoresRequestSort } = useSortableData(filteredProveedores);
 
+  const COMPRAS_PER_PAGE = comprasConfig?.items_per_page || 20;
+  const totalComprasPages = Math.ceil(sortedCompras.length / COMPRAS_PER_PAGE);
+  const paginatedCompras = sortedCompras.slice((currentComprasPage - 1) * COMPRAS_PER_PAGE, currentComprasPage * COMPRAS_PER_PAGE);
+
+  const totalProveedoresPages = Math.ceil(sortedProveedores.length / COMPRAS_PER_PAGE);
+  const paginatedProveedores = sortedProveedores.slice((currentProveedoresPage - 1) * COMPRAS_PER_PAGE, currentProveedoresPage * COMPRAS_PER_PAGE);
+
   const AR_TZ = 'America/Argentina/Buenos_Aires';
 
   const formatDate = (iso) => {
@@ -790,8 +802,17 @@ const Compras = () => {
       setProveedorForm={setProveedorForm}
       searchProveedor={searchProveedor}
       setSearchProveedor={setSearchProveedor}
-      filteredCompras={sortedCompras}
-      filteredProveedores={sortedProveedores}
+      filteredCompras={paginatedCompras}
+      totalComprasItems={sortedCompras.length}
+      currentComprasPage={currentComprasPage}
+      totalComprasPages={totalComprasPages}
+      comprasPerPage={COMPRAS_PER_PAGE}
+      onComprasPageChange={setCurrentComprasPage}
+      filteredProveedores={paginatedProveedores}
+      totalProveedoresItems={sortedProveedores.length}
+      currentProveedoresPage={currentProveedoresPage}
+      totalProveedoresPages={totalProveedoresPages}
+      onProveedoresPageChange={setCurrentProveedoresPage}
       comprasSortConfig={comprasSortConfig}
       comprasRequestSort={comprasRequestSort}
       proveedoresSortConfig={proveedoresSortConfig}

@@ -22,6 +22,16 @@ import {
 import SortIcon from '../ui/SortIcon';
 import DistribuirModal from './DistribuirModal';
 import RemitoModal from './RemitoModal';
+import Pagination from '../Pagination';
+import { useFormValidation } from '../../hooks/useFormValidation';
+import FieldError from '../ui/FieldError';
+
+const COMPRA_RULES = {
+  fecha: { required: true, message: 'La fecha es obligatoria' },
+};
+const PROVEEDOR_RULES = {
+  nombre: { required: true, message: 'El nombre es obligatorio' },
+};
 
 const ComprasView = ({
   activeTab,
@@ -103,7 +113,19 @@ const ComprasView = ({
   handleOpenRemitoModal,
   closeRemitoModalAnim,
   comprasConfig,
+  totalComprasItems,
+  currentComprasPage,
+  totalComprasPages,
+  comprasPerPage,
+  onComprasPageChange,
+  totalProveedoresItems,
+  currentProveedoresPage,
+  totalProveedoresPages,
+  onProveedoresPageChange,
 }) => {
+  const compraV = useFormValidation(COMPRA_RULES);
+  const proveedorV = useFormValidation(PROVEEDOR_RULES);
+
   const [expandedRows, setExpandedRows] = React.useState(new Set());
   const toggleRowExpanded = (id) => setExpandedRows(prev => {
     const next = new Set(prev);
@@ -182,6 +204,7 @@ const ComprasView = ({
               <p>No hay facturas registradas</p>
             </div>
           ) : (
+            <>
             <div className="table-container">
               <table className="table table-collapsible">
                 <thead>
@@ -261,6 +284,17 @@ const ComprasView = ({
                 </tbody>
               </table>
             </div>
+            {totalComprasPages > 1 && (
+              <Pagination
+                currentPage={currentComprasPage}
+                totalPages={totalComprasPages}
+                totalItems={totalComprasItems}
+                itemsPerPage={comprasPerPage}
+                onPageChange={onComprasPageChange}
+                itemName="facturas"
+              />
+            )}
+            </>
           )}
         </>
       )}
@@ -297,6 +331,7 @@ const ComprasView = ({
               <p>No hay proveedores registrados</p>
             </div>
           ) : (
+            <>
             <div className="table-container">
               <table className="table table-collapsible">
                 <thead>
@@ -349,6 +384,17 @@ const ComprasView = ({
                 </tbody>
               </table>
             </div>
+            {totalProveedoresPages > 1 && (
+              <Pagination
+                currentPage={currentProveedoresPage}
+                totalPages={totalProveedoresPages}
+                totalItems={totalProveedoresItems}
+                itemsPerPage={comprasPerPage}
+                onPageChange={onProveedoresPageChange}
+                itemName="proveedores"
+              />
+            )}
+            </>
           )}
         </>
       )}
@@ -376,7 +422,7 @@ const ComprasView = ({
               </button>
             </div>
 
-            <form onSubmit={handleCompraSubmit} className="modal-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 0 }}>
+            <form noValidate onSubmit={(e) => { e.preventDefault(); if (compraV.validate({ fecha: compraForm.fecha })) handleCompraSubmit(e); }} className="modal-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 0 }}>
               <div style={{ padding: '1.25rem 1.5rem 0' }}>
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-4 items-start">
                 <div>
@@ -398,9 +444,10 @@ const ComprasView = ({
                     type="date"
                     className="form-input h-10"
                     value={compraForm.fecha}
-                    onChange={e => setCompraForm(prev => ({ ...prev, fecha: e.target.value }))}
+                    onChange={e => { setCompraForm(prev => ({ ...prev, fecha: e.target.value })); compraV.clearError('fecha'); }}
                     required
                   />
+                  <FieldError error={compraV.errors.fecha} />
                 </div>
                 <div>
                   <label className="form-label"><Hash className="w-4 h-4 inline mr-1 text-gray-400" />N° de Factura</label>
@@ -731,7 +778,7 @@ const ComprasView = ({
               </button>
             </div>
 
-            <form onSubmit={handleProveedorSubmit} className="modal-body">
+            <form noValidate onSubmit={(e) => { e.preventDefault(); if (proveedorV.validate({ nombre: proveedorForm.nombre })) handleProveedorSubmit(e); }} className="modal-body">
               <div className="grid grid-cols-1 gap-4">
                 <div>
                   <label className="form-label">Nombre *</label>
@@ -739,10 +786,11 @@ const ComprasView = ({
                     type="text"
                     className="form-input"
                     value={proveedorForm.nombre}
-                    onChange={e => setProveedorForm(prev => ({ ...prev, nombre: e.target.value }))}
+                    onChange={e => { setProveedorForm(prev => ({ ...prev, nombre: e.target.value })); proveedorV.clearError('nombre'); }}
                     placeholder="Nombre o razón social"
                     required
                   />
+                  <FieldError error={proveedorV.errors.nombre} />
                 </div>
                 <div>
                   <label className="form-label">RUC / CUIT</label>

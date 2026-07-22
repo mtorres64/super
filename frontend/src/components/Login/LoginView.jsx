@@ -5,6 +5,25 @@ import {
   CheckCircle, BarChart2, ShoppingCart, Package, Phone,
 } from 'lucide-react';
 import PulsLogo from '../PulsLogo';
+import { useFormValidation } from '../../hooks/useFormValidation';
+import FieldError from '../ui/FieldError';
+
+const LOGIN_RULES = {
+  email: { required: true, message: 'Ingresá tu email' },
+  password: { required: true, message: 'Ingresá tu contraseña' },
+};
+const REGISTER_RULES = {
+  empresaNombre: { required: true, message: 'Ingresá el nombre de la empresa' },
+  adminNombre: { required: true, message: 'Ingresá tu nombre' },
+  email: { required: true, message: 'Ingresá tu email' },
+  telefono: { required: true, message: 'Ingresá tu teléfono' },
+};
+const RESET_EMAIL_RULES = {
+  email: { required: true, message: 'Ingresá tu email' },
+};
+const NEW_PASSWORD_RULES = {
+  nuevaPassword: { required: true, message: 'Ingresá tu nueva contraseña', minLength: 6, minLengthMessage: 'Mínimo 6 caracteres' },
+};
 
 const ICON_MAP = {
   'Punto de venta con escáner': ShoppingCart,
@@ -98,6 +117,11 @@ const LoginView = ({
   setStep,
   setOtpDigits,
 }) => {
+  const loginV = useFormValidation(LOGIN_RULES);
+  const registerV = useFormValidation(REGISTER_RULES);
+  const resetEmailV = useFormValidation(RESET_EMAIL_RULES);
+  const newPasswordV = useFormValidation(NEW_PASSWORD_RULES);
+
   return (
     <div className="login-container" style={GREEN}>
 
@@ -144,14 +168,15 @@ const LoginView = ({
               Ingresá tus datos para continuar
             </p>
 
-            <form onSubmit={handleLogin}>
+            <form noValidate onSubmit={(e) => { e.preventDefault(); if (loginV.validate({ email, password })) handleLogin(e); }}>
               <div className="form-group">
                 <label className="form-label">Email</label>
                 <div className="input-icon-wrap">
                   <span className="input-icon"><Mail size={15} /></span>
                   <input type="email" className="form-input" value={email}
-                    onChange={(e) => setEmail(e.target.value.toLowerCase())} placeholder="tu@empresa.com" required />
+                    onChange={(e) => { setEmail(e.target.value.toLowerCase()); loginV.clearError('email'); }} placeholder="tu@empresa.com" required />
                 </div>
+                <FieldError error={loginV.errors.email} />
               </div>
 
               <div className="form-group">
@@ -159,12 +184,13 @@ const LoginView = ({
                 <div className="input-icon-wrap">
                   <span className="input-icon"><Lock size={15} /></span>
                   <input type={showPassword ? 'text' : 'password'} className="form-input"
-                    value={password} onChange={(e) => setPassword(e.target.value)}
+                    value={password} onChange={(e) => { setPassword(e.target.value); loginV.clearError('password'); }}
                     placeholder="••••••••" required style={{ paddingRight: '2.5rem' }} />
                   <button type="button" className="input-icon-right" onClick={() => setShowPassword(!showPassword)}>
                     {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
                 </div>
+                <FieldError error={loginV.errors.password} />
               </div>
 
               <div style={{ textAlign: 'right', marginBottom: '1.5rem', marginTop: '-0.75rem' }}>
@@ -257,38 +283,42 @@ const LoginView = ({
                 <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1.75rem' }}>
                   Completá los datos para registrar tu empresa
                 </p>
-                <form onSubmit={handleSolicitarCuenta}>
+                <form noValidate onSubmit={(e) => { e.preventDefault(); if (registerV.validate({ empresaNombre, adminNombre, email, telefono })) handleSolicitarCuenta(e); }}>
                   <div className="form-group">
                     <label className="form-label">Nombre de la empresa</label>
                     <div className="input-icon-wrap">
                       <span className="input-icon"><Building2 size={15} /></span>
                       <input type="text" className="form-input" value={empresaNombre}
-                        onChange={(e) => setEmpresaNombre(e.target.value)} placeholder="Mi Supermercado S.A." required />
+                        onChange={(e) => { setEmpresaNombre(e.target.value); registerV.clearError('empresaNombre'); }} placeholder="Mi Supermercado S.A." required />
                     </div>
+                    <FieldError error={registerV.errors.empresaNombre} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Tu nombre</label>
                     <div className="input-icon-wrap">
                       <span className="input-icon"><User size={15} /></span>
                       <input type="text" className="form-input" value={adminNombre}
-                        onChange={(e) => setAdminNombre(e.target.value)} placeholder="Juan Pérez" required />
+                        onChange={(e) => { setAdminNombre(e.target.value); registerV.clearError('adminNombre'); }} placeholder="Juan Pérez" required />
                     </div>
+                    <FieldError error={registerV.errors.adminNombre} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Email</label>
                     <div className="input-icon-wrap">
                       <span className="input-icon"><Mail size={15} /></span>
                       <input type="email" className="form-input" value={email}
-                        onChange={(e) => setEmail(e.target.value.toLowerCase())} placeholder="juan@miempresa.com" required />
+                        onChange={(e) => { setEmail(e.target.value.toLowerCase()); registerV.clearError('email'); }} placeholder="juan@miempresa.com" required />
                     </div>
+                    <FieldError error={registerV.errors.email} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Número de teléfono</label>
                     <div className="input-icon-wrap">
                       <span className="input-icon"><Phone size={15} /></span>
                       <input type="tel" className="form-input" value={telefono}
-                        onChange={(e) => setTelefono(e.target.value)} placeholder="+54 9 11 1234-5678" required />
+                        onChange={(e) => { setTelefono(e.target.value); registerV.clearError('telefono'); }} placeholder="+54 9 11 1234-5678" required />
                     </div>
+                    <FieldError error={registerV.errors.telefono} />
                   </div>
                   <button type="submit" className="btn btn-primary btn-lg w-full" disabled={loading}>
                     {loading
@@ -337,7 +367,7 @@ const LoginView = ({
           {/* Contenido */}
           <div style={{ padding: '2rem 2.5rem', background: 'rgba(255,255,255,0.92)', borderRadius: '0 0 20px 20px' }}>
             {step === 'email' && (
-              <form onSubmit={handleEnviarReset}>
+              <form noValidate onSubmit={(e) => { e.preventDefault(); if (resetEmailV.validate({ email })) handleEnviarReset(e); }}>
                 <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1.25rem', lineHeight: 1.6 }}>
                   Ingresá el correo de tu cuenta y te enviamos un código para restablecer tu contraseña.
                 </p>
@@ -346,8 +376,9 @@ const LoginView = ({
                   <div className="input-icon-wrap">
                     <span className="input-icon"><Mail size={15} /></span>
                     <input type="email" className="form-input" value={email}
-                      onChange={(e) => setEmail(e.target.value.toLowerCase())} placeholder="tu@empresa.com" required />
+                      onChange={(e) => { setEmail(e.target.value.toLowerCase()); resetEmailV.clearError('email'); }} placeholder="tu@empresa.com" required />
                   </div>
+                  <FieldError error={resetEmailV.errors.email} />
                 </div>
                 <button type="submit" className="btn btn-primary btn-lg w-full" disabled={loading}>
                   {loading ? <><div className="spinner" />Enviando...</> : <><Send className="w-4 h-4 inline mr-2" />Enviar código</>}
@@ -369,7 +400,7 @@ const LoginView = ({
             )}
 
             {step === 'nueva' && (
-              <form onSubmit={handleCambiarPassword}>
+              <form noValidate onSubmit={(e) => { e.preventDefault(); if (newPasswordV.validate({ nuevaPassword })) handleCambiarPassword(e); }}>
                 <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1.25rem', lineHeight: 1.6 }}>
                   Elegí una contraseña nueva para tu cuenta.
                 </p>
@@ -378,12 +409,13 @@ const LoginView = ({
                   <div className="input-icon-wrap">
                     <span className="input-icon"><Lock size={15} /></span>
                     <input type={showNueva ? 'text' : 'password'} className="form-input"
-                      value={nuevaPassword} onChange={(e) => setNuevaPassword(e.target.value)}
+                      value={nuevaPassword} onChange={(e) => { setNuevaPassword(e.target.value); newPasswordV.clearError('nuevaPassword'); }}
                       placeholder="Mínimo 6 caracteres" required minLength={6} style={{ paddingRight: '2.5rem' }} />
                     <button type="button" className="input-icon-right" onClick={() => setShowNueva(!showNueva)}>
                       {showNueva ? <EyeOff size={15} /> : <Eye size={15} />}
                     </button>
                   </div>
+                  <FieldError error={newPasswordV.errors.nuevaPassword} />
                 </div>
                 <button type="submit" className="btn btn-primary btn-lg w-full" disabled={loading}>
                   {loading ? <><div className="spinner" />Guardando...</> : <><CheckCircle className="w-4 h-4 inline mr-2" />Cambiar contraseña</>}

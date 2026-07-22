@@ -2,6 +2,12 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '../../App';
 import { toast } from 'sonner';
+import { useFormValidation } from '../../hooks/useFormValidation';
+import FieldError from '../ui/FieldError';
+
+const CUSTOMER_RULES = {
+  nombre: { required: true, message: 'El nombre es obligatorio' },
+};
 import {
   X, Save, ArrowLeft, UserPlus,
   Phone, Mail, MapPin, Calendar, FileText, CircleDot,
@@ -38,6 +44,7 @@ const CustomerFormModal = ({
   const [saving, setSaving] = useState(false);
   const [afipSearching, setAfipSearching] = useState(false);
   const [docDuplicado, setDocDuplicado] = useState(null);
+  const customerV = useFormValidation(CUSTOMER_RULES);
 
   useEffect(() => {
     if (editingCustomer) {
@@ -123,6 +130,7 @@ const CustomerFormModal = ({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!customerV.validate({ nombre: formData.nombre })) return;
     if (posMode && docDuplicado) {
       toast.error(`Ya existe "${docDuplicado.nombre}" con ese documento. Seleccioná el cliente existente.`);
       return;
@@ -195,7 +203,7 @@ const CustomerFormModal = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form noValidate onSubmit={handleSubmit}>
           <div className="space-y-3">
             {/* Tipo doc + Documento */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -284,9 +292,10 @@ const CustomerFormModal = ({
                 type="text"
                 className="form-input"
                 value={formData.nombre}
-                onChange={e => setFormData(prev => ({ ...prev, nombre: e.target.value }))}
+                onChange={e => { setFormData(prev => ({ ...prev, nombre: e.target.value })); customerV.clearError('nombre'); }}
                 required
               />
+              <FieldError error={customerV.errors.nombre} />
             </div>
 
             {/* Teléfono + Email */}

@@ -26,6 +26,16 @@ import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
 import { getCategoryIcon } from '../../utils/categoryIcons';
 import BranchBulkEditModal from './BranchBulkEditModal';
+import { useFormValidation } from '../../hooks/useFormValidation';
+import FieldError from '../ui/FieldError';
+
+const BRANCH_RULES = {
+  nombre: { required: true, message: 'El nombre es obligatorio' },
+  direccion: { required: true, message: 'La dirección es obligatoria' },
+};
+const BRANCH_IMPORT_RULES = {
+  archivo: { required: true, message: 'Seleccioná un archivo' },
+};
 
 function NumericInput({ value, onCommit, ...props }) {
   const [localValue, setLocalValue] = useState(value ?? '');
@@ -189,6 +199,8 @@ const BranchManagementView = ({
   const [showCategoryFilter, setShowCategoryFilter] = React.useState(false);
   const [showMobileFilters, setShowMobileFilters] = React.useState(false);
   const [expandedRows, setExpandedRows] = React.useState(new Set());
+  const branchV = useFormValidation(BRANCH_RULES);
+  const branchImportV = useFormValidation(BRANCH_IMPORT_RULES);
   const categoryFilterRef = useRef(null);
 
   const toggleRowExpanded = (id) => setExpandedRows(prev => {
@@ -1055,7 +1067,7 @@ const BranchManagementView = ({
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={onSubmit}>
+            <form noValidate onSubmit={(e) => { e.preventDefault(); if (branchV.validate({ nombre: formData.nombre, direccion: formData.direccion })) onSubmit(e); }}>
               <div className="space-y-4">
                 <div className="form-group">
                   <label className="form-label">Nombre de la Sucursal *</label>
@@ -1063,9 +1075,10 @@ const BranchManagementView = ({
                     type="text"
                     className="form-input"
                     value={formData.nombre}
-                    onChange={(e) => onSetFormData(prev => ({ ...prev, nombre: e.target.value }))}
+                    onChange={(e) => { onSetFormData(prev => ({ ...prev, nombre: e.target.value })); branchV.clearError('nombre'); }}
                     required
                   />
+                  <FieldError error={branchV.errors.nombre} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Dirección *</label>
@@ -1073,9 +1086,10 @@ const BranchManagementView = ({
                     type="text"
                     className="form-input"
                     value={formData.direccion}
-                    onChange={(e) => onSetFormData(prev => ({ ...prev, direccion: e.target.value }))}
+                    onChange={(e) => { onSetFormData(prev => ({ ...prev, direccion: e.target.value })); branchV.clearError('direccion'); }}
                     required
                   />
+                  <FieldError error={branchV.errors.direccion} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Teléfono</label>
@@ -1114,7 +1128,7 @@ const BranchManagementView = ({
             </div>
 
             {!branchImportResult ? (
-              <form onSubmit={onBranchImport}>
+              <form noValidate onSubmit={(e) => { e.preventDefault(); if (branchImportV.validate({ archivo: branchImportFile })) onBranchImport(e); }}>
                 <div className="space-y-4">
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
                     <div className="flex items-start justify-between gap-3">
@@ -1149,9 +1163,10 @@ const BranchManagementView = ({
                       type="file"
                       accept=".csv,.xlsx,.xls"
                       className="form-input"
-                      onChange={e => onSetBranchImportFile(e.target.files[0])}
+                      onChange={e => { onSetBranchImportFile(e.target.files[0]); branchImportV.clearError('archivo'); }}
                       required
                     />
+                    <FieldError error={branchImportV.errors.archivo} />
                   </div>
 
                   <label className="flex items-start gap-3 cursor-pointer select-none p-3 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 transition-colors">
@@ -1391,7 +1406,7 @@ const BranchManagementView = ({
               </div>
             )}
 
-            <form onSubmit={onSubmit}>
+            <form noValidate onSubmit={(e) => { e.preventDefault(); if (branchV.validate({ nombre: formData.nombre, direccion: formData.direccion })) onSubmit(e); }}>
               <div className="space-y-4">
                 <div className="form-group">
                   <label className="form-label">Nombre de la Sucursal *</label>
@@ -1399,9 +1414,10 @@ const BranchManagementView = ({
                     type="text"
                     className="form-input"
                     value={formData.nombre}
-                    onChange={(e) => onSetFormData(prev => ({ ...prev, nombre: e.target.value }))}
+                    onChange={(e) => { onSetFormData(prev => ({ ...prev, nombre: e.target.value })); branchV.clearError('nombre'); }}
                     required
                   />
+                  <FieldError error={branchV.errors.nombre} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Dirección *</label>
@@ -1409,9 +1425,10 @@ const BranchManagementView = ({
                     type="text"
                     className="form-input"
                     value={formData.direccion}
-                    onChange={(e) => onSetFormData(prev => ({ ...prev, direccion: e.target.value }))}
+                    onChange={(e) => { onSetFormData(prev => ({ ...prev, direccion: e.target.value })); branchV.clearError('direccion'); }}
                     required
                   />
+                  <FieldError error={branchV.errors.direccion} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Teléfono</label>

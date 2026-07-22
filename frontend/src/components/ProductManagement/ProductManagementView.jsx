@@ -7,6 +7,18 @@ import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
 import { getCategoryIcon, ICON_OPTIONS } from '../../utils/categoryIcons';
 import BulkEditModal from './BulkEditModal';
+import { useFormValidation } from '../../hooks/useFormValidation';
+import FieldError from '../ui/FieldError';
+
+const PRODUCT_RULES = {
+  nombre: { required: true, message: 'El nombre es obligatorio' },
+};
+const IMPORT_RULES = {
+  archivo: { required: true, message: 'Seleccioná un archivo' },
+};
+const CATEGORY_RULES = {
+  nombre: { required: true, message: 'El nombre es obligatorio' },
+};
 
 const ProductManagementView = ({
   user,
@@ -120,6 +132,10 @@ const ProductManagementView = ({
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [expandedRows, setExpandedRows] = useState(new Set());
+  const productV = useFormValidation(PRODUCT_RULES);
+  const importV = useFormValidation(IMPORT_RULES);
+  const updateCatV = useFormValidation(CATEGORY_RULES);
+  const createCatV = useFormValidation(CATEGORY_RULES);
   const categoryFilterRef = useRef(null);
 
   const toggleRowExpanded = (id) => setExpandedRows(prev => {
@@ -657,7 +673,7 @@ const ProductManagementView = ({
               </button>
             </div>
 
-            <form onSubmit={handleSubmit}>
+            <form noValidate onSubmit={(e) => { e.preventDefault(); if (productV.validate({ nombre: formData.nombre })) handleSubmit(e); }}>
               <div className="space-y-3">
                 {/* Row 1: Nombre */}
                 <div className="form-group">
@@ -666,9 +682,10 @@ const ProductManagementView = ({
                     type="text"
                     className="form-input"
                     value={formData.nombre}
-                    onChange={(e) => setFormData({...formData, nombre: e.target.value})}
+                    onChange={(e) => { setFormData({...formData, nombre: e.target.value}); productV.clearError('nombre'); }}
                     required
                   />
+                  <FieldError error={productV.errors.nombre} />
                 </div>
 
                 {/* Row 2: Clase | Modo precio | Código */}
@@ -958,7 +975,7 @@ const ProductManagementView = ({
             </div>
 
             {!importResult ? (
-              <form onSubmit={handleImport}>
+              <form noValidate onSubmit={(e) => { e.preventDefault(); if (importV.validate({ archivo: importFile })) handleImport(e); }}>
                 <div className="space-y-4">
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
                     <div className="flex items-start justify-between gap-3">
@@ -995,9 +1012,10 @@ const ProductManagementView = ({
                       type="file"
                       accept=".csv,.xlsx,.xls"
                       className="form-input"
-                      onChange={(e) => setImportFile(e.target.files[0])}
+                      onChange={(e) => { setImportFile(e.target.files[0]); importV.clearError('archivo'); }}
                       required
                     />
+                    <FieldError error={importV.errors.archivo} />
                   </div>
                 </div>
 
@@ -1126,7 +1144,8 @@ const ProductManagementView = ({
                     <div key={cat.id}>
                       {editingCategory?.id === cat.id ? (
                         <form
-                          onSubmit={handleUpdateCategory}
+                          noValidate
+                          onSubmit={(e) => { e.preventDefault(); if (updateCatV.validate({ nombre: editCategoryData.nombre })) handleUpdateCategory(e); }}
                           style={{
                             display: 'flex', gap: '0.5rem', alignItems: 'flex-start',
                             padding: '0.625rem', borderRadius: '8px',
@@ -1138,11 +1157,12 @@ const ProductManagementView = ({
                               type="text"
                               className="form-input"
                               value={editCategoryData.nombre}
-                              onChange={(e) => setEditCategoryData({ ...editCategoryData, nombre: e.target.value })}
+                              onChange={(e) => { setEditCategoryData({ ...editCategoryData, nombre: e.target.value }); updateCatV.clearError('nombre'); }}
                               required
                               autoFocus
                               style={{ fontSize: '0.875rem' }}
                             />
+                            <FieldError error={updateCatV.errors.nombre} />
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
                               {ICON_OPTIONS.map(({ key, Icon, label }) => (
                                 <button
@@ -1251,7 +1271,7 @@ const ProductManagementView = ({
 
             {/* Formulario nueva categoría */}
             <p style={{ fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.75rem' }}>Nueva Categoría</p>
-            <form onSubmit={handleCreateCategory}>
+            <form noValidate onSubmit={(e) => { e.preventDefault(); if (createCatV.validate({ nombre: newCategory.nombre })) handleCreateCategory(e); }}>
               <div className="space-y-3">
                 <div className="form-group">
                   <label className="form-label">Nombre *</label>
@@ -1259,9 +1279,10 @@ const ProductManagementView = ({
                     type="text"
                     className="form-input"
                     value={newCategory.nombre}
-                    onChange={(e) => setNewCategory({ ...newCategory, nombre: e.target.value })}
+                    onChange={(e) => { setNewCategory({ ...newCategory, nombre: e.target.value }); createCatV.clearError('nombre'); }}
                     required
                   />
+                  <FieldError error={createCatV.errors.nombre} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Ícono</label>
