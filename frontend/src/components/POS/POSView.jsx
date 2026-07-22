@@ -708,7 +708,7 @@ const POSView = ({
             </div>
           )}
 
-          {tiendaPedido && (
+          {tiendaPedido && modifyingSaleId === tiendaPedido.id && (
             <div style={{ border: '2px solid #10b981', borderRadius: '8px', overflow: 'hidden', marginBottom: '2px' }}>
               {/* Header */}
               <div style={{ background: 'linear-gradient(135deg, #166534 0%, #15803d 100%)', padding: '0.45rem 0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

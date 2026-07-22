@@ -575,6 +575,8 @@ class Branch(BaseModel):
     direccion: str
     telefono: Optional[str] = None
     activo: bool = True
+    lat: Optional[float] = None
+    lng: Optional[float] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class BranchCreate(BaseModel):
@@ -588,6 +590,8 @@ class BranchUpdate(BaseModel):
     direccion: Optional[str] = None
     telefono: Optional[str] = None
     activo: Optional[bool] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
 
 class CashSession(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -2794,7 +2798,22 @@ async def wa_get_messages(telefono: str, user: User = Depends(get_current_user))
     for m in msgs:
         if isinstance(m.get("fecha"), datetime):
             m["fecha"] = m["fecha"].isoformat()
+    # Marcar mensajes entrantes como leídos al abrirlos
+    await db.wa_messages.update_many(
+        {"empresa_id": user.empresa_id, "telefono": telefono, "direccion": "entrante", "leido": {"$ne": True}},
+        {"$set": {"leido": True}},
+    )
     return msgs
+
+@api_router.get("/whatsapp/unread/count")
+async def wa_unread_count(user: User = Depends(get_current_user)):
+    pipeline = [
+        {"$match": {"empresa_id": user.empresa_id, "direccion": "entrante", "leido": {"$ne": True}}},
+        {"$group": {"_id": "$telefono"}},
+    ]
+    result = await db.wa_messages.aggregate(pipeline).to_list(None)
+    telefonos = [r["_id"] for r in result]
+    return {"count": len(telefonos), "telefonos": telefonos}
 
 @api_router.post("/whatsapp/incoming")
 async def wa_incoming_message(request: Request):
@@ -2820,6 +2839,7 @@ async def wa_incoming_message(request: Request):
             "telefono": from_tel,
             "mensaje": text,
             "direccion": "entrante",
+            "leido": False,
             "fecha": fecha,
             **({"msg_id": msg_id} if msg_id else {}),
         })
@@ -3924,14 +3944,16 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
         # Calculate subtotal
         if precio_unitario is None:
             raise HTTPException(status_code=400, detail=f"No se pudo determinar el precio para {product_nombre or item.producto_id}")
-        subtotal = item.cantidad * precio_unitario
+        descuento_item_pct = item.descuento or 0.0
+        precio_efectivo = precio_unitario * (1 - descuento_item_pct / 100.0)
+        subtotal = item.cantidad * precio_efectivo
         validated_items.append(SaleItem(
             producto_id=item.producto_id,
             nombre=product_nombre,
             cantidad=item.cantidad,
-            precio_unitario=precio_unitario,
+            precio_unitario=precio_efectivo,
             subtotal=subtotal,
-            descuento=item.descuento or 0.0,
+            descuento=descuento_item_pct,
         ))
         total_amount += subtotal
 
@@ -4182,8 +4204,10 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
 
         if precio_unitario is None:
             raise HTTPException(status_code=400, detail=f"No se pudo determinar el precio para {product_nombre or item.producto_id}")
-        subtotal_item = item.cantidad * precio_unitario
-        validated_items.append(SaleItem(producto_id=item.producto_id, nombre=product_nombre, cantidad=item.cantidad, precio_unitario=precio_unitario, subtotal=subtotal_item, descuento=item.descuento or 0.0))
+        descuento_item_pct = item.descuento or 0.0
+        precio_efectivo = precio_unitario * (1 - descuento_item_pct / 100.0)
+        subtotal_item = item.cantidad * precio_efectivo
+        validated_items.append(SaleItem(producto_id=item.producto_id, nombre=product_nombre, cantidad=item.cantidad, precio_unitario=precio_efectivo, subtotal=subtotal_item, descuento=descuento_item_pct))
         total_amount += subtotal_item
 
     # Recalculate totals
@@ -4207,6 +4231,7 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
         "metodo_pago": sale_data.metodo_pago.value,
         "cliente_id": sale_data.cliente_id,
         "descuento": descuento,
+        "descuento_items": sale_data.descuento_items or 0.0,
         "impuestos_extra_total": impuestos_extra_total,
         "condicion_iva_receptor": sale_data.condicion_iva_receptor,
         "observaciones_comprobante": sale_data.observaciones_comprobante,
@@ -7485,6 +7510,8 @@ class TiendaCreatePedido(BaseModel):
     direccion_entrega: Optional[str] = None
     observaciones: Optional[str] = None
     metodo_pago: str = "efectivo"
+    coordenadas_lat: Optional[float] = None
+    coordenadas_lng: Optional[float] = None
 
 class TiendaUpdateEstado(BaseModel):
     estado_pedido: str
@@ -7754,7 +7781,7 @@ async def tienda_register(empresa_id: str, data: TiendaRegister):
     }
     await db.tienda_customers.insert_one(customer)
     token = create_tienda_token(customer["id"], empresa_id)
-    return {"access_token": token, "customer": {"id": customer["id"], "nombre": customer["nombre"], "email": customer["email"], "telefono": customer["telefono"], "sucursal_id": customer.get("sucursal_id"), "direcciones_por_sucursal": customer.get("direcciones_por_sucursal", {})}}
+    return {"access_token": token, "customer": {"id": customer["id"], "nombre": customer["nombre"], "email": customer["email"], "telefono": customer["telefono"], "sucursal_id": customer.get("sucursal_id"), "direcciones_por_sucursal": customer.get("direcciones_por_sucursal", {}), "observaciones_por_sucursal": customer.get("observaciones_por_sucursal", {})}}
 
 @tienda_router.post("/api/tienda/{empresa_id}/auth/login")
 async def tienda_login(empresa_id: str, data: TiendaLoginRequest):
@@ -7770,7 +7797,7 @@ async def tienda_login(empresa_id: str, data: TiendaLoginRequest):
             await db.tienda_customers.update_one({"id": customer["id"]}, {"$set": {"sucursal_id": first["id"]}})
             customer["sucursal_id"] = first["id"]
     token = create_tienda_token(customer["id"], empresa_id)
-    return {"access_token": token, "customer": {"id": customer["id"], "nombre": customer["nombre"], "email": customer["email"], "telefono": customer.get("telefono", ""), "sucursal_id": customer.get("sucursal_id"), "direcciones_por_sucursal": customer.get("direcciones_por_sucursal", {})}}
+    return {"access_token": token, "customer": {"id": customer["id"], "nombre": customer["nombre"], "email": customer["email"], "telefono": customer.get("telefono", ""), "sucursal_id": customer.get("sucursal_id"), "direcciones_por_sucursal": customer.get("direcciones_por_sucursal", {}), "observaciones_por_sucursal": customer.get("observaciones_por_sucursal", {})}}
 
 @tienda_router.post("/api/tienda/{empresa_id}/auth/reset-password")
 async def tienda_reset_password(empresa_id: str, data: TiendaResetPassword):
@@ -7797,7 +7824,7 @@ async def tienda_reset_password(empresa_id: str, data: TiendaResetPassword):
 async def tienda_me(empresa_id: str, customer: dict = Depends(get_tienda_customer_token)):
     if customer["empresa_id"] != empresa_id:
         raise HTTPException(status_code=403, detail="Acceso denegado")
-    return {"id": customer["id"], "nombre": customer["nombre"], "email": customer["email"], "telefono": customer.get("telefono", ""), "sucursal_id": customer.get("sucursal_id"), "direcciones_por_sucursal": customer.get("direcciones_por_sucursal", {})}
+    return {"id": customer["id"], "nombre": customer["nombre"], "email": customer["email"], "telefono": customer.get("telefono", ""), "sucursal_id": customer.get("sucursal_id"), "direcciones_por_sucursal": customer.get("direcciones_por_sucursal", {}), "observaciones_por_sucursal": customer.get("observaciones_por_sucursal", {})}
 
 @tienda_router.patch("/api/tienda/{empresa_id}/auth/sucursal")
 async def tienda_cambiar_sucursal(empresa_id: str, data: TiendaCambiarSucursal, customer: dict = Depends(get_tienda_customer_token)):
@@ -7852,8 +7879,10 @@ async def tienda_crear_pedido(empresa_id: str, data: TiendaCreatePedido, custome
         raise HTTPException(status_code=400, detail=f"El monto mínimo de pedido es ${monto_minimo:.0f}")
     costo_envio = cfg.get("tienda_costo_envio", 0.0) if data.tipo_entrega == "domicilio" else 0.0
     total = round(subtotal + costo_envio, 2)
-    branch = await db.branches.find_one({"empresa_id": empresa_id})
-    branch_id = branch["id"] if branch else empresa_id
+    branch_id = customer.get("sucursal_id")
+    if not branch_id:
+        first_branch = await db.branches.find_one({"empresa_id": empresa_id})
+        branch_id = first_branch["id"] if first_branch else empresa_id
     count = await db.sales.count_documents({"empresa_id": empresa_id, "origen": "tienda"})
     numero_pedido = f"T-{count + 1:05d}"
     pedido_id = str(uuid.uuid4())
@@ -7871,17 +7900,23 @@ async def tienda_crear_pedido(empresa_id: str, data: TiendaCreatePedido, custome
         "tienda_customer_telefono": customer.get("telefono", ""),
         "tipo_entrega": data.tipo_entrega,
         "direccion_entrega": data.direccion_entrega or "",
-        "observaciones_tienda": data.observaciones or "",
+        "observaciones_tienda": (data.observaciones or "").strip(),
         "estado_pedido": "pendiente",
         "costo_envio": costo_envio,
+        **({"coordenadas": {"lat": data.coordenadas_lat, "lng": data.coordenadas_lng}} if data.coordenadas_lat and data.coordenadas_lng else {}),
     }
     await db.sales.insert_one(sale_doc)
-    # Guardar dirección por sucursal para futuros pedidos
+    # Guardar dirección y observaciones por sucursal para futuros pedidos
     if data.tipo_entrega == "domicilio" and data.direccion_entrega:
         sucursal_key = customer.get("sucursal_id", "default")
+        update_data = {f"direcciones_por_sucursal.{sucursal_key}": data.direccion_entrega.strip()}
+        if data.observaciones:
+            update_data[f"observaciones_por_sucursal.{sucursal_key}"] = data.observaciones.strip()
+        if data.coordenadas_lat and data.coordenadas_lng:
+            update_data[f"coordenadas_por_sucursal.{sucursal_key}"] = {"lat": data.coordenadas_lat, "lng": data.coordenadas_lng}
         await db.tienda_customers.update_one(
             {"id": customer["id"]},
-            {"$set": {f"direcciones_por_sucursal.{sucursal_key}": data.direccion_entrega.strip()}}
+            {"$set": update_data}
         )
     # Notificar en tiempo real a admins conectados via SSE
     await publish_tienda_event(empresa_id, {
@@ -7913,6 +7948,8 @@ async def admin_get_pedidos(
     user: User = Depends(require_role([UserRole.ADMIN])),
 ):
     query: dict = {"empresa_id": user.empresa_id, "origen": "tienda"}
+    if user.branch_id:
+        query["branch_id"] = user.branch_id
     if estado:
         query["estado_pedido"] = estado
     skip = (page - 1) * per_page
@@ -7924,8 +7961,76 @@ async def admin_get_pedidos(
 
 @api_router.get("/pedidos/pendientes/count")
 async def admin_pedidos_pendientes_count(user: User = Depends(require_role([UserRole.ADMIN]))):
-    count = await db.sales.count_documents({"empresa_id": user.empresa_id, "origen": "tienda", "estado_pedido": "pendiente"})
+    count_query = {"empresa_id": user.empresa_id, "origen": "tienda", "estado_pedido": "pendiente"}
+    if user.branch_id:
+        count_query["branch_id"] = user.branch_id
+    count = await db.sales.count_documents(count_query)
     return {"pendientes": count}
+
+@api_router.get("/pedidos/mensajes/count")
+async def admin_pedidos_mensajes_count(user: User = Depends(require_role([UserRole.ADMIN]))):
+    count = await db.sales.count_documents({
+        "empresa_id": user.empresa_id,
+        "origen": "tienda",
+        "estado_pedido": {"$nin": ["entregado", "cancelado", "rechazado"]},
+        "observaciones_tienda": {"$regex": r"\S"},
+    })
+    return {"con_mensaje": count}
+
+@api_router.get("/proxy/static-map")
+async def proxy_static_map(lat: float, lng: float, zoom: int = 16):
+    import math, io
+    from PIL import Image, ImageDraw
+    from fastapi.responses import Response as _Resp
+
+    def deg2tile(lat_d, lon_d, z):
+        n = 2 ** z
+        xt = (lon_d + 180) / 360 * n
+        lat_r = math.radians(lat_d)
+        yt = (1 - math.log(math.tan(lat_r) + 1 / math.cos(lat_r)) / math.pi) / 2 * n
+        return xt, yt
+
+    xt, yt = deg2tile(lat, lng, zoom)
+    cx, cy = int(xt), int(yt)
+    # offset del marcador dentro de la grilla 3×2
+    ox = int((xt - cx) * 256)
+    oy = int((yt - cy) * 256)
+
+    cols, rows = 3, 3
+    sx, sy = cx - cols // 2, cy - rows // 2
+    canvas = Image.new("RGB", (256 * cols, 256 * rows), (240, 240, 240))
+
+    headers = {"User-Agent": "SuperApp/1.0 (internal)"}
+    async with httpx.AsyncClient() as client:
+        for dy in range(rows):
+            for dx in range(cols):
+                tx, ty = sx + dx, sy + dy
+                try:
+                    r = await client.get(
+                        f"https://tile.openstreetmap.org/{zoom}/{tx}/{ty}.png",
+                        headers=headers, timeout=6
+                    )
+                    if r.status_code == 200:
+                        canvas.paste(Image.open(io.BytesIO(r.content)), (dx * 256, dy * 256))
+                except Exception:
+                    pass
+
+    # marcador rojo
+    draw = ImageDraw.Draw(canvas)
+    mx = (cols // 2) * 256 + ox
+    my = (rows // 2) * 256 + oy
+    for r2, fill, outline in [(10, "red", "white"), (4, "white", None)]:
+        draw.ellipse([mx - r2, my - r2, mx + r2, my + r2], fill=fill, outline=outline, width=2)
+
+    # recortar a 560×320 centrado en el marcador, convertir a escala de grises
+    W, H = 560, 320
+    x0 = max(0, min(mx - W // 2, canvas.width - W))
+    y0 = max(0, min(my - H // 2, canvas.height - H))
+    result = canvas.crop((x0, y0, x0 + W, y0 + H)).convert('L').convert('RGB')
+
+    buf = io.BytesIO()
+    result.save(buf, format="PNG")
+    return _Resp(content=buf.getvalue(), media_type="image/png")
 
 @api_router.get("/pedidos/eventos")
 async def tienda_pedidos_sse(token: str = Query(...)):
@@ -8090,6 +8195,8 @@ async def admin_update_estado_pedido(sale_id: str, data: TiendaUpdateEstado, use
     sale_update = {"estado_pedido": nuevo_estado}
     if nuevo_estado == "cancelado":
         sale_update["estado"] = "cancelado"
+    if nuevo_estado in ("entregado", "cancelado", "rechazado"):
+        sale_update["fecha_finalizado"] = datetime.now(timezone.utc).isoformat()
 
     await db.sales.update_one(
         {"id": sale_id, "empresa_id": user.empresa_id, "origen": "tienda"},
@@ -8131,6 +8238,18 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
 async def startup_tasks():
+    # Migración: marcar mensajes WA entrantes históricos como leídos (sin campo leido)
+    await db.wa_messages.update_many(
+        {"direccion": "entrante", "leido": {"$exists": False}},
+        {"$set": {"leido": True}},
+    )
+
+    # Migración: setear fecha_finalizado en pedidos de tienda ya finalizados que no lo tengan
+    await db.sales.update_many(
+        {"origen": "tienda", "estado_pedido": {"$in": ["entregado", "cancelado", "rechazado"]}, "fecha_finalizado": {"$exists": False}},
+        [{"$set": {"fecha_finalizado": {"$ifNull": ["$fecha_modificacion", "$fecha"]}}}],
+    )
+
     async def periodic_alerts():
         while True:
             try:

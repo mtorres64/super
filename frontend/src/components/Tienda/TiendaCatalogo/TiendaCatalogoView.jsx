@@ -90,7 +90,7 @@ const ProductCard = ({ producto, onAgregar, onAgregarPeso, cantidadEnCarrito, on
       onMouseLeave={e => e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.07)'}
     >
       {/* Imagen o placeholder */}
-      <div style={{ height: 140, background: 'var(--primary-bg, #ecfdf5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative' }}>
+      <div style={{ aspectRatio: '1 / 1', width: '100%', background: 'var(--primary-bg, #ecfdf5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative', overflow: 'hidden' }}>
         {producto.imagen
           ? <img src={driveToProxyUrl(producto.imagen)} alt={producto.nombre} style={{ height: '100%', width: '100%', objectFit: 'cover' }} />
           : companyLogo
@@ -165,12 +165,14 @@ const ProductCard = ({ producto, onAgregar, onAgregarPeso, cantidadEnCarrito, on
 // ── Drawer carrito ────────────────────────────────────────────────────────────
 
 const DrawerCarrito = ({ carrito, carritoOpen, setCarritoOpen, onActualizar, onAgregarPeso, totalCarrito, onIrAlCheckout, currencySymbol, config }) => {
+  const isMobile = window.innerWidth < 640;
   return (
     <>
-      {carritoOpen && <div onClick={() => setCarritoOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 40 }} />}
+      {carritoOpen && !isMobile && <div onClick={() => setCarritoOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 40 }} />}
       <div style={{
-        position: 'fixed', top: 0, right: 0, height: '100vh', width: Math.min(380, window.innerWidth - 32),
-        background: 'white', zIndex: 50, boxShadow: '-4px 0 32px rgba(0,0,0,0.15)',
+        position: 'fixed', top: 0, right: 0, height: '100vh',
+        width: isMobile ? '100%' : Math.min(380, window.innerWidth - 32),
+        background: 'white', zIndex: 50, boxShadow: isMobile ? 'none' : '-4px 0 32px rgba(0,0,0,0.15)',
         transform: carritoOpen ? 'translateX(0)' : 'translateX(105%)',
         transition: 'transform 0.3s cubic-bezier(.4,0,.2,1)',
         display: 'flex', flexDirection: 'column',
@@ -280,10 +282,10 @@ const UserMenu = ({ tiendaUser, onLogoutClick }) => {
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <button onClick={() => setOpen(o => !o)}
+      <button onClick={() => setOpen(o => !o)} className="tienda-usermenu-btn"
         style={{ fontSize: '0.8rem', color: '#374151', background: open ? '#f3f4f6' : 'none', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, padding: '0.35rem 0.65rem' }}>
         <User size={14} style={{ color: PRIMARY }} />
-        <span style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tiendaUser.nombre}</span>
+        <span className="hidden sm:inline-block" style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tiendaUser.nombre}</span>
       </button>
       {open && (
         <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, background: 'white', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', minWidth: 160, zIndex: 100, overflow: 'hidden' }}>
@@ -333,15 +335,18 @@ const SucursalSelector = ({ sucursales, sucursalId, onCambiar }) => {
         <ChevronDown size={12} style={{ color: '#9ca3af' }} />
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, background: 'white', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', minWidth: 200, zIndex: 100, overflow: 'hidden' }}>
-          <p style={{ fontSize: '0.7rem', color: '#9ca3af', padding: '0.5rem 0.85rem 0.25rem', margin: 0 }}>Seleccioná tu sucursal</p>
+        <div style={{ position: 'absolute', top: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)', background: 'white', border: '1px solid #e5e7eb', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: 220, zIndex: 100, overflow: 'hidden' }}>
+          <p style={{ fontSize: '0.68rem', color: '#9ca3af', padding: '0.6rem 1rem 0.3rem', margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Seleccioná tu sucursal</p>
           {sucursales.map(s => (
             <button key={s.id} onClick={() => { onCambiar(s.id); setOpen(false); }}
-              style={{ width: '100%', padding: '0.6rem 0.85rem', background: s.id === sucursalId ? 'var(--primary-bg, #ecfdf5)' : 'none', border: 'none', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 1 }}
+              style={{ width: '100%', padding: '0.6rem 1rem', background: s.id === sucursalId ? 'var(--primary-bg, #ecfdf5)' : 'none', border: 'none', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'flex-start', gap: 10 }}
               onMouseEnter={e => { if (s.id !== sucursalId) e.currentTarget.style.background = '#f9fafb'; }}
               onMouseLeave={e => { if (s.id !== sucursalId) e.currentTarget.style.background = 'none'; }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: s.id === sucursalId ? 700 : 500, color: s.id === sucursalId ? PRIMARY : '#111827' }}>{s.nombre}</span>
-              {s.direccion && <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{s.direccion}</span>}
+              <MapPin size={14} style={{ color: s.id === sucursalId ? PRIMARY : '#9ca3af', marginTop: 2, flexShrink: 0 }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: s.id === sucursalId ? 700 : 500, color: s.id === sucursalId ? PRIMARY : '#111827' }}>{s.nombre}</span>
+                {s.direccion && <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{s.direccion}</span>}
+              </div>
             </button>
           ))}
         </div>
@@ -386,38 +391,47 @@ const TiendaCatalogoView = ({
     }}>
       {/* ── Navbar ── */}
       <header style={{ background: 'white', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, zIndex: 30 }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 1rem', display: 'flex', alignItems: 'center', gap: 12, height: 60 }}>
-          {config?.company_logo
-            ? <img src={config.company_logo} alt={storeName} style={{ height: 36, objectFit: 'contain' }} />
-            : <div style={{ width: 36, height: 36, borderRadius: '50%', background: PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ color: 'white', fontWeight: 700, fontSize: '1rem' }}>{storeName.charAt(0).toUpperCase()}</span>
-              </div>
-          }
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <span style={{ fontWeight: 700, fontSize: '1rem', color: '#111827', lineHeight: 1.2 }}>{storeName}</span>
-            <span style={{ fontSize: '0.6rem', color: '#9ca3af', letterSpacing: '0.04em' }}>powered by <strong style={{ color: PRIMARY }}>PULS</strong></span>
+        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 1rem', display: 'flex', alignItems: 'center', height: 60 }}>
+          {/* Izquierda: logo + nombre (desktop) */}
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10 }}>
+            {config?.company_logo
+              ? <img src={config.company_logo} alt={storeName} style={{ height: 36, objectFit: 'contain' }} />
+              : <div style={{ width: 36, height: 36, borderRadius: '50%', background: PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <span style={{ color: 'white', fontWeight: 700, fontSize: '1rem' }}>{storeName.charAt(0).toUpperCase()}</span>
+                </div>
+            }
+            <div className="hidden sm:flex sm:flex-col" style={{ gap: '1px' }}>
+              <span style={{ fontWeight: 700, fontSize: '1rem', color: '#111827', lineHeight: 1.2 }}>{storeName}</span>
+              <span style={{ fontSize: '0.6rem', color: '#9ca3af', letterSpacing: '0.04em' }}>powered by <strong style={{ color: PRIMARY }}>PULS</strong></span>
+            </div>
+          </div>
+          {/* Centro: sucursal */}
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+            <SucursalSelector sucursales={sucursales || []} sucursalId={sucursalId} onCambiar={onCambiarSucursal} />
           </div>
 
-          <SucursalSelector sucursales={sucursales || []} sucursalId={sucursalId} onCambiar={onCambiarSucursal} />
-
-          {tiendaUser ? (
-            <UserMenu tiendaUser={tiendaUser} onLogoutClick={onLogoutClick} />
-          ) : (
-            <button onClick={onLoginClick}
-              style={{ fontSize: '0.8rem', color: PRIMARY, fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}>
-              Ingresar
-            </button>
-          )}
-
-          <button onClick={() => setCarritoOpen(true)}
-            style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
-            <ShoppingCart size={22} style={{ color: '#374151' }} />
-            {cantidadCarrito > 0 && (
-              <span style={{ position: 'absolute', top: -4, right: -4, background: PRIMARY, color: 'var(--primary-text,white)', borderRadius: '50%', width: 18, height: 18, fontSize: '0.65rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {cantidadCarrito > 99 ? '99+' : cantidadCarrito}
-              </span>
+          {/* Derecha: usuario, carrito */}
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+            {tiendaUser ? (
+              <UserMenu tiendaUser={tiendaUser} onLogoutClick={onLogoutClick} />
+            ) : (
+              <button onClick={onLoginClick}
+                style={{ fontSize: '0.8rem', color: PRIMARY, fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <User size={16} style={{ color: PRIMARY }} />
+                <span className="hidden sm:inline-block">Ingresar</span>
+              </button>
             )}
-          </button>
+
+            <button onClick={() => setCarritoOpen(true)}
+              style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+              <ShoppingCart size={22} style={{ color: '#374151' }} />
+              {cantidadCarrito > 0 && (
+                <span style={{ position: 'absolute', top: -4, right: -4, background: PRIMARY, color: 'var(--primary-text,white)', borderRadius: '50%', width: 18, height: 18, fontSize: '0.65rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {cantidadCarrito > 99 ? '99+' : cantidadCarrito}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
       </header>
 

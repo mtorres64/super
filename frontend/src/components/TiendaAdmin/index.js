@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useContext, useCallback, useRef, Suspense } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -6,13 +6,15 @@ import { AuthContext, API } from '../../App';
 import useModalClose from '../../useModalClose';
 import {
   ShoppingBag, Settings, ExternalLink, Copy, Check,
-  MapPin, Store, ChevronDown, RefreshCw, Link, Printer, ShoppingCart, Pencil, QrCode, X,
+  MapPin, Store, ChevronDown, RefreshCw, Link, Printer, ShoppingCart, Pencil, QrCode, X, Clock, MessageSquare,
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
 import PaginationView from '../Pagination/PaginationView';
 
 const FRONTEND_URL = process.env.REACT_APP_FRONTEND_URL || window.location.origin;
+
+const MapaPicker = React.lazy(() => import('../Tienda/TiendaCheckout/MapaPicker'));
 
 // AudioContext reutilizado — los navegadores bloquean uno nuevo sin interacción previa
 let _audioCtx = null;
@@ -80,7 +82,44 @@ const Badge = ({ estado }) => {
   );
 };
 
-const imprimirPedidoA4 = (p, config) => {
+const ESTADOS_FINALES = ['entregado', 'cancelado', 'rechazado'];
+
+const Cronometro = ({ fecha, estado, fechaFinalizado }) => {
+  const finalizado = ESTADOS_FINALES.includes(estado);
+  const calcElapsed = () => {
+    if (!fecha) return 0;
+    const end = finalizado && fechaFinalizado ? new Date(fechaFinalizado).getTime() : Date.now();
+    return Math.floor((end - new Date(fecha).getTime()) / 1000);
+  };
+  const [elapsed, setElapsed] = useState(calcElapsed);
+
+  useEffect(() => {
+    if (finalizado || !fecha) return;
+    const id = setInterval(() => setElapsed(calcElapsed()), 1000);
+    return () => clearInterval(id);
+  }, [fecha, finalizado]);
+
+  if (!fecha) return null;
+
+  const h = Math.floor(elapsed / 3600);
+  const m = Math.floor((elapsed % 3600) / 60);
+  const s = elapsed % 60;
+  const pad = n => String(n).padStart(2, '0');
+  const texto = `${pad(h)}:${pad(m)}:${pad(s)}`;
+
+  let color = '#10b981', bg = '#f0fdf4', border = '#bbf7d0';
+  if (finalizado)        { color = '#9ca3af'; bg = '#f9fafb'; border = '#e5e7eb'; }
+  else if (elapsed > 1800) { color = '#ef4444'; bg = '#fef2f2'; border = '#fecaca'; }
+  else if (elapsed > 900)  { color = '#f59e0b'; bg = '#fffbeb'; border = '#fde68a'; }
+
+  return (
+    <span style={{ fontSize: '0.72rem', fontWeight: 700, color, background: bg, border: `1px solid ${border}`, borderRadius: 6, padding: '2px 7px', display: 'inline-flex', alignItems: 'center', gap: 3, fontVariantNumeric: 'tabular-nums' }}>
+      <Clock size={10} />{texto}
+    </span>
+  );
+};
+
+const imprimirPedidoA4 = async (p, config, conMapa = false) => {
   const sym = config?.currency_symbol || '$';
   const empresa = config?.company_name || '';
   const fecha = p.fecha ? new Date(p.fecha).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
@@ -140,8 +179,9 @@ const imprimirPedidoA4 = (p, config) => {
   pdf.setFontSize(8);
   pdf.setFont('helvetica', 'bold');
   pdf.text('Producto', margin + 2, y + 4);
-  pdf.text('Cant.', margin + 110, y + 4, { align: 'right' });
-  pdf.text('P. Unit.', margin + 135, y + 4, { align: 'right' });
+  pdf.text('Cant.', margin + 100, y + 4, { align: 'right' });
+  pdf.text('P. Unit.', margin + 125, y + 4, { align: 'right' });
+  pdf.text('Desc.', margin + 148, y + 4, { align: 'right' });
   pdf.text('Subtotal', colRight - 2, y + 4, { align: 'right' });
   y += 7;
 
@@ -152,10 +192,19 @@ const imprimirPedidoA4 = (p, config) => {
       pdf.setFillColor(248, 248, 248);
       pdf.rect(margin, y - 1, colRight - margin, 6, 'F');
     }
+    const precioOrigUnit = item.descuento > 0 ? item.precio_unitario / (1 - item.descuento / 100) : item.precio_unitario;
     pdf.setFontSize(8);
+    pdf.setTextColor(0, 0, 0);
     pdf.text(item.nombre, margin + 2, y + 3);
-    pdf.text(String(item.cantidad), margin + 110, y + 3, { align: 'right' });
-    pdf.text(`${sym}${item.precio_unitario.toFixed(2)}`, margin + 135, y + 3, { align: 'right' });
+    pdf.text(String(item.cantidad), margin + 100, y + 3, { align: 'right' });
+    pdf.text(`${sym}${precioOrigUnit.toFixed(2)}`, margin + 125, y + 3, { align: 'right' });
+    if (item.descuento > 0) {
+      pdf.setTextColor(5, 150, 105);
+      pdf.text(`${item.descuento}%`, margin + 148, y + 3, { align: 'right' });
+      pdf.setTextColor(0, 0, 0);
+    } else {
+      pdf.text('-', margin + 148, y + 3, { align: 'right' });
+    }
     pdf.text(`${sym}${(item.precio_unitario * item.cantidad).toFixed(2)}`, colRight - 2, y + 3, { align: 'right' });
     y += 6;
   });
@@ -209,6 +258,29 @@ const imprimirPedidoA4 = (p, config) => {
   pdf.setFont('helvetica', 'bold');
   pdf.text('TOTAL', margin + 2, y);
   pdf.text(`${sym}${p.total?.toFixed(2)}`, colRight - 2, y, { align: 'right' });
+  y += 8;
+
+  // Mapa en impresión A4 (via proxy backend para evitar CORS)
+  if (conMapa && p.coordenadas) {
+    const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+    const mapUrl = `${BACKEND_URL}/api/proxy/static-map?lat=${p.coordenadas.lat}&lng=${p.coordenadas.lng}`;
+    try {
+      const resp = await fetch(mapUrl);
+      const blob = await resp.blob();
+      const dataUrl = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.readAsDataURL(blob);
+      });
+      const imgEl = await new Promise(resolve => { const i = new Image(); i.onload = () => resolve(i); i.src = dataUrl; });
+      const pdfW = colRight - margin;
+      const pdfH = pdfW * (imgEl.naturalHeight / imgEl.naturalWidth);
+      if (y + pdfH + 10 > 270) { pdf.addPage(); y = 20; }
+      y = sectionTitle('UBICACIÓN DE ENTREGA', y);
+      pdf.addImage(dataUrl, 'PNG', margin, y, pdfW, pdfH);
+      y += pdfH + 6;
+    } catch (_) {}
+  }
 
   // Footer
   const totalPages = pdf.internal.pages.length - 1;
@@ -226,17 +298,19 @@ const imprimirPedidoA4 = (p, config) => {
   window.open(pdf.output('bloburl'), '_blank');
 };
 
-const imprimirPedidoTicket = (p, config) => {
+const imprimirPedidoTicket = (p, config, conMapa = false) => {
   const sym = config?.currency_symbol || '$';
   const fecha = p.fecha ? new Date(p.fecha).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
   const entrega = p.tipo_entrega === 'domicilio' ? `Domicilio: ${p.direccion_entrega || ''}` : 'Retiro en local';
-  const itemsHtml = (p.items || []).map(item =>
-    `<tr>
-      <td style="padding:7px 6px;font-size:0.9rem;border-bottom:1px solid #e5e7eb;">${item.nombre}</td>
-      <td style="padding:7px 6px;font-size:0.9rem;font-weight:700;text-align:center;border-bottom:1px solid #e5e7eb;">${item.cantidad}</td>
-      <td style="padding:7px 6px;font-size:0.9rem;text-align:right;border-bottom:1px solid #e5e7eb;">${sym}${(item.precio_unitario * item.cantidad).toFixed(2)}</td>
-    </tr>`
-  ).join('');
+  const itemsHtml = (p.items || []).map(item => {
+    const precioOrigUnit = item.descuento > 0 ? item.precio_unitario / (1 - item.descuento / 100) : item.precio_unitario;
+    const ahorro = item.descuento > 0 ? (precioOrigUnit - item.precio_unitario) * item.cantidad : 0;
+    return `<tr>
+      <td style="padding:7px 6px 2px;font-size:0.9rem;">${item.nombre}${item.descuento > 0 ? `<br><span style="font-size:0.75rem;color:#059669;">${item.descuento}% desc. (-${sym}${ahorro.toFixed(2)})</span>` : ''}</td>
+      <td style="padding:7px 6px 2px;font-size:0.9rem;font-weight:700;text-align:center;">${item.cantidad}</td>
+      <td style="padding:7px 6px 2px;font-size:0.9rem;text-align:right;">${item.descuento > 0 ? `<span style="text-decoration:line-through;color:#9ca3af;font-size:0.78rem;">${sym}${(precioOrigUnit * item.cantidad).toFixed(2)}</span><br>` : ''}<strong>${sym}${(item.precio_unitario * item.cantidad).toFixed(2)}</strong></td>
+    </tr>`;
+  }).join('');
 
   const tSubtotal   = p.subtotal ?? (p.items || []).reduce((s, i) => s + i.precio_unitario * i.cantidad, 0);
   const tImpuestos  = p.impuestos || 0;
@@ -288,18 +362,29 @@ const imprimirPedidoTicket = (p, config) => {
   </table>
   ${desgloseHtml}
   <div class="total-row"><span>Total</span><span>${sym}${p.total?.toFixed(2)}</span></div>
-  <script>window.onload = function(){ window.print(); window.onafterprint = function(){ window.close(); }; }</script>
+  ${conMapa && p.coordenadas ? `<div style="margin-top:10px;"><div style="font-size:0.65rem;text-transform:uppercase;color:#888;margin-bottom:4px;">Ubicación de entrega</div><img class="map-img" src="${process.env.REACT_APP_BACKEND_URL || ''}/api/proxy/static-map?lat=${p.coordenadas.lat}&lng=${p.coordenadas.lng}" style="width:100%;border-radius:4px;" /></div>` : ''}
+  <script>
+    function doPrint(){ window.print(); window.onafterprint = function(){ window.close(); }; }
+    window.addEventListener('load', function(){
+      var imgs = Array.from(document.querySelectorAll('img'));
+      var pending = imgs.filter(function(i){ return !i.complete; });
+      if(pending.length === 0){ setTimeout(doPrint, 100); return; }
+      var done = 0;
+      function check(){ done++; if(done >= pending.length) setTimeout(doPrint, 100); }
+      pending.forEach(function(i){ i.addEventListener('load', check); i.addEventListener('error', check); });
+    });
+  </script>
   </body></html>`;
   const win = window.open('', '_blank', 'width=420,height=600');
   const blob = new Blob([html], { type: 'text/html' });
   win.location.href = URL.createObjectURL(blob);
 };
 
-const imprimirPedido = (p, config) => {
+const imprimirPedido = (p, config, conMapa = false) => {
   if (config?.receipt_format === 'a4') {
-    imprimirPedidoA4(p, config);
+    imprimirPedidoA4(p, config, conMapa);
   } else {
-    imprimirPedidoTicket(p, config);
+    imprimirPedidoTicket(p, config, conMapa);
   }
 };
 
@@ -324,6 +409,8 @@ const TabPedidos = ({ initialExpandId }) => {
   const chatBottomRef = useRef(null);
   const [waConnected, setWaConnected] = useState(false);
   const [waSending, setWaSending] = useState(null);
+  const [waUnreadTels, setWaUnreadTels] = useState([]);
+  const [imprimirConMapa, setImprimirConMapa] = useState(false);
 
   const abrirEnPOS = (p) => {
     sessionStorage.setItem('tienda_pedido_en_pos', JSON.stringify(p));
@@ -353,6 +440,9 @@ const TabPedidos = ({ initialExpandId }) => {
       .then(res => {
         setWaChatHistory(res.data);
         setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+        // Marcar como leído localmente y disparar refresco del badge
+        setWaUnreadTels(prev => prev.filter(t => t !== tel));
+        window.dispatchEvent(new Event('wa-mensaje-nuevo'));
       })
       .catch(() => {});
   };
@@ -519,6 +609,22 @@ const TabPedidos = ({ initialExpandId }) => {
     };
   }, []); // se conecta una sola vez; fetchPedidosRef mantiene la ref actualizada
 
+  useEffect(() => {
+    const fetchUnread = () => {
+      const token = localStorage.getItem('token');
+      axios.get(`${API}/whatsapp/unread/count`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => setWaUnreadTels(res.data?.telefonos || []))
+        .catch(() => {});
+    };
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 15 * 1000);
+    window.addEventListener('wa-mensaje-nuevo', fetchUnread);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('wa-mensaje-nuevo', fetchUnread);
+    };
+  }, []);
+
   const handleEstadoChange = async (saleId, nuevoEstado) => {
     setUpdatingId(saleId);
     try {
@@ -566,6 +672,7 @@ const TabPedidos = ({ initialExpandId }) => {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2, flexWrap: 'wrap' }}>
                       <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#111827' }}>#{p.numero_factura}</span>
                       <Badge estado={p.estado_pedido || 'pendiente'} />
+                      <Cronometro fecha={p.fecha} estado={p.estado_pedido || 'pendiente'} fechaFinalizado={p.fecha_finalizado} />
                       <span style={{ fontSize: '0.75rem', color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 3 }}>
                         {p.tipo_entrega === 'domicilio' ? <MapPin size={11} /> : <Store size={11} />}
                         {p.tipo_entrega === 'domicilio' ? (p.direccion_entrega || 'Domicilio') : 'Retiro en local'}
@@ -577,7 +684,7 @@ const TabPedidos = ({ initialExpandId }) => {
                         </span>
                       )}
                     </div>
-                    <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                       <span>{p.tienda_customer_nombre} · {p.tienda_customer_email}{p.tienda_customer_telefono && ` · ${p.tienda_customer_telefono}`}</span>
                       {p.tienda_customer_telefono && (() => {
                         const tel = p.tienda_customer_telefono.replace(/\D/g, '');
@@ -600,10 +707,13 @@ const TabPedidos = ({ initialExpandId }) => {
                           <div style={{ position: 'relative', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                             <button
                               onClick={() => setWaMenu(waMenu === p.id ? null : p.id)}
-                              title="Enviar WhatsApp"
-                              style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#25d366' }}
+                              title={waUnreadTels.includes(tel) ? 'Mensaje sin leer de WhatsApp' : 'Enviar WhatsApp'}
+                              style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: waUnreadTels.includes(tel) ? '#ef4444' : '#25d366', position: 'relative' }}
                             >
                               {waIcon}
+                              {waUnreadTels.includes(tel) && (
+                                <span style={{ position: 'absolute', top: -3, right: -3, width: 8, height: 8, borderRadius: '50%', background: '#ef4444', border: '1.5px solid white' }} />
+                              )}
                             </button>
                             {waMenu === p.id && (
                               <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 50, background: 'white', border: '1.5px solid #e5e7eb', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 240, padding: '0.4rem 0', marginTop: 4 }}>
@@ -649,12 +759,12 @@ const TabPedidos = ({ initialExpandId }) => {
                           </div>
                         );
                       })()}
-                    </p>
+                    </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <p style={{ fontWeight: 700, fontSize: '0.95rem', color: '#111827', margin: '0 0 2px' }}>${p.total?.toFixed(2)}</p>
-                    <p style={{ fontSize: '0.75rem', color: '#9ca3af', margin: 0 }}>
-                      {p.fecha ? new Date(p.fecha).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
+                    <p style={{ fontSize: '0.72rem', color: '#9ca3af', margin: 0 }}>
+                      {p.fecha ? new Date(p.fecha).toLocaleString('es-AR', { day: '2-digit', month: '2-digit' }) : ''}
                     </p>
                   </div>
                   <ChevronDown size={16} style={{ color: '#9ca3af', transform: expandido === p.id ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform .2s' }} />
@@ -663,61 +773,123 @@ const TabPedidos = ({ initialExpandId }) => {
                 {/* Detalle expandido */}
                 {expandido === p.id && (
                   <div style={{ padding: '0 1rem 1rem', borderTop: '1px solid #f3f4f6' }}>
-                    {/* Items */}
-                    <div style={{ padding: '0.75rem 0 0.25rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {(p.items || []).map((item, idx) => (
-                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                          <span style={{ color: '#374151' }}>{item.nombre} <span style={{ color: '#9ca3af' }}>×{item.cantidad}</span></span>
-                          <span style={{ fontWeight: 600, color: '#111827' }}>${(item.precio_unitario * item.cantidad).toFixed(2)}</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: p.coordenadas ? '1fr 640px' : '1fr', gap: '1rem', alignItems: 'start' }}>
+
+                      {/* Columna izquierda: items + info + acciones */}
+                      <div style={{ justifySelf: 'start', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                        {/* Items — grid 2 columnas: producto | precio */}
+                        <div style={{ padding: '0.75rem 0 0.25rem', display: 'grid', gridTemplateColumns: 'auto auto', gap: '2px 24px', alignItems: 'start' }}>
+                          {(p.items || []).map((item, idx) => {
+                            const precioOrigUnit = item.descuento > 0 ? item.precio_unitario / (1 - item.descuento / 100) : item.precio_unitario;
+                            const ahorro = item.descuento > 0 ? (precioOrigUnit - item.precio_unitario) * item.cantidad : 0;
+                            return (
+                              <React.Fragment key={idx}>
+                                {/* Col 1: nombre */}
+                                <div style={{ fontSize: '0.85rem' }}>
+                                  <span style={{ color: '#374151' }}>{item.nombre} <span style={{ color: '#9ca3af' }}>×{item.cantidad}</span></span>
+                                  {item.descuento > 0 && (
+                                    <div style={{ fontSize: '0.75rem', color: '#059669' }}>{item.descuento}% desc. (-${ahorro.toFixed(2)})</div>
+                                  )}
+                                </div>
+                                {/* Col 2: precio */}
+                                <div style={{ fontSize: '0.85rem', textAlign: 'right' }}>
+                                  {item.descuento > 0 && (
+                                    <div style={{ fontSize: '0.75rem', color: '#9ca3af', textDecoration: 'line-through' }}>${(precioOrigUnit * item.cantidad).toFixed(2)}</div>
+                                  )}
+                                  <span style={{ fontWeight: 600, color: '#111827', whiteSpace: 'nowrap' }}>${(item.precio_unitario * item.cantidad).toFixed(2)}</span>
+                                </div>
+                              </React.Fragment>
+                            );
+                          })}
                         </div>
-                      ))}
-                    </div>
-                    {/* Desglose de totales */}
-                    {(() => {
-                      const subtotal   = p.subtotal ?? (p.items || []).reduce((s, i) => s + i.precio_unitario * i.cantidad, 0);
-                      const impuestos  = p.impuestos || 0;
-                      const descuento  = p.descuento || 0;
-                      const extraTotal = p.impuestos_extra_total || 0;
-                      const costoEnvio = p.costo_envio || 0;
-                      const ajuste     = (p.total || 0) - subtotal - impuestos + descuento - extraTotal;
-                      const metodo     = p.metodo_pago || '';
-                      const metodoLabel = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia' }[metodo] || metodo;
-                      const showBreakdown = Math.abs(ajuste) > 0.01 || descuento > 0 || costoEnvio > 0;
-                      if (!showBreakdown) return <div style={{ marginBottom: '0.75rem' }} />;
-                      return (
-                        <div style={{ borderTop: '1px dashed #e5e7eb', margin: '0.4rem 0 0.75rem', paddingTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#6b7280' }}>
-                            <span>Subtotal</span><span>${subtotal.toFixed(2)}</span>
+                        {/* Desglose de totales */}
+                        {(() => {
+                          const subtotal   = p.subtotal ?? (p.items || []).reduce((s, i) => s + i.precio_unitario * i.cantidad, 0);
+                          const impuestos  = p.impuestos || 0;
+                          const descuento  = p.descuento || 0;
+                          const extraTotal = p.impuestos_extra_total || 0;
+                          const costoEnvio = p.costo_envio || 0;
+                          const ajuste     = (p.total || 0) - subtotal - impuestos + descuento - extraTotal;
+                          const metodo     = p.metodo_pago || '';
+                          const metodoLabel = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia' }[metodo] || metodo;
+                          const showBreakdown = Math.abs(ajuste) > 0.01 || descuento > 0 || costoEnvio > 0;
+                          if (!showBreakdown) return <div style={{ marginBottom: '0.75rem' }} />;
+                          return (
+                            <div style={{ borderTop: '1px dashed #e5e7eb', margin: '0.4rem 0 0.75rem', paddingTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#6b7280' }}>
+                                <span>Subtotal</span><span>${subtotal.toFixed(2)}</span>
+                              </div>
+                              {costoEnvio > 0 && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#6b7280' }}>
+                                  <span>Envío</span><span>${costoEnvio.toFixed(2)}</span>
+                                </div>
+                              )}
+                              {descuento > 0 && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#059669' }}>
+                                  <span>Descuento</span><span>-${descuento.toFixed(2)}</span>
+                                </div>
+                              )}
+                              {Math.abs(ajuste) > 0.01 && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: ajuste < 0 ? '#059669' : '#dc2626', fontWeight: 600 }}>
+                                  <span>{ajuste < 0 ? `Desc. ${metodoLabel}` : `Recargo ${metodoLabel}`}</span>
+                                  <span>{ajuste < 0 ? '-' : '+'}${Math.abs(ajuste).toFixed(2)}</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                        {/* dirección sin coordenadas — se muestra en col izquierda */}
+                        {p.direccion_entrega && !p.coordenadas && (
+                          <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: '0 0 0.5rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <MapPin size={12} />{p.direccion_entrega}
+                          </p>
+                        )}
+                        {p.observaciones_tienda && !p.coordenadas && (
+                          <p style={{ fontSize: '0.8rem', color: '#6b7280', fontStyle: 'italic', marginBottom: '0.75rem' }}>"{p.observaciones_tienda}"</p>
+                        )}
+                        <button onClick={(ev) => { ev.stopPropagation(); abrirEnPOS(p); }}
+                          style={{ marginTop: 'auto', padding: '0.35rem 0.85rem', borderRadius: 8, border: '1.5px solid #10b981', background: '#f0fdf4', color: '#065f46', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, alignSelf: 'flex-start' }}>
+                          <ShoppingCart size={13} /> Abrir en POS
+                        </button>
+                      </div>
+
+                      {/* Columna derecha: dirección al lado del mapa */}
+                      {p.coordenadas && (
+                        <div style={{ paddingTop: '0.75rem', display: 'flex', flexDirection: 'row', gap: 12, alignItems: 'stretch' }}>
+                          {/* Info de entrega */}
+                          <div style={{ width: 160, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6, justifyContent: 'center' }}>
+                            {p.direccion_entrega && (
+                              <div>
+                                <p style={{ fontSize: '0.7rem', color: '#9ca3af', margin: '0 0 2px', textTransform: 'uppercase', fontWeight: 600 }}>Dirección</p>
+                                <p style={{ fontSize: '0.82rem', color: '#374151', margin: 0, fontWeight: 500 }}>{p.direccion_entrega}</p>
+                                <a href={`https://www.google.com/maps?q=${p.coordenadas.lat},${p.coordenadas.lng}`}
+                                  target="_blank" rel="noopener noreferrer"
+                                  onClick={e => e.stopPropagation()}
+                                  style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 2, marginTop: 4 }}>
+                                  <ExternalLink size={10} /> Abrir en Maps
+                                </a>
+                              </div>
+                            )}
+                            {p.observaciones_tienda && (
+                              <div>
+                                <p style={{ fontSize: '0.7rem', color: '#9ca3af', margin: '0 0 2px', textTransform: 'uppercase', fontWeight: 600 }}>Obs.</p>
+                                <p style={{ fontSize: '0.82rem', color: '#6b7280', fontStyle: 'italic', margin: 0 }}>"{p.observaciones_tienda}"</p>
+                              </div>
+                            )}
                           </div>
-                          {costoEnvio > 0 && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#6b7280' }}>
-                              <span>Envío</span><span>${costoEnvio.toFixed(2)}</span>
-                            </div>
-                          )}
-                          {descuento > 0 && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#059669' }}>
-                              <span>Descuento</span><span>-${descuento.toFixed(2)}</span>
-                            </div>
-                          )}
-                          {Math.abs(ajuste) > 0.01 && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: ajuste < 0 ? '#059669' : '#dc2626', fontWeight: 600 }}>
-                              <span>{ajuste < 0 ? `Desc. ${metodoLabel}` : `Recargo ${metodoLabel}`}</span>
-                              <span>{ajuste < 0 ? '-' : '+'}${Math.abs(ajuste).toFixed(2)}</span>
-                            </div>
-                          )}
+                          {/* Mapa */}
+                          <iframe
+                            title="ubicacion-pedido"
+                            src={`https://www.openstreetmap.org/export/embed.html?bbox=${p.coordenadas.lng - 0.008},${p.coordenadas.lat - 0.005},${p.coordenadas.lng + 0.008},${p.coordenadas.lat + 0.005}&marker=${p.coordenadas.lat},${p.coordenadas.lng}&layer=mapnik`}
+                            style={{ flex: 1, height: 220, border: 'none', borderRadius: 10, display: 'block', filter: 'grayscale(0.15) saturate(0.55) contrast(0.9) brightness(1.05)' }}
+                            loading="lazy"
+                          />
                         </div>
-                      );
-                    })()}
-                    {p.direccion_entrega && (
-                      <p style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: '0.5rem' }}>
-                        <MapPin size={12} style={{ display: 'inline', marginRight: 4 }} />{p.direccion_entrega}
-                      </p>
-                    )}
-                    {p.observaciones_tienda && (
-                      <p style={{ fontSize: '0.8rem', color: '#6b7280', fontStyle: 'italic', marginBottom: '0.75rem' }}>"{p.observaciones_tienda}"</p>
-                    )}
-                    {/* Cambiar estado + Imprimir */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      )}
+                    </div>
+
+                    {/* Botones — fondo de la card, ancho completo */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', borderTop: '1px solid #f3f4f6', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
                       <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>Cambiar estado:</span>
                       {ESTADOS.map(e => (
                         <button key={e.value} onClick={() => handleEstadoChange(p.id, e.value)}
@@ -726,14 +898,21 @@ const TabPedidos = ({ initialExpandId }) => {
                           {e.label}
                         </button>
                       ))}
-                      <button onClick={(ev) => { ev.stopPropagation(); abrirEnPOS(p); }}
-                        style={{ marginLeft: 'auto', padding: '0.3rem 0.75rem', borderRadius: 8, border: '1.5px solid #10b981', background: '#f0fdf4', color: '#065f46', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <ShoppingCart size={13} /> Abrir en POS
-                      </button>
-                      <button onClick={(ev) => { ev.stopPropagation(); imprimirPedido(p, printConfig); }}
-                        style={{ padding: '0.3rem 0.75rem', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'white', color: '#374151', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <Printer size={13} /> Imprimir
-                      </button>
+                      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {p.coordenadas && (
+                          <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <button type="button" onClick={() => setImprimirConMapa(v => !v)}
+                              style={{ width: 36, height: 20, borderRadius: 999, border: 'none', background: imprimirConMapa ? 'var(--primary,#10b981)' : '#d1d5db', cursor: 'pointer', position: 'relative', transition: 'background .2s', flexShrink: 0 }}>
+                              <span style={{ position: 'absolute', top: 2, left: imprimirConMapa ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: 'white', transition: 'left .2s', boxShadow: '0 1px 4px rgba(0,0,0,0.2)' }} />
+                            </button>
+                            <span style={{ fontSize: '0.75rem', color: '#6b7280', userSelect: 'none' }}>Con mapa</span>
+                          </div>
+                        )}
+                        <button onClick={(ev) => { ev.stopPropagation(); imprimirPedido(p, printConfig, imprimirConMapa); }}
+                          style={{ padding: '0.3rem 0.75rem', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'white', color: '#374151', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <Printer size={13} /> Imprimir
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -865,6 +1044,9 @@ const TabConfiguracion = () => {
   const [retiroActivo, setRetiroActivo] = useState(true);
   const [montoMinimo, setMontoMinimo] = useState(0);
   const [alias, setAlias] = useState('');
+  const [sucursalesUbicacion, setSucursalesUbicacion] = useState({});
+  const [savingUbicacion, setSavingUbicacion] = useState({});
+  const [sucursalMapaExpanded, setSucursalMapaExpanded] = useState(null);
   const [waService, setWaService] = useState(null); // null | { status, phone, qr }
   const [waServiceLoading, setWaServiceLoading] = useState(false);
   const [waRefreshing, setWaRefreshing] = useState(false);
@@ -933,11 +1115,29 @@ const TabConfiguracion = () => {
         setRetiroActivo(d.tienda_retiro_activo !== false);
         setMontoMinimo(d.tienda_monto_minimo || 0);
         setAlias(d.tienda_alias || '');
-        setSucursales(branchRes.data || []);
+        const branches = branchRes.data || [];
+        setSucursales(branches);
+        const ubics = {};
+        branches.forEach(b => { ubics[b.id] = (b.lat != null && b.lng != null) ? { lat: b.lat, lng: b.lng } : null; });
+        setSucursalesUbicacion(ubics);
       })
       .catch(() => toast.error('Error al cargar configuración'))
       .finally(() => setLoading(false));
   }, []);
+
+  const handleSaveUbicacion = async (branchId) => {
+    const ubic = sucursalesUbicacion[branchId];
+    if (!ubic) return;
+    setSavingUbicacion(prev => ({ ...prev, [branchId]: true }));
+    try {
+      await axios.put(`${API}/branches/${branchId}`, { lat: ubic.lat, lng: ubic.lng });
+      toast.success('Ubicación guardada');
+    } catch {
+      toast.error('Error al guardar ubicación');
+    } finally {
+      setSavingUbicacion(prev => ({ ...prev, [branchId]: false }));
+    }
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -1030,6 +1230,57 @@ const TabConfiguracion = () => {
           </div>
         )}
       </div>
+
+      {/* Ubicación de sucursales (solo modo Pedidos) */}
+      {tiendaModo === 'pedidos' && sucursales.length > 0 && (
+        <div style={{ background: 'white', borderRadius: 14, padding: '1.25rem', border: '1.5px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+          <div>
+            <p style={{ fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>Ubicación de sucursales</p>
+            <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>Marcá en el mapa dónde está cada sucursal. Los clientes verán la ubicación al retirar su pedido.</p>
+          </div>
+          {sucursales.map(suc => {
+            const ubic = sucursalesUbicacion[suc.id] || null;
+            const expanded = sucursalMapaExpanded === suc.id;
+            const isSaving = savingUbicacion[suc.id];
+            return (
+              <div key={suc.id} style={{ border: '1.5px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+                <button
+                  type="button"
+                  onClick={() => setSucursalMapaExpanded(expanded ? null : suc.id)}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 1rem', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <MapPin size={15} style={{ color: ubic ? 'var(--primary,#10b981)' : '#9ca3af', flexShrink: 0 }} />
+                    <span style={{ fontWeight: 600, fontSize: '0.875rem', color: '#111827' }}>{suc.nombre}</span>
+                    {ubic
+                      ? <span style={{ fontSize: '0.7rem', background: '#ecfdf5', color: '#059669', borderRadius: 99, padding: '2px 8px', fontWeight: 600 }}>Ubicada</span>
+                      : <span style={{ fontSize: '0.7rem', background: '#f9fafb', color: '#9ca3af', borderRadius: 99, padding: '2px 8px' }}>Sin ubicación</span>
+                    }
+                  </div>
+                  <ChevronDown size={16} style={{ color: '#9ca3af', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform .2s', flexShrink: 0 }} />
+                </button>
+                {expanded && (
+                  <div style={{ padding: '0 1rem 1rem' }}>
+                    <Suspense fallback={<div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-200 border-t-green-600" /></div>}>
+                      <MapaPicker
+                        coordenadas={ubic}
+                        onCoordenadas={(coords) => setSucursalesUbicacion(prev => ({ ...prev, [suc.id]: coords }))}
+                        onDireccion={() => {}}
+                      />
+                    </Suspense>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveUbicacion(suc.id)}
+                      disabled={!ubic || isSaving}
+                      style={{ marginTop: 10, width: '100%', padding: '0.6rem', borderRadius: 10, border: 'none', background: (!ubic || isSaving) ? '#e5e7eb' : 'var(--primary,#10b981)', color: (!ubic || isSaving) ? '#9ca3af' : 'white', fontWeight: 600, fontSize: '0.875rem', cursor: (!ubic || isSaving) ? 'not-allowed' : 'pointer', transition: 'all .15s' }}>
+                      {isSaving ? 'Guardando...' : 'Guardar ubicación'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Descripción y horario */}
       <div style={{ background: 'white', borderRadius: 14, padding: '1.25rem', border: '1.5px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -1372,7 +1623,23 @@ const TiendaAdmin = () => {
   const { user } = useContext(AuthContext);
   const location = useLocation();
   const [tabActiva, setTabActiva] = useState('pedidos');
+  const [msgCount, setMsgCount] = useState(0);
   const expandPedidoId = location.state?.expandPedidoId || null;
+
+  useEffect(() => {
+    const fetchMsgCount = () => {
+      axios.get(`${API}/whatsapp/unread/count`)
+        .then(res => setMsgCount(res.data?.count || 0))
+        .catch(() => {});
+    };
+    fetchMsgCount();
+    const interval = setInterval(fetchMsgCount, 30 * 1000);
+    window.addEventListener('wa-mensaje-nuevo', fetchMsgCount);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('wa-mensaje-nuevo', fetchMsgCount);
+    };
+  }, []);
 
   return (
     <div>
@@ -1391,6 +1658,12 @@ const TiendaAdmin = () => {
             >
               <Icon className="w-4 h-4" />
               {label}
+              {id === 'pedidos' && msgCount > 0 && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, background: '#3b82f6', color: 'white', borderRadius: 999, fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', lineHeight: 1.5 }}>
+                  <MessageSquare size={10} />
+                  {msgCount > 99 ? '99+' : msgCount}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -1398,7 +1671,7 @@ const TiendaAdmin = () => {
 
       {/* Contenido */}
       <div className="p-6">
-        {tabActiva === 'pedidos'       && <TabPedidos initialExpandId={expandPedidoId} />}
+        {tabActiva === 'pedidos'       && <TabPedidos key={user?.active_branch_id} initialExpandId={expandPedidoId} />}
         {tabActiva === 'configuracion' && <TabConfiguracion />}
         {tabActiva === 'mi-tienda'     && <TabMiTienda user={user} />}
       </div>

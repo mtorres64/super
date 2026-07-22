@@ -365,7 +365,7 @@ const BranchManagementView = ({
             <button
               type="button"
               onClick={() => setShowMobileFilters(v => !v)}
-              className="md:hidden btn btn-secondary relative flex-shrink-0"
+              className="md:!hidden btn btn-secondary relative flex-shrink-0"
             >
               <SlidersHorizontal className="w-4 h-4" />
               {(selectedCategory || selectedKind || selectedActivo) && (
@@ -764,11 +764,11 @@ const BranchManagementView = ({
                           ) : (
                             <button
                               type="button"
-                              disabled={!product.branch_product_id}
+                              disabled={!product.branch_product_id || !product.activo_sucursal}
                               onClick={() => onToggleMostrarEnTienda(product)}
-                              title={!product.branch_product_id ? 'Guarda cambios primero' : product.mostrar_en_tienda_sucursal ? 'Visible en tienda — clic para ocultar' : 'Oculto de tienda — clic para mostrar'}
+                              title={!product.branch_product_id ? 'Guarda cambios primero' : !product.activo_sucursal ? 'El producto debe estar activo en la sucursal para mostrarse en tienda' : product.mostrar_en_tienda_sucursal ? 'Visible en tienda — clic para ocultar' : 'Oculto de tienda — clic para mostrar'}
                               className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-40"
-                              style={{ background: product.mostrar_en_tienda_sucursal ? '#9333ea' : '#d1d5db' }}
+                              style={{ background: product.mostrar_en_tienda_sucursal && product.activo_sucursal ? '#9333ea' : '#d1d5db' }}
                             >
                               <span
                                 className="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform"

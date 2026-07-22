@@ -128,3 +128,8 @@ html.dark .pos-session-open {
 
 /* Settings color preview badge → dark background */
 html.dark .badge-preview { background: #1e1e1e !important; }
+
+/* Tienda navbar: botón usuario compacto en mobile */
+@media (max-width: 639px) {
+  .tienda-usermenu-btn { padding: 0.35rem !important; }
+}

@@ -224,14 +224,26 @@ const POS = () => {
           id: item.producto_id,
           product_id: item.producto_id,
           nombre: item.nombre || item.producto_id,
-          precio: item.precio_unitario,
+          precio: item.descuento > 0 ? item.precio_unitario / (1 - item.descuento / 100) : item.precio_unitario,
           precio_unitario: item.precio_unitario,
           quantity: item.cantidad,
           control_stock: false,
+          descuento: item.descuento || 0,
         }));
+        const descuentoPct = (p.descuento > 0 && p.subtotal > 0)
+          ? Math.round(p.descuento / p.subtotal * 10000) / 100
+          : 0;
+        const pedidoInvoiceConfig = {
+          ...defaultInvoiceConfig,
+          ...(descuentoPct > 0 && { descuento_tipo: 'porcentaje', descuento_valor: descuentoPct }),
+          ...(p.condicion_iva_receptor && { condicion_iva_receptor: p.condicion_iva_receptor }),
+          ...(p.cuit_receptor && { cuit_receptor: p.cuit_receptor }),
+          ...(p.observaciones_comprobante && { observaciones: p.observaciones_comprobante }),
+        };
         setTabs(prev => prev.map(t => t.id === 1 ? {
           ...t,
           cart: cartItems,
+          invoiceConfig: pedidoInvoiceConfig,
           modifyingSaleId: p.id,
           modifyingInvoiceNum: p.numero_factura,
         } : t));
@@ -983,10 +995,11 @@ const POS = () => {
         id: item.producto_id,
         product_id: item.producto_id,
         nombre: item.nombre || item.producto_id,
-        precio: item.precio_unitario,
+        precio: item.descuento > 0 ? item.precio_unitario / (1 - item.descuento / 100) : item.precio_unitario,
         precio_unitario: item.precio_unitario,
         quantity: item.cantidad,
         control_stock: false,
+        descuento: item.descuento || 0,
       }));
 
       const targetTabHasItems = activeTab.cart.length > 0;

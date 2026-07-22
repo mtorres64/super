@@ -672,9 +672,11 @@ const BranchManagement = () => {
   const toggleBranchProductActive = async (product) => {
     if (!product.branch_product_id) return;
     try {
-      await axios.put(`${API}/branch-products/${product.branch_product_id}`, {
-        activo: !product.activo_sucursal
-      });
+      const payload = { activo: !product.activo_sucursal };
+      if (product.activo_sucursal && product.mostrar_en_tienda_sucursal) {
+        payload.mostrar_en_tienda = false;
+      }
+      await axios.put(`${API}/branch-products/${product.branch_product_id}`, payload);
       toast.success('Estado actualizado');
       reloadBranchProducts();
     } catch (error) {

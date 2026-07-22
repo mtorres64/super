@@ -364,6 +364,7 @@ const Layout = ({ children }) => {
   const [stockAlertCount, setStockAlertCount] = useState(0);
   const [notifCount, setNotifCount] = useState(0);
   const [tiendaPendingCount, setTiendaPendingCount] = useState(0);
+  const [tiendaMsgCount, setTiendaMsgCount] = useState(0);
 
   useEffect(() => {
     if (!user) return;
@@ -404,12 +405,21 @@ const Layout = ({ children }) => {
         .then(res => setTiendaPendingCount(res.data?.pendientes || 0))
         .catch(() => {});
     };
+    const fetchMsgCount = () => {
+      axios.get(`${API}/whatsapp/unread/count`)
+        .then(res => setTiendaMsgCount(res.data?.count || 0))
+        .catch(() => {});
+    };
     fetchPendingCount();
-    const interval = setInterval(fetchPendingCount, 30 * 1000);
-    window.addEventListener('tienda-pedido-nuevo', fetchPendingCount);
+    fetchMsgCount();
+    const interval = setInterval(() => { fetchPendingCount(); fetchMsgCount(); }, 30 * 1000);
+    const onNuevoPedido = () => { fetchPendingCount(); fetchMsgCount(); };
+    window.addEventListener('tienda-pedido-nuevo', onNuevoPedido);
+    window.addEventListener('wa-mensaje-nuevo', fetchMsgCount);
     return () => {
       clearInterval(interval);
-      window.removeEventListener('tienda-pedido-nuevo', fetchPendingCount);
+      window.removeEventListener('tienda-pedido-nuevo', onNuevoPedido);
+      window.removeEventListener('wa-mensaje-nuevo', fetchMsgCount);
     };
   }, [user, modulosActivos]);
 
@@ -501,7 +511,7 @@ const Layout = ({ children }) => {
           onClick={() => setSidebarOpen(false)}
         />
       )}
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} stockAlertCount={stockAlertCount} notifCount={notifCount} tiendaPendingCount={tiendaPendingCount} />
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} stockAlertCount={stockAlertCount} notifCount={notifCount} tiendaPendingCount={tiendaPendingCount} tiendaMsgCount={tiendaMsgCount} />
       <div
         className="flex-1 flex flex-col overflow-hidden"
         style={{

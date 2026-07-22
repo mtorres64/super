@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { ArrowLeft, MapPin, Store, FileText, CheckCircle, ShoppingCart, Building2, Banknote, CreditCard, ArrowRightLeft } from 'lucide-react';
+const MapaPicker = lazy(() => import('./MapaPicker'));
 
 const PRIMARY = 'var(--primary, #10b981)';
 const PRIMARY_BG = 'var(--primary-bg, #ecfdf5)';
@@ -17,11 +18,14 @@ const MEDIOS_PAGO = [
   { value: 'tarjeta',       label: 'Tarjeta',                 Icon: CreditCard,       desc: 'Al recibir o retirar el pedido' },
 ];
 
+const isMobile = () => window.innerWidth < 640;
+
 const TiendaCheckoutView = ({
   config, empresa_id, tiendaUser, isEcommerce,
   sucursales = [], sucursalId, onCambiarSucursal, cambiandoSucursal,
   carrito, tipoEntrega, setTipoEntrega,
   direccion, setDireccion, dirEcommerce, setDirEcommerce,
+  coordenadas, setCoordenadas,
   medioPago, setMedioPago,
   observaciones, setObservaciones, loading,
   costoEnvio, totalCarrito, totalFinal, currencySymbol,
@@ -78,7 +82,7 @@ const TiendaCheckoutView = ({
         </div>
       </header>
 
-      <div style={{ maxWidth: 800, margin: '0 auto', padding: '1.5rem 1rem', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,340px)', gap: '1.5rem' }}>
+      <div style={{ maxWidth: 800, margin: '0 auto', padding: '1.5rem 1rem', display: 'grid', gridTemplateColumns: isMobile() ? '1fr' : 'minmax(0,1fr) minmax(0,340px)', gap: '1.5rem' }}>
 
         {/* Columna izquierda: formulario */}
         <form id="checkout-form" onSubmit={onConfirmar} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -127,10 +131,19 @@ const TiendaCheckoutView = ({
 
           {/* Dirección (solo si es domicilio) */}
           {tipoEntrega === 'domicilio' && !isEcommerce && (
-            <div style={{ background: 'white', borderRadius: 16, padding: '1.25rem', boxShadow: '0 1px 8px rgba(0,0,0,0.06)' }}>
-              <h3 style={{ fontWeight: 700, color: '#111827', fontSize: '0.95rem', marginBottom: '1rem' }}>Dirección de entrega</h3>
+            <div style={{ background: 'white', borderRadius: 16, padding: '1.25rem', boxShadow: '0 1px 8px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              <h3 style={{ fontWeight: 700, color: '#111827', fontSize: '0.95rem', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <MapPin size={16} style={{ color: PRIMARY }} /> Dirección de entrega
+              </h3>
+              <Suspense fallback={<div style={{ height: 260, borderRadius: 12, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: '0.85rem' }}>Cargando mapa...</div>}>
+                <MapaPicker
+                  coordenadas={coordenadas}
+                  onCoordenadas={setCoordenadas}
+                  onDireccion={setDireccion}
+                />
+              </Suspense>
               <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label">Calle, número, piso, dpto.</label>
+                <label className="form-label">Confirmá o editá la dirección</label>
                 <div className="input-icon-wrap">
                   <span className="input-icon"><MapPin size={15} /></span>
                   <input type="text" className="form-input" value={direccion} onChange={e => setDireccion(e.target.value)}
@@ -195,6 +208,20 @@ const TiendaCheckoutView = ({
                   onChange={e => setDir('pisoDpto', e.target.value)}
                   placeholder="Ej: 3° B, PH, Local 4" />
               </div>
+
+              {/* Mapa para fijar ubicación exacta */}
+              <div>
+                <label className="form-label" style={{ marginBottom: 8, display: 'block' }}>
+                  Ubicación en el mapa <span style={{ color: '#9ca3af', fontWeight: 400 }}>(opcional — para entrega más precisa)</span>
+                </label>
+                <Suspense fallback={<div style={{ height: 260, borderRadius: 12, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: '0.85rem' }}>Cargando mapa...</div>}>
+                  <MapaPicker
+                    coordenadas={coordenadas}
+                    onCoordenadas={setCoordenadas}
+                    onDireccion={() => {}}
+                  />
+                </Suspense>
+              </div>
             </div>
           )}
 
@@ -217,7 +244,7 @@ const TiendaCheckoutView = ({
 
         {/* Columna derecha: resumen */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div style={{ background: 'white', borderRadius: 16, padding: '1.25rem', boxShadow: '0 1px 8px rgba(0,0,0,0.06)', position: 'sticky', top: 70 }}>
+          <div style={{ background: 'white', borderRadius: 16, padding: '1.25rem', boxShadow: '0 1px 8px rgba(0,0,0,0.06)', position: isMobile() ? 'static' : 'sticky', top: 70 }}>
             <h3 style={{ fontWeight: 700, color: '#111827', fontSize: '0.95rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
               <ShoppingCart size={16} /> Resumen del pedido
             </h3>

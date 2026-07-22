@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -20,12 +20,23 @@ const TiendaCheckout = () => {
   const [tipoEntrega, setTipoEntrega] = useState('domicilio');
   const getDireccionGuardada = (sid) =>
     tiendaUser?.direcciones_por_sucursal?.[sid || tiendaUser?.sucursal_id] || '';
+  const getObservacionesGuardadas = (sid) =>
+    tiendaUser?.observaciones_por_sucursal?.[sid || tiendaUser?.sucursal_id] || '';
+  const getCoordenadasGuardadas = (sid) =>
+    tiendaUser?.coordenadas_por_sucursal?.[sid || tiendaUser?.sucursal_id] || null;
   const [direccion, setDireccion] = useState(() => getDireccionGuardada(tiendaUser?.sucursal_id));
   const [dirEcommerce, setDirEcommerce] = useState({ provincia: '', localidad: '', calle: '', numero: '', pisoDpto: '', cp: '' });
+  const [coordenadas, setCoordenadas] = useState(() => getCoordenadasGuardadas(tiendaUser?.sucursal_id));
   const [medioPago, setMedioPago] = useState('efectivo');
-  const [observaciones, setObservaciones] = useState('');
+  const [observaciones, setObservaciones] = useState(() => getObservacionesGuardadas(tiendaUser?.sucursal_id));
   const [loading, setLoading] = useState(false);
   const [pedidoConfirmado, setPedidoConfirmado] = useState(null);
+
+  useEffect(() => {
+    if (!pedidoConfirmado) return;
+    const t = setTimeout(() => navigate(`/tienda/${empresa_id}`), 4000);
+    return () => clearTimeout(t);
+  }, [pedidoConfirmado, empresa_id, navigate]);
 
   const costoEnvio = tipoEntrega === 'domicilio' ? (config?.tienda_costo_envio || 0) : 0;
   const totalFinal = totalCarrito + costoEnvio;
@@ -38,6 +49,8 @@ const TiendaCheckout = () => {
       tiendaUser.sucursal_id = id;
       setSucursalId(id);
       setDireccion(getDireccionGuardada(id));
+      setObservaciones(getObservacionesGuardadas(id));
+      setCoordenadas(getCoordenadasGuardadas(id));
       toast.success('Sucursal actualizada. Los precios del carrito fueron recalculados.');
     } catch {
       toast.error('No se pudo cambiar la sucursal');
@@ -77,16 +90,30 @@ const TiendaCheckout = () => {
         direccion_entrega: tipoEntrega === 'domicilio' ? direccionFinal : '',
         observaciones: observaciones.trim(),
         metodo_pago: medioPago,
+        ...(coordenadas && tipoEntrega === 'domicilio' ? { coordenadas_lat: coordenadas.lat, coordenadas_lng: coordenadas.lng } : {}),
       }, { headers: { Authorization: `Bearer ${tiendaToken}` } });
       vaciarCarrito();
-      if (tipoEntrega === 'domicilio' && direccion.trim()) {
+      if (tipoEntrega === 'domicilio' && direccionFinal) {
         const sid = sucursalId || tiendaUser?.sucursal_id || 'default';
-        updateTiendaUser({
+        const updates = {
           direcciones_por_sucursal: {
             ...(tiendaUser?.direcciones_por_sucursal || {}),
-            [sid]: direccion.trim(),
-          }
-        });
+            [sid]: direccionFinal,
+          },
+        };
+        if (observaciones.trim()) {
+          updates.observaciones_por_sucursal = {
+            ...(tiendaUser?.observaciones_por_sucursal || {}),
+            [sid]: observaciones.trim(),
+          };
+        }
+        if (coordenadas) {
+          updates.coordenadas_por_sucursal = {
+            ...(tiendaUser?.coordenadas_por_sucursal || {}),
+            [sid]: coordenadas,
+          };
+        }
+        updateTiendaUser(updates);
       }
       setPedidoConfirmado(data);
     } catch (err) {
@@ -108,6 +135,7 @@ const TiendaCheckout = () => {
       tipoEntrega={tipoEntrega} setTipoEntrega={setTipoEntrega}
       direccion={direccion} setDireccion={setDireccion}
       dirEcommerce={dirEcommerce} setDirEcommerce={setDirEcommerce}
+      coordenadas={coordenadas} setCoordenadas={setCoordenadas}
       medioPago={medioPago} setMedioPago={setMedioPago}
       observaciones={observaciones} setObservaciones={setObservaciones}
       loading={loading}

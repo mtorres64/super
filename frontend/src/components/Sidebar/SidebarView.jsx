@@ -11,6 +11,7 @@ const SidebarView = ({
   notifCount,
   stockAlertCount,
   tiendaPendingCount,
+  tiendaMsgCount,
   isActive,
   onClose,
   onLogout,
@@ -72,6 +73,11 @@ const SidebarView = ({
             {path === '/tienda-admin' && tiendaPendingCount > 0 && (
               <span className="nav-stock-badge" style={{ background: '#f59e0b', color: 'white' }}>
                 {tiendaPendingCount > 99 ? '99+' : tiendaPendingCount}
+              </span>
+            )}
+            {path === '/tienda-admin' && tiendaMsgCount > 0 && (
+              <span className="nav-stock-badge" style={{ background: '#3b82f6', color: 'white' }} title="Pedidos con mensaje del comprador">
+                💬 {tiendaMsgCount > 99 ? '99+' : tiendaMsgCount}
               </span>
             )}
           </Link>

@@ -92,7 +92,7 @@ const ProductCard = ({ producto, onAgregar, onAgregarPeso, cantidadEnCarrito, on
       onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'none'; }}
     >
       {/* Imagen */}
-      <div style={{ height: 200, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative' }}>
+      <div style={{ aspectRatio: '1 / 1', width: '100%', background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative', overflow: 'hidden' }}>
         {producto.imagen
           ? <img src={driveToProxyUrl(producto.imagen)} alt={producto.nombre} style={{ height: '100%', width: '100%', objectFit: 'cover' }} />
           : companyLogo

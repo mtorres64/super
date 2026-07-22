@@ -81,7 +81,7 @@ const menuItems = [
   },
 ];
 
-const Sidebar = ({ isOpen, onClose, stockAlertCount = 0, notifCount = 0, tiendaPendingCount = 0 }) => {
+const Sidebar = ({ isOpen, onClose, stockAlertCount = 0, notifCount = 0, tiendaPendingCount = 0, tiendaMsgCount = 0 }) => {
   const { user, logout, modulosActivos, activeBranch, userBranches, openBranchSelector, isImpersonating, impersonationEmpresa, stopImpersonation } = useContext(AuthContext);
   const location = useLocation();
   const [config, setConfig] = useState(null);
@@ -135,6 +135,7 @@ const Sidebar = ({ isOpen, onClose, stockAlertCount = 0, notifCount = 0, tiendaP
       notifCount={notifCount}
       stockAlertCount={stockAlertCount}
       tiendaPendingCount={tiendaPendingCount}
+      tiendaMsgCount={tiendaMsgCount}
       isActive={isActive}
       onClose={onClose}
       onLogout={handleLogout}
