@@ -15,6 +15,7 @@ import PaginationView from '../Pagination/PaginationView';
 const FRONTEND_URL = process.env.REACT_APP_FRONTEND_URL || window.location.origin;
 
 const MapaPicker = React.lazy(() => import('../Tienda/TiendaCheckout/MapaPicker'));
+const MapaPedido = React.lazy(() => import('./MapaPedido'));
 
 // AudioContext reutilizado — los navegadores bloquean uno nuevo sin interacción previa
 let _audioCtx = null;
@@ -119,7 +120,7 @@ const Cronometro = ({ fecha, estado, fechaFinalizado }) => {
   );
 };
 
-const imprimirPedidoA4 = async (p, config, conMapa = false) => {
+const imprimirPedidoA4 = async (p, config, conMapa = false, branchCoords = null) => {
   const sym = config?.currency_symbol || '$';
   const empresa = config?.company_name || '';
   const fecha = p.fecha ? new Date(p.fecha).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
@@ -263,7 +264,8 @@ const imprimirPedidoA4 = async (p, config, conMapa = false) => {
   // Mapa en impresión A4 (via proxy backend para evitar CORS)
   if (conMapa && p.coordenadas) {
     const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
-    const mapUrl = `${BACKEND_URL}/api/proxy/static-map?lat=${p.coordenadas.lat}&lng=${p.coordenadas.lng}`;
+    const branchSuffix = branchCoords ? `&lat2=${branchCoords.lat}&lng2=${branchCoords.lng}` : '';
+    const mapUrl = `${BACKEND_URL}/api/proxy/static-map?lat=${p.coordenadas.lat}&lng=${p.coordenadas.lng}${branchSuffix}`;
     try {
       const resp = await fetch(mapUrl);
       const blob = await resp.blob();
@@ -380,9 +382,9 @@ const imprimirPedidoTicket = (p, config, conMapa = false) => {
   win.location.href = URL.createObjectURL(blob);
 };
 
-const imprimirPedido = (p, config, conMapa = false) => {
+const imprimirPedido = async (p, config, conMapa = false, branchCoords = null) => {
   if (config?.receipt_format === 'a4') {
-    imprimirPedidoA4(p, config, conMapa);
+    await imprimirPedidoA4(p, config, conMapa, branchCoords);
   } else {
     imprimirPedidoTicket(p, config, conMapa);
   }
@@ -391,13 +393,15 @@ const imprimirPedido = (p, config, conMapa = false) => {
 // ── Tab Pedidos ───────────────────────────────────────────────────────────────
 
 const TabPedidos = ({ initialExpandId }) => {
+  const { user } = useContext(AuthContext);
+  const isCadete = user?.rol === 'cadete';
   const navigate = useNavigate();
   const [pedidos, setPedidos] = useState([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [filtroEstado, setFiltroEstado] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState(isCadete ? 'listo' : '');
   const [expandido, setExpandido] = useState(null);
   const [updatingId, setUpdatingId] = useState(null);
   const [printConfig, setPrintConfig] = useState(null);
@@ -411,6 +415,8 @@ const TabPedidos = ({ initialExpandId }) => {
   const [waSending, setWaSending] = useState(null);
   const [waUnreadTels, setWaUnreadTels] = useState([]);
   const [imprimirConMapa, setImprimirConMapa] = useState(false);
+  const [branches, setBranches] = useState({});
+  const [printingId, setPrintingId] = useState(null);
 
   const abrirEnPOS = (p) => {
     sessionStorage.setItem('tienda_pedido_en_pos', JSON.stringify(p));
@@ -553,8 +559,17 @@ const TabPedidos = ({ initialExpandId }) => {
         }
       })
       .catch(() => {});
-    axios.get(`${API}/whatsapp/service/status`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(res => setWaConnected(res.data?.status === 'connected'))
+    if (!isCadete) {
+      axios.get(`${API}/whatsapp/service/status`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => setWaConnected(res.data?.status === 'connected'))
+        .catch(() => {});
+    }
+    axios.get(`${API}/branches`)
+      .then(res => {
+        const map = {};
+        (res.data || []).forEach(b => { if (b.lat != null && b.lng != null) map[b.id] = { lat: b.lat, lng: b.lng }; });
+        setBranches(map);
+      })
       .catch(() => {});
   }, []);
 
@@ -610,6 +625,7 @@ const TabPedidos = ({ initialExpandId }) => {
   }, []); // se conecta una sola vez; fetchPedidosRef mantiene la ref actualizada
 
   useEffect(() => {
+    if (isCadete) return;
     const fetchUnread = () => {
       const token = localStorage.getItem('token');
       axios.get(`${API}/whatsapp/unread/count`, { headers: { Authorization: `Bearer ${token}` } })
@@ -623,7 +639,7 @@ const TabPedidos = ({ initialExpandId }) => {
       clearInterval(interval);
       window.removeEventListener('wa-mensaje-nuevo', fetchUnread);
     };
-  }, []);
+  }, [isCadete]);
 
   const handleEstadoChange = async (saleId, nuevoEstado) => {
     setUpdatingId(saleId);
@@ -642,8 +658,8 @@ const TabPedidos = ({ initialExpandId }) => {
       <div style={{ display: 'flex', gap: 10, marginBottom: '1.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
         <select value={filtroEstado} onChange={e => { setFiltroEstado(e.target.value); setPage(1); }}
           style={{ padding: '0.5rem 0.85rem', borderRadius: 8, border: '1.5px solid #e5e7eb', fontSize: '0.85rem', outline: 'none', background: 'white' }}>
-          <option value="">Todos los estados</option>
-          {ESTADOS.map(e => <option key={e.value} value={e.value}>{e.label}</option>)}
+          {!isCadete && <option value="">Todos los estados</option>}
+          {ESTADOS.filter(e => !isCadete || ['listo', 'entregado', 'cancelado'].includes(e.value)).map(e => <option key={e.value} value={e.value}>{e.label}</option>)}
         </select>
         <button onClick={() => fetchPedidos(false)} style={{ background: 'none', border: '1.5px solid #e5e7eb', borderRadius: 8, padding: '0.5rem 0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem', color: '#374151' }}>
           <RefreshCw size={14} /> Actualizar
@@ -691,6 +707,50 @@ const TabPedidos = ({ initialExpandId }) => {
                         const waIcon = (
                           <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
                         );
+
+                        if (isCadete) {
+                          const cadeteTemplates = [
+                            { label: 'Ya llegué 🏠', msg: `¡Hola ${p.tienda_customer_nombre}! Soy el cadete. Ya llegué con tu pedido *#${p.numero_factura}* 🏠` },
+                            { label: 'Estoy demorado ⏰', msg: `¡Hola ${p.tienda_customer_nombre}! Soy el cadete. Voy en camino con tu pedido *#${p.numero_factura}* pero me demoré un poco. ¡Ya llego! 🛵` },
+                            { label: 'Estoy llegando 🛵', msg: `¡Hola ${p.tienda_customer_nombre}! Soy el cadete. Ya estoy llegando con tu pedido *#${p.numero_factura}* 🛵` },
+                          ];
+                          const abrirWa = (msg) => { setWaMenu(null); window.open(`https://wa.me/${tel}${msg ? `?text=${encodeURIComponent(msg)}` : ''}`, '_blank'); };
+                          return (
+                            <div style={{ position: 'relative', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                              <button
+                                onClick={() => setWaMenu(waMenu === p.id ? null : p.id)}
+                                title="Enviar WhatsApp"
+                                style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#25d366' }}
+                              >
+                                {waIcon}
+                              </button>
+                              {waMenu === p.id && (
+                                <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 50, background: 'white', border: '1.5px solid #e5e7eb', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 200, padding: '0.4rem 0', marginTop: 4 }}>
+                                  {cadeteTemplates.map((t, i) => (
+                                    <button key={i} type="button"
+                                      onClick={() => abrirWa(t.msg)}
+                                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.5rem 0.85rem', fontSize: '0.8rem', color: '#111827', background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                                      onMouseEnter={e => e.currentTarget.style.background = '#f0fdf4'}
+                                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                    >
+                                      {t.label}
+                                    </button>
+                                  ))}
+                                  <div style={{ borderTop: '1px solid #f3f4f6', margin: '0.3rem 0' }} />
+                                  <button type="button"
+                                    onClick={() => abrirWa('')}
+                                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.5rem 0.85rem', fontSize: '0.8rem', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer' }}
+                                    onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                  >
+                                    Abrir chat
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+
                         const storeName = printConfig?.company_name || '';
                         const sym = printConfig?.currency_symbol || '$';
                         const tiendaAlias = printConfig?.tienda_alias || '';
@@ -773,12 +833,15 @@ const TabPedidos = ({ initialExpandId }) => {
                 {/* Detalle expandido */}
                 {expandido === p.id && (
                   <div style={{ padding: '0 1rem 1rem', borderTop: '1px solid #f3f4f6' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: p.coordenadas ? '1fr 640px' : '1fr', gap: '1rem', alignItems: 'start' }}>
+                    <div className="pedido-detalle-grid" style={{ gridTemplateColumns: p.coordenadas ? '40% 20% 40%' : '1fr' }}>
 
                       {/* Columna izquierda: items + info + acciones */}
-                      <div style={{ justifySelf: 'start', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                        {/* Items — grid 2 columnas: producto | precio */}
-                        <div style={{ padding: '0.75rem 0 0.25rem', display: 'grid', gridTemplateColumns: 'auto auto', gap: '2px 24px', alignItems: 'start' }}>
+                      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                        {/* Label Pedido */}
+                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.75rem 0 0.25rem' }}>Pedido</div>
+                        {/* Items — grid 2 columnas: producto | precio, con scroll */}
+                        <div style={{ maxHeight: 140, overflowY: 'auto', paddingRight: 4, width: '100%' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '2px 20px', alignItems: 'start', width: '100%' }}>
                           {(p.items || []).map((item, idx) => {
                             const precioOrigUnit = item.descuento > 0 ? item.precio_unitario / (1 - item.descuento / 100) : item.precio_unitario;
                             const ahorro = item.descuento > 0 ? (precioOrigUnit - item.precio_unitario) * item.cantidad : 0;
@@ -801,7 +864,15 @@ const TabPedidos = ({ initialExpandId }) => {
                               </React.Fragment>
                             );
                           })}
+                          </div>
                         </div>
+                        {/* Botón Abrir en POS — debajo de la lista de productos */}
+                        {!isCadete && (
+                        <button onClick={(ev) => { ev.stopPropagation(); abrirEnPOS(p); }}
+                          style={{ marginTop: '0.5rem', marginBottom: '0.25rem', padding: '0.35rem 0.85rem', borderRadius: 8, border: '1.5px solid #10b981', background: '#f0fdf4', color: '#065f46', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, alignSelf: 'flex-start' }}>
+                          <ShoppingCart size={13} /> Abrir en POS
+                        </button>
+                        )}
                         {/* Desglose de totales */}
                         {(() => {
                           const subtotal   = p.subtotal ?? (p.items || []).reduce((s, i) => s + i.precio_unitario * i.cantidad, 0);
@@ -847,43 +918,46 @@ const TabPedidos = ({ initialExpandId }) => {
                         {p.observaciones_tienda && !p.coordenadas && (
                           <p style={{ fontSize: '0.8rem', color: '#6b7280', fontStyle: 'italic', marginBottom: '0.75rem' }}>"{p.observaciones_tienda}"</p>
                         )}
-                        <button onClick={(ev) => { ev.stopPropagation(); abrirEnPOS(p); }}
-                          style={{ marginTop: 'auto', padding: '0.35rem 0.85rem', borderRadius: 8, border: '1.5px solid #10b981', background: '#f0fdf4', color: '#065f46', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, alignSelf: 'flex-start' }}>
-                          <ShoppingCart size={13} /> Abrir en POS
-                        </button>
                       </div>
 
-                      {/* Columna derecha: dirección al lado del mapa */}
+                      {/* Columna centro: dirección */}
                       {p.coordenadas && (
-                        <div style={{ paddingTop: '0.75rem', display: 'flex', flexDirection: 'row', gap: 12, alignItems: 'stretch' }}>
-                          {/* Info de entrega */}
-                          <div style={{ width: 160, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6, justifyContent: 'center' }}>
-                            {p.direccion_entrega && (
-                              <div>
-                                <p style={{ fontSize: '0.7rem', color: '#9ca3af', margin: '0 0 2px', textTransform: 'uppercase', fontWeight: 600 }}>Dirección</p>
-                                <p style={{ fontSize: '0.82rem', color: '#374151', margin: 0, fontWeight: 500 }}>{p.direccion_entrega}</p>
-                                <a href={`https://www.google.com/maps?q=${p.coordenadas.lat},${p.coordenadas.lng}`}
-                                  target="_blank" rel="noopener noreferrer"
-                                  onClick={e => e.stopPropagation()}
-                                  style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 2, marginTop: 4 }}>
-                                  <ExternalLink size={10} /> Abrir en Maps
-                                </a>
-                              </div>
-                            )}
-                            {p.observaciones_tienda && (
-                              <div>
-                                <p style={{ fontSize: '0.7rem', color: '#9ca3af', margin: '0 0 2px', textTransform: 'uppercase', fontWeight: 600 }}>Obs.</p>
-                                <p style={{ fontSize: '0.82rem', color: '#6b7280', fontStyle: 'italic', margin: 0 }}>"{p.observaciones_tienda}"</p>
-                              </div>
-                            )}
-                          </div>
-                          {/* Mapa */}
-                          <iframe
-                            title="ubicacion-pedido"
-                            src={`https://www.openstreetmap.org/export/embed.html?bbox=${p.coordenadas.lng - 0.008},${p.coordenadas.lat - 0.005},${p.coordenadas.lng + 0.008},${p.coordenadas.lat + 0.005}&marker=${p.coordenadas.lat},${p.coordenadas.lng}&layer=mapnik`}
-                            style={{ flex: 1, height: 220, border: 'none', borderRadius: 10, display: 'block', filter: 'grayscale(0.15) saturate(0.55) contrast(0.9) brightness(1.05)' }}
-                            loading="lazy"
+                        <div style={{ paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: 6, justifyContent: 'center' }}>
+                          {p.direccion_entrega && (
+                            <div>
+                              <p style={{ fontSize: '0.7rem', color: '#9ca3af', margin: '0 0 2px', textTransform: 'uppercase', fontWeight: 600 }}>Dirección</p>
+                              <p style={{ fontSize: '0.82rem', color: '#374151', margin: 0, fontWeight: 500 }}>{p.direccion_entrega}</p>
+                              <a
+                                href={branches[p.branch_id]
+                                  ? `https://www.google.com/maps/dir/?api=1&origin=${branches[p.branch_id].lat},${branches[p.branch_id].lng}&destination=${p.coordenadas.lat},${p.coordenadas.lng}&travelmode=driving`
+                                  : `https://www.google.com/maps?q=${p.coordenadas.lat},${p.coordenadas.lng}`}
+                                target="_blank" rel="noopener noreferrer"
+                                onClick={e => e.stopPropagation()}
+                                style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 2, marginTop: 4 }}>
+                                <ExternalLink size={10} /> Abrir en Maps
+                              </a>
+                            </div>
+                          )}
+                          {p.observaciones_tienda && (
+                            <div>
+                              <p style={{ fontSize: '0.7rem', color: '#9ca3af', margin: '0 0 2px', textTransform: 'uppercase', fontWeight: 600 }}>Obs.</p>
+                              <p style={{ fontSize: '0.82rem', color: '#6b7280', fontStyle: 'italic', margin: 0 }}>"{p.observaciones_tienda}"</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Columna derecha: mapa */}
+                      {p.coordenadas && (
+                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
+                        <Suspense fallback={<div style={{ width: '100%', height: 220, borderRadius: 10, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-200 border-t-green-600" /></div>}>
+                          <MapaPedido
+                            clienteLat={p.coordenadas.lat}
+                            clienteLng={p.coordenadas.lng}
+                            sucursalLat={branches[p.branch_id]?.lat}
+                            sucursalLng={branches[p.branch_id]?.lng}
                           />
+                        </Suspense>
                         </div>
                       )}
                     </div>
@@ -891,13 +965,14 @@ const TabPedidos = ({ initialExpandId }) => {
                     {/* Botones — fondo de la card, ancho completo */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', borderTop: '1px solid #f3f4f6', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
                       <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>Cambiar estado:</span>
-                      {ESTADOS.map(e => (
+                      {ESTADOS.filter(e => !isCadete || ['listo', 'entregado', 'cancelado'].includes(e.value)).map(e => (
                         <button key={e.value} onClick={() => handleEstadoChange(p.id, e.value)}
                           disabled={updatingId === p.id || p.estado_pedido === e.value}
                           style={{ padding: '0.3rem 0.65rem', borderRadius: 8, border: `1.5px solid ${(p.estado_pedido || 'pendiente') === e.value ? e.color : '#e5e7eb'}`, background: (p.estado_pedido || 'pendiente') === e.value ? e.bg : 'white', color: (p.estado_pedido || 'pendiente') === e.value ? e.color : '#6b7280', fontSize: '0.75rem', fontWeight: 600, cursor: (p.estado_pedido || 'pendiente') === e.value ? 'default' : 'pointer', opacity: updatingId === p.id ? 0.5 : 1 }}>
                           {e.label}
                         </button>
                       ))}
+                      {!isCadete && (
                       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
                         {p.coordenadas && (
                           <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -908,11 +983,16 @@ const TabPedidos = ({ initialExpandId }) => {
                             <span style={{ fontSize: '0.75rem', color: '#6b7280', userSelect: 'none' }}>Con mapa</span>
                           </div>
                         )}
-                        <button onClick={(ev) => { ev.stopPropagation(); imprimirPedido(p, printConfig, imprimirConMapa); }}
-                          style={{ padding: '0.3rem 0.75rem', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'white', color: '#374151', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
-                          <Printer size={13} /> Imprimir
+                        <button
+                          disabled={printingId === p.id}
+                          onClick={async (ev) => { ev.stopPropagation(); setPrintingId(p.id); try { await imprimirPedido(p, printConfig, imprimirConMapa, branches[p.branch_id] || null); } finally { setPrintingId(null); } }}
+                          style={{ padding: '0.3rem 0.75rem', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'white', color: '#374151', fontSize: '0.75rem', fontWeight: 600, cursor: printingId === p.id ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 5, opacity: printingId === p.id ? 0.6 : 1 }}>
+                          {printingId === p.id
+                            ? <><span style={{ width: 13, height: 13, border: '2px solid #d1d5db', borderTopColor: '#6b7280', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} /> Generando...</>
+                            : <><Printer size={13} /> Imprimir</>}
                         </button>
                       </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1613,20 +1693,26 @@ const TabMiTienda = ({ user }) => {
 
 // ── Componente principal ──────────────────────────────────────────────────────
 
-const TABS = [
+const TABS_ADMIN  = [
   { id: 'pedidos',       label: 'Pedidos',        icon: ShoppingBag },
   { id: 'configuracion', label: 'Configuración',   icon: Settings },
   { id: 'mi-tienda',     label: 'Mi Tienda',       icon: Link },
 ];
+const TABS_CADETE = [
+  { id: 'pedidos', label: 'Pedidos', icon: ShoppingBag },
+];
 
 const TiendaAdmin = () => {
   const { user } = useContext(AuthContext);
+  const isCadete = user?.rol === 'cadete';
+  const TABS = isCadete ? TABS_CADETE : TABS_ADMIN;
   const location = useLocation();
   const [tabActiva, setTabActiva] = useState('pedidos');
   const [msgCount, setMsgCount] = useState(0);
   const expandPedidoId = location.state?.expandPedidoId || null;
 
   useEffect(() => {
+    if (isCadete) return;
     const fetchMsgCount = () => {
       axios.get(`${API}/whatsapp/unread/count`)
         .then(res => setMsgCount(res.data?.count || 0))
@@ -1639,7 +1725,7 @@ const TiendaAdmin = () => {
       clearInterval(interval);
       window.removeEventListener('wa-mensaje-nuevo', fetchMsgCount);
     };
-  }, []);
+  }, [isCadete]);
 
   return (
     <div>

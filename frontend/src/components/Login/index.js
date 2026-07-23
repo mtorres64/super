@@ -34,7 +34,7 @@ const Login = () => {
   const { user, login }                 = useContext(AuthContext);
   const otpRefs                         = [useRef(), useRef(), useRef(), useRef()];
 
-  if (user) return <Navigate to="/dashboard" />;
+  if (user) return <Navigate to={user.rol === 'cadete' ? '/tienda-admin' : '/dashboard'} />;
 
   const otpCode = otpDigits.join('');
 

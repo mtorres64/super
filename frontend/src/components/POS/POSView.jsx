@@ -725,27 +725,13 @@ const POSView = ({
                   <X style={{ width: '0.9rem', height: '0.9rem' }} />
                 </button>
               </div>
-              {/* Info cliente + entrega */}
-              <div style={{ background: '#f0fdf4', padding: '0.45rem 0.75rem', borderBottom: '1px solid #bbf7d0', display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-                <div>
-                  <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.04em' }}>Cliente</span>
-                  <p style={{ fontSize: '0.78rem', fontWeight: 600, color: '#111827', margin: 0 }}>
-                    {tiendaPedido.tienda_customer_nombre}
-                    {tiendaPedido.tienda_customer_telefono && <span style={{ fontWeight: 400, color: '#6b7280' }}> · {tiendaPedido.tienda_customer_telefono}</span>}
-                  </p>
-                </div>
-                <div>
-                  <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.04em' }}>Entrega</span>
-                  <p style={{ fontSize: '0.78rem', fontWeight: 600, color: '#111827', margin: 0 }}>
-                    {tiendaPedido.tipo_entrega === 'domicilio' ? (tiendaPedido.direccion_entrega || 'Domicilio') : 'Retiro en local'}
-                  </p>
-                </div>
-                {tiendaPedido.observaciones_tienda && (
-                  <div style={{ width: '100%' }}>
-                    <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.04em' }}>Obs.</span>
-                    <p style={{ fontSize: '0.78rem', color: '#374151', fontStyle: 'italic', margin: 0 }}>"{tiendaPedido.observaciones_tienda}"</p>
-                  </div>
-                )}
+              {/* Info cliente */}
+              <div style={{ background: '#f0fdf4', padding: '0.45rem 0.75rem', borderBottom: '1px solid #bbf7d0' }}>
+                <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.04em' }}>Cliente</span>
+                <p style={{ fontSize: '0.78rem', fontWeight: 600, color: '#111827', margin: 0 }}>
+                  {tiendaPedido.tienda_customer_nombre}
+                  {tiendaPedido.tienda_customer_telefono && <span style={{ fontWeight: 400, color: '#6b7280' }}> · {tiendaPedido.tienda_customer_telefono}</span>}
+                </p>
               </div>
               {/* Items originales */}
               <div style={{ background: '#fff', padding: '0.35rem 0.75rem 0.45rem' }}>

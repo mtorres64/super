@@ -76,7 +76,7 @@ const menuItems = [
     path: '/tienda-admin',
     label: 'Tienda',
     icon: Store,
-    roles: ['admin'],
+    roles: ['admin', 'cadete'],
     modulo: 'tienda',
   },
 ];
@@ -140,7 +140,7 @@ const Sidebar = ({ isOpen, onClose, stockAlertCount = 0, notifCount = 0, tiendaP
       onClose={onClose}
       onLogout={handleLogout}
       activeBranch={activeBranch}
-      canSwitchBranch={tieneMultiSucursal && userBranches.length > 1}
+      canSwitchBranch={(tieneMultiSucursal || user?.rol === 'cadete') && userBranches.length > 1}
       onSwitchBranch={openBranchSelector}
       isImpersonating={isImpersonating}
       impersonationEmpresa={impersonationEmpresa}

@@ -2821,3 +2821,22 @@ html.dark .ticket-separator    { color: #5c5c5c; }
 /* Visibility utilities */
 .mobile-only { display: none; }
 @media (max-width: 768px) { .mobile-only { display: flex; } }
+
+/* Leaflet — contener z-indexes internos para que no queden sobre el sidebar */
+.leaflet-container {
+  isolation: isolate;
+}
+
+/* Pedido detalle — 3 columnas en desktop, vertical en mobile */
+.pedido-detalle-grid {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+  min-width: 0;
+  overflow: hidden;
+}
+@media (max-width: 640px) {
+  .pedido-detalle-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
-import { API } from '../../App';
+import { API, AuthContext } from '../../App';
 import { toast } from 'sonner';
 import useModalClose from '../../useModalClose';
 import { useSortableData } from '../../hooks/useSortableData';
 import UserManagementView from './UserManagementView';
 
 const UserManagement = () => {
+  const { modulosActivos } = useContext(AuthContext);
   const [users, setUsers] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -116,13 +117,14 @@ const UserManagement = () => {
     const styles = {
       admin: 'bg-purple-100 text-purple-800',
       supervisor: 'bg-blue-100 text-blue-800',
-      cajero: 'bg-green-100 text-green-800'
+      cajero: 'bg-green-100 text-green-800',
+      cadete: 'bg-orange-100 text-orange-800',
     };
     return styles[rol] || 'bg-gray-100 text-gray-800';
   };
 
   const getRoleLabel = (rol) => {
-    const labels = { admin: 'Admin', supervisor: 'Supervisor', cajero: 'Cajero' };
+    const labels = { admin: 'Admin', supervisor: 'Supervisor', cajero: 'Cajero', cadete: 'Cadete' };
     return labels[rol] || rol;
   };
 
@@ -156,6 +158,7 @@ const UserManagement = () => {
       getRoleBadge={getRoleBadge}
       getRoleLabel={getRoleLabel}
       getBranchNames={getBranchNames}
+      modulosActivos={modulosActivos}
     />
   );
 };

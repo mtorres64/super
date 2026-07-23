@@ -235,6 +235,7 @@ export const AuthProvider = ({ children }) => {
           const branchIds = res.data.branch_ids || [];
           const activeBranchId = res.data.active_branch_id;
           const isAdmin = res.data.rol === 'admin';
+          const isCadete = res.data.rol === 'cadete';
           const isFreshLogin = freshLoginRef.current;
           freshLoginRef.current = false;
           try {
@@ -252,8 +253,8 @@ export const AuthProvider = ({ children }) => {
             const available = isAdmin ? allBranches : allBranches.filter(b => branchIds.includes(b.id));
             setUserBranches(available);
 
-            if (tieneMultiSucursal && available.length > 1 && (isFreshLogin || !activeBranchId)) {
-              // Solo pedir selección si el módulo multi_sucursal está activo
+            if ((tieneMultiSucursal || isCadete) && available.length > 1 && (isFreshLogin || !activeBranchId)) {
+              // Pedir selección si multi_sucursal está activo, o siempre para cadetes con múltiples sucursales
               setShowBranchModal(true);
             } else if (activeBranchId) {
               const branch = available.find(b => b.id === activeBranchId);
@@ -306,6 +307,7 @@ export const AuthProvider = ({ children }) => {
       const branch = userBranches.find(b => b.id === branchId);
       setActiveBranch(branch || null);
       setShowBranchModal(false);
+      window.dispatchEvent(new Event('branch-selected'));
     } catch (_) {}
   };
 
@@ -357,6 +359,12 @@ export const AuthProvider = ({ children }) => {
 // Layout component
 const Layout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    const closeSidebar = () => setSidebarOpen(false);
+    window.addEventListener('branch-selected', closeSidebar);
+    return () => window.removeEventListener('branch-selected', closeSidebar);
+  }, []);
   const { user, suscripcion, modulosActivos, isImpersonating, impersonationEmpresa, stopImpersonation } = React.useContext(AuthContext);
   const { bulkImageProgress, setBulkImageProgress, importJob, setImportJob } = React.useContext(BulkJobContext);
   const navigateTo = useNavigate();
@@ -817,7 +825,7 @@ function App() {
             <Route
               path="/tienda-admin"
               element={
-                <ProtectedRoute allowedRoles={['admin']} modulo="tienda">
+                <ProtectedRoute allowedRoles={['admin', 'cadete']} modulo="tienda">
                   <TiendaAdmin />
                 </ProtectedRoute>
               }

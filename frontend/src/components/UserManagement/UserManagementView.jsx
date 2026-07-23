@@ -30,6 +30,7 @@ const UserManagementView = ({
   sortConfig,
   requestSort,
   limiteAlcanzado = false,
+  modulosActivos = [],
 }) => {
   if (loading) {
     return (
@@ -204,6 +205,9 @@ const UserManagementView = ({
                     <option value="cajero">Cajero</option>
                     <option value="supervisor">Supervisor</option>
                     <option value="admin">Admin</option>
+                    {modulosActivos.includes('tienda') && (
+                      <option value="cadete">Cadete</option>
+                    )}
                   </select>
                 </div>
 

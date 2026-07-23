@@ -267,6 +267,7 @@ class UserRole(str, Enum):
     ADMIN = "admin"
     CAJERO = "cajero"
     SUPERVISOR = "supervisor"
+    CADETE = "cadete"
 
 class PaymentMethod(str, Enum):
     EFECTIVO = "efectivo"
@@ -2807,12 +2808,36 @@ async def wa_get_messages(telefono: str, user: User = Depends(get_current_user))
 
 @api_router.get("/whatsapp/unread/count")
 async def wa_unread_count(user: User = Depends(get_current_user)):
-    pipeline = [
+    unread_result = await db.wa_messages.aggregate([
         {"$match": {"empresa_id": user.empresa_id, "direccion": "entrante", "leido": {"$ne": True}}},
         {"$group": {"_id": "$telefono"}},
-    ]
-    result = await db.wa_messages.aggregate(pipeline).to_list(None)
-    telefonos = [r["_id"] for r in result]
+    ]).to_list(None)
+    unread_phones = {r["_id"] for r in unread_result}
+
+    if not unread_phones:
+        return {"count": 0, "telefonos": []}
+
+    if user.branch_id:
+        # Filtrar solo teléfonos con pedidos activos en esta sucursal
+        branch_pedidos = await db.sales.find(
+            {
+                "empresa_id": user.empresa_id,
+                "branch_id": user.branch_id,
+                "origen": "tienda",
+                "estado_pedido": {"$nin": ["entregado", "cancelado", "rechazado"]},
+            },
+            {"tienda_customer_telefono": 1},
+        ).to_list(None)
+        seen = set()
+        telefonos = []
+        for p in branch_pedidos:
+            normalized = re.sub(r'\D', '', p.get("tienda_customer_telefono", ""))
+            if normalized in unread_phones and normalized not in seen:
+                seen.add(normalized)
+                telefonos.append(normalized)
+    else:
+        telefonos = list(unread_phones)
+
     return {"count": len(telefonos), "telefonos": telefonos}
 
 @api_router.post("/whatsapp/incoming")
@@ -5598,7 +5623,7 @@ async def get_cuenta_status(user: User = Depends(require_role([UserRole.ADMIN]))
 
 
 @api_router.get("/auth/suscripcion")
-async def get_suscripcion_check(user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.CAJERO]))):
+async def get_suscripcion_check(user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.CAJERO, UserRole.CADETE]))):
     """Estado de suscripción para control de acceso. Accesible a todos los roles autenticados."""
     doc = await _get_or_create_suscripcion(user.empresa_id)
     estado = _calcular_estado_suscripcion(doc, grace_days=await get_grace_days())
@@ -7945,12 +7970,18 @@ async def admin_get_pedidos(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     estado: Optional[str] = Query(None),
-    user: User = Depends(require_role([UserRole.ADMIN])),
+    user: User = Depends(require_role([UserRole.ADMIN, UserRole.CADETE])),
 ):
+    ESTADOS_CADETE = ["listo", "entregado", "cancelado"]
     query: dict = {"empresa_id": user.empresa_id, "origen": "tienda"}
     if user.branch_id:
         query["branch_id"] = user.branch_id
-    if estado:
+    if user.rol == UserRole.CADETE:
+        if estado and estado in ESTADOS_CADETE:
+            query["estado_pedido"] = estado
+        else:
+            query["estado_pedido"] = {"$in": ESTADOS_CADETE}
+    elif estado:
         query["estado_pedido"] = estado
     skip = (page - 1) * per_page
     total, pedidos = await asyncio.gather(
@@ -7969,16 +8000,22 @@ async def admin_pedidos_pendientes_count(user: User = Depends(require_role([User
 
 @api_router.get("/pedidos/mensajes/count")
 async def admin_pedidos_mensajes_count(user: User = Depends(require_role([UserRole.ADMIN]))):
-    count = await db.sales.count_documents({
+    q = {
         "empresa_id": user.empresa_id,
         "origen": "tienda",
         "estado_pedido": {"$nin": ["entregado", "cancelado", "rechazado"]},
         "observaciones_tienda": {"$regex": r"\S"},
-    })
+    }
+    if user.branch_id:
+        q["branch_id"] = user.branch_id
+    count = await db.sales.count_documents(q)
     return {"con_mensaje": count}
 
 @api_router.get("/proxy/static-map")
-async def proxy_static_map(lat: float, lng: float, zoom: int = 16):
+async def proxy_static_map(
+    lat: float, lng: float, zoom: int = 16,
+    lat2: Optional[float] = None, lng2: Optional[float] = None,
+):
     import math, io
     from PIL import Image, ImageDraw
     from fastapi.responses import Response as _Resp
@@ -7990,18 +8027,35 @@ async def proxy_static_map(lat: float, lng: float, zoom: int = 16):
         yt = (1 - math.log(math.tan(lat_r) + 1 / math.cos(lat_r)) / math.pi) / 2 * n
         return xt, yt
 
-    xt, yt = deg2tile(lat, lng, zoom)
-    cx, cy = int(xt), int(yt)
-    # offset del marcador dentro de la grilla 3×2
-    ox = int((xt - cx) * 256)
-    oy = int((yt - cy) * 256)
-
+    W, H = 560, 320
     cols, rows = 3, 3
+
+    PIN_R = 16  # radio del marcador en px — define el padding mínimo para que el pin no quede cortado
+    if lat2 is not None and lng2 is not None:
+        center_lat = (lat + lat2) / 2
+        center_lng = (lng + lng2) / 2
+        # zoom más alto donde ambos pines caben dentro del crop con el pin visible en el borde
+        zoom = 10  # fallback
+        for z in range(15, 9, -1):
+            xt1, yt1 = deg2tile(lat, lng, z)
+            xt2, yt2 = deg2tile(lat2, lng2, z)
+            dx_px = abs(xt1 - xt2) * 256
+            dy_px = abs(yt1 - yt2) * 256
+            if dx_px <= W - 2 * PIN_R and dy_px <= H - 2 * PIN_R:
+                zoom = z
+                break
+    else:
+        center_lat, center_lng = lat, lng
+
+    xtc, ytc = deg2tile(center_lat, center_lng, zoom)
+    cx, cy = int(xtc), int(ytc)
     sx, sy = cx - cols // 2, cy - rows // 2
     canvas = Image.new("RGB", (256 * cols, 256 * rows), (240, 240, 240))
 
     headers = {"User-Agent": "SuperApp/1.0 (internal)"}
+    route_coords = []
     async with httpx.AsyncClient() as client:
+        # tiles
         for dy in range(rows):
             for dx in range(cols):
                 tx, ty = sx + dx, sy + dy
@@ -8014,19 +8068,69 @@ async def proxy_static_map(lat: float, lng: float, zoom: int = 16):
                         canvas.paste(Image.open(io.BytesIO(r.content)), (dx * 256, dy * 256))
                 except Exception:
                     pass
+        # ruta OSRM (sucursal → cliente)
+        if lat2 is not None and lng2 is not None:
+            try:
+                osrm_url = (
+                    f"https://router.project-osrm.org/route/v1/driving/"
+                    f"{lng2},{lat2};{lng},{lat}"
+                    f"?overview=full&geometries=geojson"
+                )
+                rr = await client.get(osrm_url, timeout=8)
+                if rr.status_code == 200:
+                    coords = rr.json()["routes"][0]["geometry"]["coordinates"]
+                    route_coords = coords  # [[lng, lat], ...]
+            except Exception:
+                pass
 
-    # marcador rojo
-    draw = ImageDraw.Draw(canvas)
-    mx = (cols // 2) * 256 + ox
-    my = (rows // 2) * 256 + oy
-    for r2, fill, outline in [(10, "red", "white"), (4, "white", None)]:
-        draw.ellipse([mx - r2, my - r2, mx + r2, my + r2], fill=fill, outline=outline, width=2)
+    def latlng_to_px(lat_d, lng_d):
+        xt_, yt_ = deg2tile(lat_d, lng_d, zoom)
+        return int((xt_ - sx) * 256), int((yt_ - sy) * 256)
 
-    # recortar a 560×320 centrado en el marcador, convertir a escala de grises
-    W, H = 560, 320
-    x0 = max(0, min(mx - W // 2, canvas.width - W))
-    y0 = max(0, min(my - H // 2, canvas.height - H))
+    mx, my = latlng_to_px(lat, lng)
+
+    # centrar crop entre ambos markers
+    if lat2 is not None and lng2 is not None:
+        mx2, my2 = latlng_to_px(lat2, lng2)
+        # usar bounding box real de los dos pines para centrar
+        min_x = min(mx, mx2)
+        max_x = max(mx, mx2)
+        min_y = min(my, my2)
+        max_y = max(my, my2)
+        cx_crop = (min_x + max_x) // 2
+        cy_crop = (min_y + max_y) // 2
+    else:
+        mx2, my2 = None, None
+        cx_crop, cy_crop = mx, my
+
+    x0 = max(0, min(cx_crop - W // 2, canvas.width - W))
+    y0 = max(0, min(cy_crop - H // 2, canvas.height - H))
+
+    # convertir a escala de grises y recortar
     result = canvas.crop((x0, y0, x0 + W, y0 + H)).convert('L').convert('RGB')
+    draw = ImageDraw.Draw(result)
+
+    # dibujar ruta: halo blanco grueso + línea negra encima
+    if route_coords:
+        pts = [latlng_to_px(c[1], c[0]) for c in route_coords]
+        screen_pts = [(px - x0, py - y0) for px, py in pts]
+        for i in range(len(screen_pts) - 1):
+            draw.line([screen_pts[i], screen_pts[i + 1]], fill="white", width=6)
+        for i in range(len(screen_pts) - 1):
+            draw.line([screen_pts[i], screen_pts[i + 1]], fill="black", width=3)
+
+    def draw_marker(px, py, hollow=False):
+        rx, ry = px - x0, py - y0
+        draw.ellipse([rx - 14, ry - 14, rx + 14, ry + 14], fill="white")   # halo blanco
+        draw.ellipse([rx - 11, ry - 11, rx + 11, ry + 11], fill="black")   # disco negro
+        if hollow:
+            draw.ellipse([rx - 6,  ry - 6,  rx + 6,  ry + 6],  fill="white")  # sucursal: anillo
+        else:
+            draw.ellipse([rx - 4,  ry - 4,  rx + 4,  ry + 4],  fill="white")  # cliente: punto
+
+    draw_marker(mx, my, hollow=False)          # cliente
+    if mx2 is not None:
+        draw_marker(mx2, my2, hollow=True)     # sucursal
 
     buf = io.BytesIO()
     result.save(buf, format="PNG")
@@ -8041,7 +8145,7 @@ async def tienda_pedidos_sse(token: str = Query(...)):
         empresa_id = payload.get("empresa_id")
         if not user_id or not empresa_id:
             raise HTTPException(status_code=401)
-        user_doc = await db.users.find_one({"id": user_id, "empresa_id": empresa_id, "rol": "admin"})
+        user_doc = await db.users.find_one({"id": user_id, "empresa_id": empresa_id, "rol": {"$in": ["admin", "cadete"]}})
         if not user_doc:
             raise HTTPException(status_code=403)
     except jwt.PyJWTError:
@@ -8069,10 +8173,13 @@ async def tienda_pedidos_sse(token: str = Query(...)):
     )
 
 @api_router.patch("/pedidos/{sale_id}/estado")
-async def admin_update_estado_pedido(sale_id: str, data: TiendaUpdateEstado, user: User = Depends(require_role([UserRole.ADMIN]))):
+async def admin_update_estado_pedido(sale_id: str, data: TiendaUpdateEstado, user: User = Depends(require_role([UserRole.ADMIN, UserRole.CADETE]))):
     ESTADOS_VALIDOS = ["pendiente", "aceptado", "en_preparacion", "listo", "entregado", "cancelado"]
+    ESTADOS_CADETE  = ["listo", "entregado", "cancelado"]
     if data.estado_pedido not in ESTADOS_VALIDOS:
         raise HTTPException(status_code=400, detail="Estado inválido")
+    if user.rol == UserRole.CADETE and data.estado_pedido not in ESTADOS_CADETE:
+        raise HTTPException(status_code=403, detail="No permitido para este rol")
 
     pedido = await db.sales.find_one({"id": sale_id, "empresa_id": user.empresa_id, "origen": "tienda"})
     if not pedido:
