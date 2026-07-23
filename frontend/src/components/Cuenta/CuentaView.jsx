@@ -211,7 +211,29 @@ const PlanSelector = ({ planes, suscripcion, suscripcionAddons, creandoPago, wha
 
             <div className="p-5 flex flex-col gap-4">
 
-              {/* Add-on: Tienda Online — deshabilitado temporalmente */}
+              {/* Add-on: Tienda Online */}
+              <div className="border border-gray-200 rounded-xl p-4">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Add-ons</p>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">Tienda Online</p>
+                    <p className="text-xs text-gray-500">Vendé desde tu tienda digital</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {addonPrecios.tienda > 0 && (
+                      <span className="text-xs font-medium w-28 text-right" style={{ color: addonTienda ? 'var(--primary)' : '#9ca3af' }}>
+                        {addonTienda ? `+${formatCurrency(addonPrecios.tienda)}/mes` : `${formatCurrency(addonPrecios.tienda)}/mes`}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => setAddonTienda(v => !v)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${addonTienda ? 'bg-green-500' : 'bg-gray-200'}`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${addonTienda ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                  </div>
+                </div>
+              </div>
 
               {/* Add-ons Empresarial: sucursales y usuarios extra */}
               {isEmpresarial && (

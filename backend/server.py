@@ -469,11 +469,11 @@ PLAN_MODULES: dict[str, list[str]] = {
     ],
     "profesional": [
         "pos", "caja", "inventario", "clientes", "facturacion", "reportes", "compras",
-        "alertas_stock", "usuarios", "configuracion", "notificaciones", "tienda",
+        "alertas_stock", "usuarios", "configuracion", "notificaciones",
     ],
     "empresarial": [
         "pos", "caja", "inventario", "clientes", "facturacion", "reportes", "compras",
-        "alertas_stock", "usuarios", "multi_sucursal", "configuracion", "notificaciones", "tienda",
+        "alertas_stock", "usuarios", "multi_sucursal", "configuracion", "notificaciones",
     ],
 }
 

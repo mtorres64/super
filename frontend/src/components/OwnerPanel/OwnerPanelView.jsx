@@ -542,6 +542,7 @@ const ALL_MODULES = [
   { id: 'multi_sucursal',label: 'Multi-sucursal' },
   { id: 'configuracion', label: 'Configuración' },
   { id: 'notificaciones',label: 'Notificaciones' },
+  { id: 'tienda',        label: 'Tienda Online' },
 ];
 
 const PLAN_MODULES_DEF = {
