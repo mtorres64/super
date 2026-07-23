@@ -938,15 +938,29 @@ const POS = () => {
         return;
       }
 
-      const cartItems = sale.items.map(item => ({
-        id: item.producto_id,
-        product_id: item.producto_id,
-        nombre: item.nombre || item.producto_id,
-        precio: item.precio_unitario,
-        precio_unitario: item.precio_unitario,
-        quantity: item.cantidad,
-        control_stock: false,
-      }));
+      const prodEndpoint = (activeBranch?.id || user?.branch_id)
+        ? `${API}/branch-products`
+        : `${API}/products`;
+      const prodResponse = await axios.get(prodEndpoint, { params: { per_page: 10000 } });
+      const productMap = {};
+      for (const p of (prodResponse.data.items || [])) {
+        productMap[p.product_id || p.id] = p;
+      }
+
+      const cartItems = sale.items.map(item => {
+        const prod = productMap[item.producto_id];
+        return {
+          id: item.producto_id,
+          product_id: item.producto_id,
+          nombre: item.nombre || item.producto_id,
+          precio: item.precio_unitario,
+          precio_unitario: item.precio_unitario,
+          ...(prod?.tipo === 'por_peso' && { precio_por_peso: item.precio_unitario }),
+          tipo: prod?.tipo,
+          quantity: item.cantidad,
+          control_stock: false,
+        };
+      });
 
       const targetTabHasItems = activeTab.cart.length > 0;
 
