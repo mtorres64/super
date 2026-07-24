@@ -578,6 +578,12 @@ class Branch(BaseModel):
     activo: bool = True
     lat: Optional[float] = None
     lng: Optional[float] = None
+    envio_activo: bool = True
+    tienda_activa: bool = True
+    radio_envio_km: Optional[float] = None
+    radio_modo: str = "restrictivo"
+    radio_costo_extra_por_tramo: Optional[float] = None
+    radio_tramo_km: float = 0.5
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class BranchCreate(BaseModel):
@@ -593,6 +599,12 @@ class BranchUpdate(BaseModel):
     activo: Optional[bool] = None
     lat: Optional[float] = None
     lng: Optional[float] = None
+    envio_activo: Optional[bool] = None
+    tienda_activa: Optional[bool] = None
+    radio_envio_km: Optional[float] = None
+    radio_modo: Optional[str] = None
+    radio_costo_extra_por_tramo: Optional[float] = None
+    radio_tramo_km: Optional[float] = None
 
 class CashSession(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -7632,8 +7644,8 @@ async def tienda_config(empresa_id: str):
 @tienda_router.get("/api/tienda/{empresa_id}/sucursales")
 async def tienda_sucursales(empresa_id: str):
     await _get_empresa_tienda(empresa_id)
-    branches = await db.branches.find({"empresa_id": empresa_id, "activo": True}, {"id": 1, "nombre": 1, "direccion": 1}).to_list(100)
-    return [{"id": b["id"], "nombre": b["nombre"], "direccion": b.get("direccion", "")} for b in branches]
+    branches = await db.branches.find({"empresa_id": empresa_id, "activo": True}, {"id": 1, "nombre": 1, "direccion": 1, "telefono": 1, "lat": 1, "lng": 1, "envio_activo": 1, "tienda_activa": 1, "radio_envio_km": 1, "radio_modo": 1, "radio_costo_extra_por_tramo": 1, "radio_tramo_km": 1}).to_list(100)
+    return [{"id": b["id"], "nombre": b["nombre"], "direccion": b.get("direccion", ""), "telefono": b.get("telefono", ""), "lat": b.get("lat"), "lng": b.get("lng"), "envio_activo": b.get("envio_activo", True), "tienda_activa": b.get("tienda_activa", True), "radio_envio_km": b.get("radio_envio_km"), "radio_modo": b.get("radio_modo", "restrictivo"), "radio_costo_extra_por_tramo": b.get("radio_costo_extra_por_tramo"), "radio_tramo_km": b.get("radio_tramo_km", 0.5)} for b in branches]
 
 @tienda_router.get("/api/tienda/{empresa_id}/categorias")
 async def tienda_categorias(empresa_id: str, sucursal_id: Optional[str] = Query(None)):
@@ -7664,8 +7676,11 @@ async def tienda_productos(
     search: Optional[str] = Query(None),
     category_id: Optional[str] = Query(None),
     sucursal_id: Optional[str] = Query(None),
+    sort: Optional[str] = Query("nombre_asc"),
 ):
     await _get_empresa_tienda(empresa_id)
+    config = await db.configuration.find_one({"empresa_id": empresa_id})
+    auto_update_inventory = config.get("auto_update_inventory", True) if config else True
     query: dict = {"empresa_id": empresa_id, "activo": True}
     if search:
         query["nombre"] = {"$regex": search, "$options": "i"}
@@ -7673,15 +7688,27 @@ async def tienda_productos(
         query["categoria_id"] = category_id
     # Si hay sucursal, filtrar solo productos que existan en esa sucursal como activos
     if sucursal_id:
-        bp_ids = await db.branch_products.find(
+        bp_records = await db.branch_products.find(
             {"branch_id": sucursal_id, "empresa_id": empresa_id, "activo": True, "mostrar_en_tienda": {"$ne": False}},
-            {"product_id": 1}
+            {"product_id": 1, "stock": 1}
         ).to_list(None)
-        allowed_ids = [b["product_id"] for b in bp_ids]
+        allowed_ids = [b["product_id"] for b in bp_records]
+        if auto_update_inventory:
+            depleted_ids = [b["product_id"] for b in bp_records if (b.get("stock") or 0) <= 0]
+            if depleted_ids:
+                controlled = await db.products.find(
+                    {"id": {"$in": depleted_ids}, "empresa_id": empresa_id, "control_stock": True},
+                    {"id": 1}
+                ).to_list(None)
+                exclude_set = {p["id"] for p in controlled}
+                if exclude_set:
+                    allowed_ids = [pid for pid in allowed_ids if pid not in exclude_set]
         query["id"] = {"$in": allowed_ids}
+    sort_map = {"precio_asc": ("precio", 1), "precio_desc": ("precio", -1), "nombre_asc": ("nombre", 1)}
+    sort_field, sort_dir = sort_map.get(sort, ("nombre", 1))
     total = await db.products.count_documents(query)
     skip = (page - 1) * per_page
-    prods = await db.products.find(query).sort("nombre", 1).skip(skip).limit(per_page).to_list(per_page)
+    prods = await db.products.find(query).sort(sort_field, sort_dir).skip(skip).limit(per_page).to_list(per_page)
     items = []
     for p in prods:
         bp = await _get_branch_product(p["id"], sucursal_id, empresa_id)
@@ -7697,6 +7724,8 @@ async def tienda_productos(
 @tienda_router.get("/api/tienda/{empresa_id}/mas-vendidos")
 async def tienda_mas_vendidos(empresa_id: str, sucursal_id: Optional[str] = Query(None)):
     await _get_empresa_tienda(empresa_id)
+    config = await db.configuration.find_one({"empresa_id": empresa_id})
+    auto_update_inventory = config.get("auto_update_inventory", True) if config else True
     hace_30d = datetime.now(timezone.utc) - timedelta(days=30)
     match = {"empresa_id": empresa_id, "fecha": {"$gte": hace_30d}, "estado": {"$ne": "anulado"}}
     if sucursal_id:
@@ -7719,6 +7748,10 @@ async def tienda_mas_vendidos(empresa_id: str, sucursal_id: Optional[str] = Quer
             if not bp:
                 continue
             if bp.get("mostrar_en_tienda") is False:
+                continue
+        if auto_update_inventory and p.get("control_stock", False):
+            stock_val = bp.get("stock", 0) if bp else p.get("stock", 0)
+            if (stock_val or 0) <= 0:
                 continue
         item = _fmt_producto(p, bp)
         item["total_vendido"] = entry["total_vendido"]
@@ -7849,7 +7882,7 @@ async def tienda_reset_password(empresa_id: str, data: TiendaResetPassword):
 async def tienda_me(empresa_id: str, customer: dict = Depends(get_tienda_customer_token)):
     if customer["empresa_id"] != empresa_id:
         raise HTTPException(status_code=403, detail="Acceso denegado")
-    return {"id": customer["id"], "nombre": customer["nombre"], "email": customer["email"], "telefono": customer.get("telefono", ""), "sucursal_id": customer.get("sucursal_id"), "direcciones_por_sucursal": customer.get("direcciones_por_sucursal", {}), "observaciones_por_sucursal": customer.get("observaciones_por_sucursal", {})}
+    return {"id": customer["id"], "nombre": customer["nombre"], "email": customer["email"], "telefono": customer.get("telefono", ""), "sucursal_id": customer.get("sucursal_id"), "direcciones_por_sucursal": customer.get("direcciones_por_sucursal", {}), "observaciones_por_sucursal": customer.get("observaciones_por_sucursal", {}), "coordenadas_por_sucursal": customer.get("coordenadas_por_sucursal", {})}
 
 @tienda_router.patch("/api/tienda/{empresa_id}/auth/sucursal")
 async def tienda_cambiar_sucursal(empresa_id: str, data: TiendaCambiarSucursal, customer: dict = Depends(get_tienda_customer_token)):
@@ -7902,7 +7935,31 @@ async def tienda_crear_pedido(empresa_id: str, data: TiendaCreatePedido, custome
     subtotal = round(subtotal, 2)
     if monto_minimo > 0 and subtotal < monto_minimo:
         raise HTTPException(status_code=400, detail=f"El monto mínimo de pedido es ${monto_minimo:.0f}")
+    costo_extra_radio = 0.0
+    if data.tipo_entrega == "domicilio" and data.coordenadas_lat and data.coordenadas_lng:
+        temp_branch_id = customer.get("sucursal_id")
+        if temp_branch_id:
+            branch_doc = await db.branches.find_one({"id": temp_branch_id, "empresa_id": empresa_id})
+            if branch_doc:
+                radio_km = branch_doc.get("radio_envio_km")
+                if radio_km and radio_km > 0 and branch_doc.get("lat") and branch_doc.get("lng"):
+                    import math
+                    dlat = math.radians(data.coordenadas_lat - branch_doc["lat"])
+                    dlng = math.radians(data.coordenadas_lng - branch_doc["lng"])
+                    a = math.sin(dlat/2)**2 + math.cos(math.radians(branch_doc["lat"])) * math.cos(math.radians(data.coordenadas_lat)) * math.sin(dlng/2)**2
+                    dist_km = 6371 * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+                    if dist_km > radio_km:
+                        radio_modo = branch_doc.get("radio_modo", "restrictivo")
+                        if radio_modo == "costo_extra":
+                            tramo_km = branch_doc.get("radio_tramo_km") or 0.5
+                            costo_por_tramo = branch_doc.get("radio_costo_extra_por_tramo") or 0.0
+                            exceso = dist_km - radio_km
+                            tramos = math.ceil(exceso / tramo_km)
+                            costo_extra_radio = round(tramos * costo_por_tramo, 2)
+                        else:
+                            raise HTTPException(status_code=400, detail=f"Tu dirección está fuera del área de cobertura ({radio_km:.0f} km)")
     costo_envio = cfg.get("tienda_costo_envio", 0.0) if data.tipo_entrega == "domicilio" else 0.0
+    costo_envio = round(costo_envio + costo_extra_radio, 2)
     total = round(subtotal + costo_envio, 2)
     branch_id = customer.get("sucursal_id")
     if not branch_id:

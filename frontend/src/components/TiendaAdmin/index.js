@@ -567,7 +567,7 @@ const TabPedidos = ({ initialExpandId }) => {
     axios.get(`${API}/branches`)
       .then(res => {
         const map = {};
-        (res.data || []).forEach(b => { if (b.lat != null && b.lng != null) map[b.id] = { lat: b.lat, lng: b.lng }; });
+        (res.data || []).forEach(b => { if (b.lat != null && b.lng != null) map[b.id] = { lat: b.lat, lng: b.lng, radio_envio_km: b.radio_envio_km }; });
         setBranches(map);
       })
       .catch(() => {});
@@ -833,7 +833,7 @@ const TabPedidos = ({ initialExpandId }) => {
                 {/* Detalle expandido */}
                 {expandido === p.id && (
                   <div style={{ padding: '0 1rem 1rem', borderTop: '1px solid #f3f4f6' }}>
-                    <div className="pedido-detalle-grid" style={{ gridTemplateColumns: p.coordenadas ? '40% 20% 40%' : '1fr' }}>
+                    <div className="pedido-detalle-grid" style={{ gridTemplateColumns: p.coordenadas ? '2fr 1fr 2fr' : '1fr' }}>
 
                       {/* Columna izquierda: items + info + acciones */}
                       <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
@@ -949,13 +949,14 @@ const TabPedidos = ({ initialExpandId }) => {
 
                       {/* Columna derecha: mapa */}
                       {p.coordenadas && (
-                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
+                        <div style={{ minWidth: 0, overflow: 'hidden', borderRadius: 10 }}>
                         <Suspense fallback={<div style={{ width: '100%', height: 220, borderRadius: 10, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-200 border-t-green-600" /></div>}>
                           <MapaPedido
                             clienteLat={p.coordenadas.lat}
                             clienteLng={p.coordenadas.lng}
                             sucursalLat={branches[p.branch_id]?.lat}
                             sucursalLng={branches[p.branch_id]?.lng}
+                            radioKm={branches[p.branch_id]?.radio_envio_km}
                           />
                         </Suspense>
                         </div>
@@ -1114,7 +1115,7 @@ const TabConfiguracion = () => {
   const [saving, setSaving] = useState(false);
   const [sucursales, setSucursales] = useState([]);
 
-  const [tiendaActiva, setTiendaActiva] = useState(true);
+  const [sucursalesTiendaActiva, setSucursalesTiendaActiva] = useState({});
   const [tiendaModo, setTiendaModo] = useState('pedidos');
   const [ecommerceSucursalId, setEcommerceSucursalId] = useState('');
   const [descripcion, setDescripcion] = useState('');
@@ -1125,6 +1126,11 @@ const TabConfiguracion = () => {
   const [montoMinimo, setMontoMinimo] = useState(0);
   const [alias, setAlias] = useState('');
   const [sucursalesUbicacion, setSucursalesUbicacion] = useState({});
+  const [sucursalesEnvio, setSucursalesEnvio] = useState({});
+  const [sucursalesRadio, setSucursalesRadio] = useState({});
+  const [sucursalesModo, setSucursalesModo] = useState({});
+  const [sucursalesCostoPorTramo, setSucursalesCostoPorTramo] = useState({});
+  const [sucursalesTramoKm, setSucursalesTramoKm] = useState({});
   const [savingUbicacion, setSavingUbicacion] = useState({});
   const [sucursalMapaExpanded, setSucursalMapaExpanded] = useState(null);
   const [waService, setWaService] = useState(null); // null | { status, phone, qr }
@@ -1185,7 +1191,6 @@ const TabConfiguracion = () => {
     ])
       .then(([cfgRes, branchRes]) => {
         const d = cfgRes.data;
-        setTiendaActiva(d.tienda_activa !== false);
         setTiendaModo(d.tienda_modo || 'pedidos');
         setEcommerceSucursalId(d.tienda_ecommerce_sucursal_id || '');
         setDescripcion(d.tienda_descripcion || '');
@@ -1198,19 +1203,73 @@ const TabConfiguracion = () => {
         const branches = branchRes.data || [];
         setSucursales(branches);
         const ubics = {};
-        branches.forEach(b => { ubics[b.id] = (b.lat != null && b.lng != null) ? { lat: b.lat, lng: b.lng } : null; });
+        const envios = {};
+        const tiendaActivas = {};
+        const radios = {};
+        const modos = {};
+        const costos = {};
+        const tramos = {};
+        branches.forEach(b => {
+          ubics[b.id] = (b.lat != null && b.lng != null) ? { lat: b.lat, lng: b.lng } : null;
+          envios[b.id] = b.envio_activo !== false;
+          tiendaActivas[b.id] = b.tienda_activa !== false;
+          radios[b.id] = b.radio_envio_km != null ? b.radio_envio_km : '';
+          modos[b.id] = b.radio_modo || 'restrictivo';
+          costos[b.id] = b.radio_costo_extra_por_tramo != null ? b.radio_costo_extra_por_tramo : '';
+          tramos[b.id] = b.radio_tramo_km != null ? b.radio_tramo_km : 0.5;
+        });
         setSucursalesUbicacion(ubics);
+        setSucursalesEnvio(envios);
+        setSucursalesTiendaActiva(tiendaActivas);
+        setSucursalesRadio(radios);
+        setSucursalesModo(modos);
+        setSucursalesCostoPorTramo(costos);
+        setSucursalesTramoKm(tramos);
       })
       .catch(() => toast.error('Error al cargar configuración'))
       .finally(() => setLoading(false));
   }, []);
+
+  const handleToggleEnvio = async (branchId) => {
+    const nuevo = !sucursalesEnvio[branchId];
+    setSucursalesEnvio(prev => ({ ...prev, [branchId]: nuevo }));
+    try {
+      await axios.put(`${API}/branches/${branchId}`, { envio_activo: nuevo });
+    } catch {
+      setSucursalesEnvio(prev => ({ ...prev, [branchId]: !nuevo }));
+      toast.error('Error al actualizar');
+    }
+  };
+
+  const handleToggleTiendaActiva = async (branchId) => {
+    const nuevo = !sucursalesTiendaActiva[branchId];
+    setSucursalesTiendaActiva(prev => ({ ...prev, [branchId]: nuevo }));
+    try {
+      await axios.put(`${API}/branches/${branchId}`, { tienda_activa: nuevo });
+    } catch {
+      setSucursalesTiendaActiva(prev => ({ ...prev, [branchId]: !nuevo }));
+      toast.error('Error al actualizar');
+    }
+  };
 
   const handleSaveUbicacion = async (branchId) => {
     const ubic = sucursalesUbicacion[branchId];
     if (!ubic) return;
     setSavingUbicacion(prev => ({ ...prev, [branchId]: true }));
     try {
-      await axios.put(`${API}/branches/${branchId}`, { lat: ubic.lat, lng: ubic.lng });
+      const radioVal = parseFloat(sucursalesRadio[branchId]);
+      const radioKmFinal = radioVal > 0 ? radioVal : null;
+      const modoFinal = sucursalesModo[branchId] || 'restrictivo';
+      const costoPorTramo = parseFloat(sucursalesCostoPorTramo[branchId]);
+      const tramoKm = parseFloat(sucursalesTramoKm[branchId]);
+      await axios.put(`${API}/branches/${branchId}`, {
+        lat: ubic.lat,
+        lng: ubic.lng,
+        radio_envio_km: radioKmFinal,
+        radio_modo: modoFinal,
+        radio_costo_extra_por_tramo: modoFinal === 'costo_extra' && costoPorTramo > 0 ? costoPorTramo : null,
+        radio_tramo_km: modoFinal === 'costo_extra' && tramoKm > 0 ? tramoKm : 0.5,
+      });
       toast.success('Ubicación guardada');
     } catch {
       toast.error('Error al guardar ubicación');
@@ -1228,7 +1287,6 @@ const TabConfiguracion = () => {
     setSaving(true);
     try {
       await axios.put(`${API}/config`, {
-        tienda_activa: tiendaActiva,
         tienda_modo: tiendaModo,
         tienda_ecommerce_sucursal_id: tiendaModo === 'ecommerce' ? ecommerceSucursalId : null,
         tienda_descripcion: descripcion,
@@ -1250,19 +1308,113 @@ const TabConfiguracion = () => {
   return (
     <form onSubmit={handleSave} style={{ maxWidth: 560, display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
-      {/* Estado tienda */}
-      <div style={{ background: 'white', borderRadius: 14, padding: '1.25rem', border: '1.5px solid #e5e7eb' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      {/* Ubicación y estado de sucursales */}
+      {sucursales.length > 0 && (
+        <div style={{ background: 'white', borderRadius: 14, padding: '1.25rem', border: '1.5px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
           <div>
-            <p style={{ fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>Tienda activa</p>
-            <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>Cuando está desactivada los clientes ven un mensaje de "tienda cerrada"</p>
+            <p style={{ fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>Sucursales</p>
+            <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>Activá la tienda y el envío por sucursal, y marcá su ubicación en el mapa.</p>
           </div>
-          <button type="button" onClick={() => setTiendaActiva(!tiendaActiva)}
-            style={{ width: 44, height: 24, borderRadius: 999, border: 'none', background: tiendaActiva ? 'var(--primary,#10b981)' : '#d1d5db', cursor: 'pointer', position: 'relative', transition: 'background .2s', flexShrink: 0 }}>
-            <span style={{ position: 'absolute', top: 2, left: tiendaActiva ? 22 : 2, width: 20, height: 20, borderRadius: '50%', background: 'white', transition: 'left .2s', boxShadow: '0 1px 4px rgba(0,0,0,0.2)' }} />
-          </button>
+          {sucursales.map(suc => {
+            const ubic = sucursalesUbicacion[suc.id] || null;
+            const expanded = sucursalMapaExpanded === suc.id;
+            const isSaving = savingUbicacion[suc.id];
+            const activa = sucursalesTiendaActiva[suc.id];
+            return (
+              <div key={suc.id} style={{ border: '1.5px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => setSucursalMapaExpanded(expanded ? null : suc.id)}
+                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 1rem', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <MapPin size={15} style={{ color: ubic ? 'var(--primary,#10b981)' : '#9ca3af', flexShrink: 0 }} />
+                      <span style={{ fontWeight: 600, fontSize: '0.875rem', color: '#111827' }}>{suc.nombre}</span>
+                      {ubic
+                        ? <span style={{ fontSize: '0.7rem', background: '#ecfdf5', color: '#059669', borderRadius: 99, padding: '2px 8px', fontWeight: 600 }}>Ubicada</span>
+                        : <span style={{ fontSize: '0.7rem', background: '#f9fafb', color: '#9ca3af', borderRadius: 99, padding: '2px 8px' }}>Sin ubicación</span>
+                      }
+                    </div>
+                    <ChevronDown size={16} style={{ color: '#9ca3af', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform .2s', flexShrink: 0, marginLeft: 8 }} />
+                  </button>
+                  {/* Toggle: tienda activa */}
+                  <div style={{ borderLeft: '1px solid #f3f4f6', padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                    <button type="button" onClick={() => handleToggleTiendaActiva(suc.id)}
+                      style={{ width: 36, height: 20, borderRadius: 999, border: 'none', background: activa ? 'var(--primary,#10b981)' : '#d1d5db', cursor: 'pointer', position: 'relative', transition: 'background .2s', flexShrink: 0 }}>
+                      <span style={{ position: 'absolute', top: 2, left: activa ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: 'white', transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                    </button>
+                    <span style={{ fontSize: '0.65rem', color: activa ? '#059669' : '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      {activa ? 'Activa' : 'Inactiva'}
+                    </span>
+                  </div>
+                  {/* Toggle: envío */}
+                  <div style={{ borderLeft: '1px solid #f3f4f6', padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                    <button type="button" onClick={() => handleToggleEnvio(suc.id)}
+                      style={{ width: 36, height: 20, borderRadius: 999, border: 'none', background: sucursalesEnvio[suc.id] ? 'var(--primary,#10b981)' : '#d1d5db', cursor: 'pointer', position: 'relative', transition: 'background .2s', flexShrink: 0 }}>
+                      <span style={{ position: 'absolute', top: 2, left: sucursalesEnvio[suc.id] ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: 'white', transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                    </button>
+                    <span style={{ fontSize: '0.65rem', color: sucursalesEnvio[suc.id] ? '#059669' : '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      {sucursalesEnvio[suc.id] ? 'Envío' : 'Sin envío'}
+                    </span>
+                  </div>
+                </div>
+                {expanded && (
+                  <div style={{ padding: '0 1rem 1rem' }}>
+                    <Suspense fallback={<div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-200 border-t-green-600" /></div>}>
+                      <MapaPicker
+                        coordenadas={ubic}
+                        onCoordenadas={(coords) => setSucursalesUbicacion(prev => ({ ...prev, [suc.id]: coords }))}
+                        onDireccion={() => {}}
+                        radioKm={parseFloat(sucursalesRadio[suc.id]) || 0}
+                      />
+                    </Suspense>
+                    <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', border: '1.5px solid #e5e7eb', borderRadius: 8, background: 'white', paddingLeft: 8 }}>
+                        <span style={{ color: '#6b7280', fontSize: '0.8rem', userSelect: 'none', flexShrink: 0 }}>Radio envío</span>
+                        <input type="number" min={0} step={0.5} value={sucursalesRadio[suc.id] ?? ''} onChange={e => setSucursalesRadio(prev => ({ ...prev, [suc.id]: e.target.value }))} placeholder="0 = sin límite"
+                          style={{ border: 'none', outline: 'none', padding: '0.5rem 0.6rem', fontSize: '0.875rem', width: '100%', background: 'transparent' }} />
+                        <span style={{ color: '#6b7280', fontSize: '0.8rem', marginRight: 8, flexShrink: 0 }}>km</span>
+                      </div>
+                    </div>
+                    {parseFloat(sucursalesRadio[suc.id]) > 0 && (
+                      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <p style={{ fontSize: '0.78rem', color: '#6b7280', margin: 0 }}>Si el cliente está fuera del radio:</p>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          {[{ value: 'restrictivo', label: 'Bloquear envío' }, { value: 'costo_extra', label: 'Cobrar extra' }].map(opt => (
+                            <button key={opt.value} type="button" onClick={() => setSucursalesModo(prev => ({ ...prev, [suc.id]: opt.value }))}
+                              style={{ flex: 1, padding: '0.45rem 0.5rem', borderRadius: 8, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: 'none', background: (sucursalesModo[suc.id] || 'restrictivo') === opt.value ? 'var(--primary,#10b981)' : '#f3f4f6', color: (sucursalesModo[suc.id] || 'restrictivo') === opt.value ? 'white' : '#6b7280', transition: 'all .15s' }}>
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                        {(sucursalesModo[suc.id] || 'restrictivo') === 'costo_extra' && (
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', border: '1.5px solid #e5e7eb', borderRadius: 8, background: 'white', paddingLeft: 8 }}>
+                              <span style={{ color: '#6b7280', fontSize: '0.78rem', userSelect: 'none', flexShrink: 0 }}>$ extra c/</span>
+                              <input type="number" min={0} step={0.5} value={sucursalesTramoKm[suc.id] ?? 0.5} onChange={e => setSucursalesTramoKm(prev => ({ ...prev, [suc.id]: e.target.value }))}
+                                style={{ border: 'none', outline: 'none', padding: '0.45rem 0.5rem', fontSize: '0.82rem', width: '100%', background: 'transparent' }} />
+                              <span style={{ color: '#6b7280', fontSize: '0.78rem', marginRight: 8, flexShrink: 0 }}>km</span>
+                            </div>
+                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', border: '1.5px solid #e5e7eb', borderRadius: 8, background: 'white', paddingLeft: 8 }}>
+                              <span style={{ color: '#6b7280', fontSize: '0.78rem', userSelect: 'none', flexShrink: 0 }}>$</span>
+                              <input type="number" min={0} step={50} value={sucursalesCostoPorTramo[suc.id] ?? ''} onChange={e => setSucursalesCostoPorTramo(prev => ({ ...prev, [suc.id]: e.target.value }))} placeholder="0"
+                                style={{ border: 'none', outline: 'none', padding: '0.45rem 0.5rem', fontSize: '0.82rem', width: '100%', background: 'transparent' }} />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <button type="button" onClick={() => handleSaveUbicacion(suc.id)} disabled={!ubic || isSaving}
+                      style={{ marginTop: 8, width: '100%', padding: '0.6rem', borderRadius: 10, border: 'none', background: (!ubic || isSaving) ? '#e5e7eb' : 'var(--primary,#10b981)', color: (!ubic || isSaving) ? '#9ca3af' : 'white', fontWeight: 600, fontSize: '0.875rem', cursor: (!ubic || isSaving) ? 'not-allowed' : 'pointer', transition: 'all .15s' }}>
+                      {isSaving ? 'Guardando...' : 'Guardar ubicación'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-      </div>
+      )}
 
       {/* Modo de tienda */}
       <div style={{ background: 'white', borderRadius: 14, padding: '1.25rem', border: '1.5px solid #e5e7eb' }}>
@@ -1273,94 +1425,25 @@ const TabConfiguracion = () => {
             { value: 'pedidos', label: 'Pedidos', desc: 'Estilo app de delivery. Categorías en chips, diseño compacto.', icon: '🛵' },
             { value: 'ecommerce', label: 'Tienda online', desc: 'Estilo e-commerce. Sidebar, productos grandes, vitrina profesional.', icon: '🛍️' },
           ].map(opt => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => setTiendaModo(opt.value)}
-              style={{
-                padding: '1rem', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
-                border: tiendaModo === opt.value ? '2px solid var(--primary,#10b981)' : '1.5px solid #e5e7eb',
-                background: tiendaModo === opt.value ? 'var(--primary-bg,#ecfdf5)' : 'white',
-                transition: 'all .15s',
-              }}
-            >
+            <button key={opt.value} type="button" onClick={() => setTiendaModo(opt.value)}
+              style={{ padding: '1rem', borderRadius: 12, cursor: 'pointer', textAlign: 'left', border: tiendaModo === opt.value ? '2px solid var(--primary,#10b981)' : '1.5px solid #e5e7eb', background: tiendaModo === opt.value ? 'var(--primary-bg,#ecfdf5)' : 'white', transition: 'all .15s' }}>
               <div style={{ fontSize: '1.5rem', marginBottom: 6 }}>{opt.icon}</div>
               <p style={{ fontWeight: 700, fontSize: '0.9rem', color: '#111827', margin: '0 0 3px' }}>{opt.label}</p>
               <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0, lineHeight: 1.4 }}>{opt.desc}</p>
             </button>
           ))}
         </div>
-
         {tiendaModo === 'ecommerce' && sucursales.length > 0 && (
           <div style={{ marginTop: '0.85rem' }} className="form-group">
             <label className="form-label">Sucursal para precios y stock</label>
-            <select
-              className="form-input"
-              value={ecommerceSucursalId}
-              onChange={e => setEcommerceSucursalId(e.target.value)}
-            >
+            <select className="form-input" value={ecommerceSucursalId} onChange={e => setEcommerceSucursalId(e.target.value)}>
               <option value="">— Seleccioná una sucursal —</option>
-              {sucursales.map(s => (
-                <option key={s.id} value={s.id}>{s.nombre}</option>
-              ))}
+              {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
             </select>
-            <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: 4 }}>
-              Los precios y el stock mostrados en la tienda online serán los de esta sucursal.
-            </p>
+            <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: 4 }}>Los precios y el stock mostrados en la tienda online serán los de esta sucursal.</p>
           </div>
         )}
       </div>
-
-      {/* Ubicación de sucursales (solo modo Pedidos) */}
-      {tiendaModo === 'pedidos' && sucursales.length > 0 && (
-        <div style={{ background: 'white', borderRadius: 14, padding: '1.25rem', border: '1.5px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-          <div>
-            <p style={{ fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>Ubicación de sucursales</p>
-            <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>Marcá en el mapa dónde está cada sucursal. Los clientes verán la ubicación al retirar su pedido.</p>
-          </div>
-          {sucursales.map(suc => {
-            const ubic = sucursalesUbicacion[suc.id] || null;
-            const expanded = sucursalMapaExpanded === suc.id;
-            const isSaving = savingUbicacion[suc.id];
-            return (
-              <div key={suc.id} style={{ border: '1.5px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
-                <button
-                  type="button"
-                  onClick={() => setSucursalMapaExpanded(expanded ? null : suc.id)}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 1rem', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <MapPin size={15} style={{ color: ubic ? 'var(--primary,#10b981)' : '#9ca3af', flexShrink: 0 }} />
-                    <span style={{ fontWeight: 600, fontSize: '0.875rem', color: '#111827' }}>{suc.nombre}</span>
-                    {ubic
-                      ? <span style={{ fontSize: '0.7rem', background: '#ecfdf5', color: '#059669', borderRadius: 99, padding: '2px 8px', fontWeight: 600 }}>Ubicada</span>
-                      : <span style={{ fontSize: '0.7rem', background: '#f9fafb', color: '#9ca3af', borderRadius: 99, padding: '2px 8px' }}>Sin ubicación</span>
-                    }
-                  </div>
-                  <ChevronDown size={16} style={{ color: '#9ca3af', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform .2s', flexShrink: 0 }} />
-                </button>
-                {expanded && (
-                  <div style={{ padding: '0 1rem 1rem' }}>
-                    <Suspense fallback={<div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-200 border-t-green-600" /></div>}>
-                      <MapaPicker
-                        coordenadas={ubic}
-                        onCoordenadas={(coords) => setSucursalesUbicacion(prev => ({ ...prev, [suc.id]: coords }))}
-                        onDireccion={() => {}}
-                      />
-                    </Suspense>
-                    <button
-                      type="button"
-                      onClick={() => handleSaveUbicacion(suc.id)}
-                      disabled={!ubic || isSaving}
-                      style={{ marginTop: 10, width: '100%', padding: '0.6rem', borderRadius: 10, border: 'none', background: (!ubic || isSaving) ? '#e5e7eb' : 'var(--primary,#10b981)', color: (!ubic || isSaving) ? '#9ca3af' : 'white', fontWeight: 600, fontSize: '0.875rem', cursor: (!ubic || isSaving) ? 'not-allowed' : 'pointer', transition: 'all .15s' }}>
-                      {isSaving ? 'Guardando...' : 'Guardar ubicación'}
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
 
       {/* Descripción y horario */}
       <div style={{ background: 'white', borderRadius: 14, padding: '1.25rem', border: '1.5px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -1381,20 +1464,18 @@ const TabConfiguracion = () => {
       <div style={{ background: 'white', borderRadius: 14, padding: '1.25rem', border: '1.5px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         <p style={{ fontWeight: 700, color: '#111827', margin: 0 }}>Opciones de entrega</p>
 
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button type="button" onClick={() => setEnvioActivo(!envioActivo)}
-            style={{ width: 44, height: 24, borderRadius: 999, border: 'none', background: envioActivo ? 'var(--primary,#10b981)' : '#d1d5db', cursor: 'pointer', position: 'relative', transition: 'background .2s', flexShrink: 0, marginTop: 2 }}>
+            style={{ width: 44, height: 24, borderRadius: 999, border: 'none', background: envioActivo ? 'var(--primary,#10b981)' : '#d1d5db', cursor: 'pointer', position: 'relative', transition: 'background .2s', flexShrink: 0 }}>
             <span style={{ position: 'absolute', top: 2, left: envioActivo ? 22 : 2, width: 20, height: 20, borderRadius: '50%', background: 'white', transition: 'left .2s', boxShadow: '0 1px 4px rgba(0,0,0,0.2)' }} />
           </button>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontWeight: 600, color: '#111827', margin: '0 0 4px', fontSize: '0.9rem' }}>Envío a domicilio</p>
-            {envioActivo && (
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label">Costo de envío</label>
-                <input type="number" className="form-input" value={costoEnvio} onChange={e => setCostoEnvio(e.target.value)} min={0} step={1} placeholder="0 = envío gratis" />
-              </div>
-            )}
-          </div>
+          <p style={{ fontWeight: 600, color: '#111827', margin: 0, fontSize: '0.9rem', flexShrink: 0 }}>Envío a domicilio</p>
+          {envioActivo && (
+            <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid #e5e7eb', borderRadius: 8, maxWidth: 130, background: 'white', paddingLeft: 8 }}>
+              <span style={{ color: '#6b7280', fontSize: '0.875rem', userSelect: 'none', flexShrink: 0 }}>$</span>
+              <input type="number" value={costoEnvio} onChange={e => setCostoEnvio(e.target.value)} min={0} step={1} placeholder="0 = gratis" style={{ border: 'none', outline: 'none', padding: '0.5rem 0.6rem', fontSize: '0.875rem', width: '100%', background: 'transparent' }} />
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -1410,7 +1491,10 @@ const TabConfiguracion = () => {
       <div style={{ background: 'white', borderRadius: 14, padding: '1.25rem', border: '1.5px solid #e5e7eb' }}>
         <div className="form-group" style={{ margin: 0 }}>
           <label className="form-label">Monto mínimo de pedido</label>
-          <input type="number" className="form-input" value={montoMinimo} onChange={e => setMontoMinimo(e.target.value)} min={0} step={1} placeholder="0 = sin mínimo" />
+          <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid #e5e7eb', borderRadius: 8, background: 'white', paddingLeft: 8 }}>
+            <span style={{ color: '#6b7280', fontSize: '0.875rem', userSelect: 'none', flexShrink: 0 }}>$</span>
+            <input type="number" value={montoMinimo} onChange={e => setMontoMinimo(e.target.value)} min={0} step={1} placeholder="0 = sin mínimo" style={{ border: 'none', outline: 'none', padding: '0.5rem 0.6rem', fontSize: '0.875rem', width: '100%', background: 'transparent' }} />
+          </div>
           <p style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: 4 }}>Dejá en 0 para no aplicar mínimo.</p>
         </div>
       </div>

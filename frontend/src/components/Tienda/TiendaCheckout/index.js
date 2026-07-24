@@ -7,6 +7,14 @@ import TiendaCheckoutView from './TiendaCheckoutView';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 const TiendaCheckout = () => {
   const { tiendaToken, tiendaUser, empresa_id, updateTiendaUser } = useContext(TiendaAuthContext);
   const { config, sucursales, carrito, vaciarCarrito, totalCarrito, apiBase, cambiarSucursal } = useContext(TiendaContext);
@@ -17,7 +25,15 @@ const TiendaCheckout = () => {
     isEcommerce ? (config?.tienda_ecommerce_sucursal_id || '') : (tiendaUser?.sucursal_id || '')
   );
   const [cambiandoSucursal, setCambiandoSucursal] = useState(false);
-  const [tipoEntrega, setTipoEntrega] = useState('domicilio');
+
+  const sucursalEnvioActivo = (sid) => {
+    const branch = sucursales.find(s => s.id === sid);
+    return branch ? branch.envio_activo !== false : true;
+  };
+  const [tipoEntrega, setTipoEntrega] = useState(() =>
+    sucursalEnvioActivo(isEcommerce ? (config?.tienda_ecommerce_sucursal_id || '') : (tiendaUser?.sucursal_id || ''))
+      ? 'domicilio' : 'retiro'
+  );
   const getDireccionGuardada = (sid) =>
     tiendaUser?.direcciones_por_sucursal?.[sid || tiendaUser?.sucursal_id] || '';
   const getObservacionesGuardadas = (sid) =>
@@ -33,12 +49,48 @@ const TiendaCheckout = () => {
   const [pedidoConfirmado, setPedidoConfirmado] = useState(null);
 
   useEffect(() => {
+    if (sucursalEnvioActivo(sucursalId) && config?.tienda_envio_activo !== false) {
+      setTipoEntrega('domicilio');
+    } else {
+      setTipoEntrega('retiro');
+    }
+  }, [sucursalId]); // eslint-disable-line
+
+  // Si la sucursal actual está inactiva, cambiar automáticamente a la primera activa
+  useEffect(() => {
+    if (!sucursales.length || isEcommerce) return;
+    const actual = sucursales.find(s => s.id === sucursalId);
+    if (actual && actual.tienda_activa === false) {
+      const primeraActiva = sucursales.find(s => s.tienda_activa !== false);
+      if (primeraActiva) handleCambiarSucursal(primeraActiva.id);
+    }
+  }, [sucursales, sucursalId]); // eslint-disable-line
+
+  useEffect(() => {
     if (!pedidoConfirmado) return;
     const t = setTimeout(() => navigate(`/tienda/${empresa_id}`), 4000);
     return () => clearTimeout(t);
   }, [pedidoConfirmado, empresa_id, navigate]);
 
-  const costoEnvio = tipoEntrega === 'domicilio' ? (config?.tienda_costo_envio || 0) : 0;
+  const calcEnvio = () => {
+    if (tipoEntrega !== 'domicilio') return { base: 0, extra: 0 };
+    const base = config?.tienda_costo_envio || 0;
+    if (!coordenadas) return { base, extra: 0 };
+    const branch = sucursales.find(s => s.id === sucursalId);
+    const radioKm = branch?.radio_envio_km;
+    if (radioKm > 0 && branch?.lat != null && branch?.lng != null && branch?.radio_modo === 'costo_extra') {
+      const dist = haversineKm(branch.lat, branch.lng, coordenadas.lat, coordenadas.lng);
+      if (dist > radioKm) {
+        const tramoKm = branch.radio_tramo_km || 0.5;
+        const costoPorTramo = branch.radio_costo_extra_por_tramo || 0;
+        const tramos = Math.ceil((dist - radioKm) / tramoKm);
+        return { base, extra: tramos * costoPorTramo };
+      }
+    }
+    return { base, extra: 0 };
+  };
+  const { base: costoEnvioBase, extra: costoExtraDistancia } = calcEnvio();
+  const costoEnvio = costoEnvioBase + costoExtraDistancia;
   const totalFinal = totalCarrito + costoEnvio;
   const currencySymbol = config?.currency_symbol || '$';
 
@@ -50,7 +102,7 @@ const TiendaCheckout = () => {
       setSucursalId(id);
       setDireccion(getDireccionGuardada(id));
       setObservaciones(getObservacionesGuardadas(id));
-      setCoordenadas(getCoordenadasGuardadas(id));
+      setCoordenadas(prev => getCoordenadasGuardadas(id) || prev);
       toast.success('Sucursal actualizada. Los precios del carrito fueron recalculados.');
     } catch {
       toast.error('No se pudo cambiar la sucursal');
@@ -60,6 +112,26 @@ const TiendaCheckout = () => {
   const handleConfirmar = async (e) => {
     e.preventDefault();
     if (carrito.length === 0) { toast.error('Tu carrito está vacío'); return; }
+    const montoMinimo = config?.tienda_monto_minimo || 0;
+    if (montoMinimo > 0 && totalCarrito < montoMinimo) {
+      toast.error(`El monto mínimo de pedido es ${currencySymbol}${montoMinimo.toFixed(0)}`);
+      return;
+    }
+    if (tipoEntrega === 'domicilio' && !sucursalEnvioActivo(sucursalId)) {
+      toast.error('Esta sucursal no tiene envío a domicilio disponible');
+      return;
+    }
+    if (tipoEntrega === 'domicilio' && coordenadas) {
+      const branch = sucursales.find(s => s.id === sucursalId);
+      const radioKm = branch?.radio_envio_km;
+      if (radioKm > 0 && branch?.lat != null && branch?.lng != null) {
+        const dist = haversineKm(branch.lat, branch.lng, coordenadas.lat, coordenadas.lng);
+        if (dist > radioKm && (branch.radio_modo || 'restrictivo') === 'restrictivo') {
+          toast.error(`Tu dirección está fuera del área de cobertura (${radioKm} km desde la sucursal)`);
+          return;
+        }
+      }
+    }
     let direccionFinal = direccion.trim();
     if (isEcommerce && tipoEntrega === 'domicilio') {
       const { provincia, localidad, calle, numero, pisoDpto, cp } = dirEcommerce;
@@ -140,6 +212,7 @@ const TiendaCheckout = () => {
       observaciones={observaciones} setObservaciones={setObservaciones}
       loading={loading}
       costoEnvio={costoEnvio}
+      costoExtraDistancia={costoExtraDistancia}
       totalCarrito={totalCarrito}
       totalFinal={totalFinal}
       currencySymbol={currencySymbol}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, Circle, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Navigation, Search, Loader2, MapPin } from 'lucide-react';
@@ -15,16 +15,38 @@ L.Icon.Default.mergeOptions({
 const PRIMARY = 'var(--primary, #10b981)';
 const ARGENTINA = [-34.6037, -58.3816]; // Buenos Aires
 
+const pinSvg = (color) => `<svg xmlns="http://www.w3.org/2000/svg" width="25" height="41" viewBox="0 0 25 41">
+  <path d="M12.5 0C5.596 0 0 5.596 0 12.5C0 21.875 12.5 41 12.5 41C12.5 41 25 21.875 25 12.5C25 5.596 19.404 0 12.5 0Z" fill="${color}"/>
+  <circle cx="12.5" cy="12.5" r="5" fill="white"/>
+</svg>`;
+
+const makeIcon = (color) => L.divIcon({ className: '', html: pinSvg(color), iconSize: [25, 41], iconAnchor: [12, 41] });
+
 function ClickHandler({ onSelect }) {
   useMapEvents({ click: (e) => onSelect(e.latlng.lat, e.latlng.lng) });
   return null;
 }
 
-function RecenterMap({ position }) {
+function FitView({ clientPos, sucursalPos, radioKm }) {
   const map = useMapEvents({});
   useEffect(() => {
-    if (position) map.setView(position, map.getZoom());
-  }, [position, map]);
+    if (radioKm > 0 && !sucursalPos) {
+      // Solo en admin (sin sucursal): hacer zoom al círculo
+      if (!clientPos) return;
+      const [lat, lng] = clientPos;
+      const dLat = radioKm / 111.32;
+      const dLng = radioKm / (111.32 * Math.cos(lat * Math.PI / 180));
+      const bounds = L.latLngBounds([lat - dLat, lng - dLng], [lat + dLat, lng + dLng]);
+      map.fitBounds(bounds, { padding: [6, 6], animate: false });
+      return;
+    }
+    if (!clientPos) return;
+    if (sucursalPos) {
+      map.fitBounds(L.latLngBounds([clientPos, sucursalPos]), { padding: [24, 24], animate: false });
+    } else {
+      map.setView(clientPos, 16, { animate: false });
+    }
+  }, [clientPos, sucursalPos, radioKm, map]); // eslint-disable-line
   return null;
 }
 
@@ -47,14 +69,55 @@ async function forwardGeocode(query) {
   return r.json();
 }
 
-const MapaPicker = ({ coordenadas, onCoordenadas, onDireccion }) => {
+async function fetchRuta(sLng, sLat, cLng, cLat) {
+  const url = `https://router.project-osrm.org/route/v1/driving/${sLng},${sLat};${cLng},${cLat}?overview=full&geometries=geojson`;
+  const data = await fetch(url).then(r => r.json());
+  const coords = data?.routes?.[0]?.geometry?.coordinates;
+  return coords ? coords.map(([lng, lat]) => [lat, lng]) : null;
+}
+
+const MapaPicker = ({ coordenadas, onCoordenadas, onDireccion, direccionInicial, sucursal, radioKm }) => {
+  const iconSucursal = React.useMemo(() => makeIcon('#2563eb'), []);
+  const iconCliente  = React.useMemo(() => makeIcon('#ef4444'), []);
   const [pos, setPos] = useState(coordenadas ? [coordenadas.lat, coordenadas.lng] : null);
+  const [ruta, setRuta] = useState(null);
   const [geocoding, setGeocoding] = useState(false);
   const [gpsLoading, setGpsLoading] = useState(false);
   const [query, setQuery] = useState('');
   const [sugerencias, setSugerencias] = useState([]);
   const [buscando, setBuscando] = useState(false);
   const debounceRef = useRef(null);
+
+  // Sincronizar pos cuando cambian las coordenadas guardadas (ej: cambio de sucursal)
+  const prevCoordsRef = useRef(coordenadas);
+  useEffect(() => {
+    if (!coordenadas) return;
+    if (prevCoordsRef.current?.lat !== coordenadas.lat || prevCoordsRef.current?.lng !== coordenadas.lng) {
+      prevCoordsRef.current = coordenadas;
+      setPos([coordenadas.lat, coordenadas.lng]);
+    }
+  }, [coordenadas?.lat, coordenadas?.lng]); // eslint-disable-line
+
+  // Si no hay coordenadas guardadas pero sí hay dirección previa, geocodificarla al montar
+  useEffect(() => {
+    if (pos || !direccionInicial?.trim()) return;
+    forwardGeocode(direccionInicial).then(results => {
+      if (results?.[0]) {
+        const lat = parseFloat(results[0].lat);
+        const lng = parseFloat(results[0].lon);
+        setPos([lat, lng]);
+        onCoordenadas({ lat, lng });
+      }
+    }).catch(() => {});
+  }, []); // eslint-disable-line
+
+  // Fetchear ruta cuando hay pin de cliente y sucursal con coordenadas
+  useEffect(() => {
+    if (!pos || !sucursal?.lat || !sucursal?.lng) { setRuta(null); return; }
+    fetchRuta(sucursal.lng, sucursal.lat, pos[1], pos[0])
+      .then(r => setRuta(r))
+      .catch(() => setRuta(null));
+  }, [pos, sucursal]);
 
   const selectLocation = useCallback(async (lat, lng) => {
     const newPos = [lat, lng];
@@ -128,8 +191,8 @@ const MapaPicker = ({ coordenadas, onCoordenadas, onDireccion }) => {
       {/* Mapa */}
       <div style={{ borderRadius: 12, overflow: 'hidden', border: '1.5px solid #e5e7eb', position: 'relative', height: 260 }}>
         <MapContainer
-          center={pos || ARGENTINA}
-          zoom={pos ? 16 : 12}
+          center={pos || (sucursal?.lat ? [sucursal.lat, sucursal.lng] : ARGENTINA)}
+          zoom={pos ? 14 : 13}
           style={{ height: '100%', width: '100%' }}
           scrollWheelZoom={true}
         >
@@ -138,8 +201,18 @@ const MapaPicker = ({ coordenadas, onCoordenadas, onDireccion }) => {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <ClickHandler onSelect={selectLocation} />
-          {pos && <RecenterMap position={pos} />}
-          {pos && <Marker position={pos} />}
+          {(pos || (radioKm > 0 && sucursal?.lat)) && <FitView clientPos={pos} sucursalPos={sucursal?.lat ? [sucursal.lat, sucursal.lng] : null} radioKm={radioKm} />}
+          {sucursal?.lat && <Marker position={[sucursal.lat, sucursal.lng]} icon={iconSucursal} />}
+          {sucursal?.lat && radioKm > 0 && (
+            <Circle center={[sucursal.lat, sucursal.lng]} radius={radioKm * 1000}
+              pathOptions={{ color: '#10b981', fillColor: '#10b981', fillOpacity: 0.08, weight: 2, dashArray: '6 4' }} />
+          )}
+          {!sucursal?.lat && pos && radioKm > 0 && (
+            <Circle center={pos} radius={radioKm * 1000}
+              pathOptions={{ color: '#10b981', fillColor: '#10b981', fillOpacity: 0.08, weight: 2, dashArray: '6 4' }} />
+          )}
+          {pos && <Marker position={pos} icon={iconCliente} />}
+          {ruta && <Polyline positions={ruta} pathOptions={{ color: '#2563eb', weight: 4, opacity: 0.85 }} />}
         </MapContainer>
 
         {/* Overlay "Tocá para marcar" si no hay pin */}

@@ -29,6 +29,7 @@ const TiendaCatalogo = () => {
   const [categoriaActiva, setCategoriaActiva] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadingMasVendidos, setLoadingMasVendidos] = useState(true);
+  const [sort, setSort] = useState('nombre_asc');
 
   // Cargar categorías y más vendidos al montar (y al cambiar sucursal)
   useEffect(() => {
@@ -50,6 +51,7 @@ const TiendaCatalogo = () => {
     if (search) params.search = search;
     if (categoriaActiva) params.category_id = categoriaActiva;
     if (sucursalId) params.sucursal_id = sucursalId;
+    if (sort !== 'nombre_asc') params.sort = sort;
     axios.get(`${apiBase}/productos`, { params })
       .then(res => {
         setProductos(res.data.items);
@@ -58,7 +60,7 @@ const TiendaCatalogo = () => {
       })
       .catch(() => toast.error('Error al cargar productos'))
       .finally(() => setLoading(false));
-  }, [apiBase, page, search, categoriaActiva, sucursalId]);
+  }, [apiBase, page, search, categoriaActiva, sucursalId, sort]);
 
   useEffect(() => { fetchProductos(); }, [fetchProductos]);
 
@@ -78,7 +80,7 @@ const TiendaCatalogo = () => {
 
   const handlePageChange = (p) => {
     setPage(p);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    document.getElementById('tienda-paginacion')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   };
 
   const handleCambiarSucursal = async (id) => {
@@ -129,6 +131,8 @@ const TiendaCatalogo = () => {
       onPageChange={handlePageChange}
       searchInput={searchInput}
       onSearchChange={(v) => setSearchInput(v)}
+      sort={sort}
+      onSortChange={(v) => { setSort(v); setPage(1); }}
       carrito={carrito}
       carritoOpen={carritoOpen}
       setCarritoOpen={setCarritoOpen}

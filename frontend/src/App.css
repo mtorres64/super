@@ -107,6 +107,42 @@
   border-radius: 999px;
 }
 
+.tienda-cats-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,0,0,0.12) transparent;
+}
+.tienda-cats-scroll::-webkit-scrollbar {
+  height: 3px;
+}
+.tienda-cats-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.tienda-cats-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.12);
+  border-radius: 999px;
+  transition: background 0.3s ease;
+}
+.tienda-cats-scroll:hover {
+  scrollbar-color: rgba(0,0,0,0.35) transparent;
+}
+.tienda-cats-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.35);
+}
+
+.tienda-section-title-group {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+}
+@media (max-width: 767px) {
+  .tienda-section-title-group {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+  }
+}
+
 /* ================================================
    RESET & BASE
    ================================================ */
@@ -2839,4 +2875,15 @@ html.dark .ticket-separator    { color: #5c5c5c; }
   .pedido-detalle-grid {
     grid-template-columns: 1fr !important;
   }
+}
+
+/* Animación de cambio de precio en checkout */
+@keyframes priceFlash {
+  0%   { transform: scale(1.15); }
+  60%  { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+.price-changed {
+  display: inline-block;
+  animation: priceFlash 0.5s ease-out forwards;
 }

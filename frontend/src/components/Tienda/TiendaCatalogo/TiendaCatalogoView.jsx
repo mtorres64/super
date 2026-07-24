@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, ShoppingCart, X, Plus, Minus, User, ChevronRight, Star, Package, LogOut, MapPin, ChevronDown, Scale } from 'lucide-react';
+import { Search, ShoppingCart, X, Plus, Minus, User, ChevronRight, ChevronLeft, Star, Package, LogOut, MapPin, ChevronDown, Scale } from 'lucide-react';
 import PaginationView from '../../Pagination/PaginationView';
 
 const PRIMARY = 'var(--primary, #10b981)';
@@ -78,13 +78,14 @@ const ModalKg = ({ producto, currencySymbol, onClose, onConfirm }) => {
 
 // ── Tarjeta de producto ───────────────────────────────────────────────────────
 
-const ProductCard = ({ producto, onAgregar, onAgregarPeso, cantidadEnCarrito, onActualizar, currencySymbol, companyLogo }) => {
+const ProductCard = ({ producto, onAgregar, onAgregarPeso, cantidadEnCarrito, onActualizar, currencySymbol, companyLogo, style, sucursalCerrada }) => {
   const esPeso = producto.tipo === 'por_peso';
 
   return (
     <div style={{
       background: 'white', borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.07)',
       overflow: 'hidden', display: 'flex', flexDirection: 'column', transition: 'box-shadow .2s',
+      ...style,
     }}
       onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.13)'}
       onMouseLeave={e => e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.07)'}
@@ -104,7 +105,7 @@ const ProductCard = ({ producto, onAgregar, onAgregarPeso, cantidadEnCarrito, on
           </div>
         )}
         {cantidadEnCarrito > 0 && (
-          <div style={{ position: 'absolute', top: 6, right: 6, background: PRIMARY, color: 'var(--primary-text,white)', borderRadius: esPeso ? 8 : '50%', minWidth: 20, height: 20, padding: esPeso ? '0 5px' : 0, fontSize: '0.65rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ position: 'absolute', top: 6, right: 6, background: '#10b981', color: 'white', borderRadius: esPeso ? 8 : '50%', minWidth: 20, height: 20, padding: esPeso ? '0 5px' : 0, fontSize: '0.65rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {esPeso ? `${cantidadEnCarrito}kg` : cantidadEnCarrito}
           </div>
         )}
@@ -126,14 +127,14 @@ const ProductCard = ({ producto, onAgregar, onAgregarPeso, cantidadEnCarrito, on
                 <X size={12} />
               </button>
               <span style={{ fontWeight: 700, color: '#111827', fontSize: '0.82rem', flex: 1, textAlign: 'center' }}>{cantidadEnCarrito} kg</span>
-              <button onClick={() => onAgregarPeso(producto)}
-                style={{ flex: 1, height: 30, borderRadius: 8, border: 'none', background: PRIMARY, color: 'var(--primary-text,white)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
+              <button onClick={sucursalCerrada ? undefined : () => onAgregarPeso(producto)} disabled={sucursalCerrada}
+                style={{ flex: 1, height: 30, borderRadius: 8, border: 'none', background: sucursalCerrada ? '#e5e7eb' : PRIMARY, color: sucursalCerrada ? '#9ca3af' : 'var(--primary-text,white)', cursor: sucursalCerrada ? 'not-allowed' : 'pointer', fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
                 <Plus size={11} /> Más
               </button>
             </div>
           ) : (
-            <button onClick={() => onAgregarPeso(producto)}
-              style={{ marginTop: 4, padding: '0.45rem', borderRadius: 10, border: 'none', background: PRIMARY, color: 'var(--primary-text,white)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+            <button onClick={sucursalCerrada ? undefined : () => onAgregarPeso(producto)} disabled={sucursalCerrada}
+              style={{ marginTop: 4, padding: '0.45rem', borderRadius: 10, border: 'none', background: sucursalCerrada ? '#e5e7eb' : PRIMARY, color: sucursalCerrada ? '#9ca3af' : 'var(--primary-text,white)', cursor: sucursalCerrada ? 'not-allowed' : 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
               <Scale size={13} /> Elegir cantidad
             </button>
           )
@@ -145,14 +146,14 @@ const ProductCard = ({ producto, onAgregar, onAgregarPeso, cantidadEnCarrito, on
                 <Minus size={13} />
               </button>
               <span style={{ fontWeight: 700, color: '#111827', minWidth: 20, textAlign: 'center', fontSize: '0.9rem' }}>{cantidadEnCarrito}</span>
-              <button onClick={() => onActualizar(producto.id, cantidadEnCarrito + 1)}
-                style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: PRIMARY, color: 'var(--primary-text, white)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button onClick={sucursalCerrada ? undefined : () => onActualizar(producto.id, cantidadEnCarrito + 1)} disabled={sucursalCerrada}
+                style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: sucursalCerrada ? '#e5e7eb' : PRIMARY, color: sucursalCerrada ? '#9ca3af' : 'var(--primary-text, white)', cursor: sucursalCerrada ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Plus size={13} />
               </button>
             </div>
           ) : (
-            <button onClick={() => onAgregar(producto)}
-              style={{ marginTop: 4, padding: '0.45rem', borderRadius: 10, border: 'none', background: PRIMARY, color: 'var(--primary-text, white)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+            <button onClick={sucursalCerrada ? undefined : () => onAgregar(producto)} disabled={sucursalCerrada}
+              style={{ marginTop: 4, padding: '0.45rem', borderRadius: 10, border: 'none', background: sucursalCerrada ? '#e5e7eb' : PRIMARY, color: sucursalCerrada ? '#9ca3af' : 'var(--primary-text, white)', cursor: sucursalCerrada ? 'not-allowed' : 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
               <Plus size={13} /> Agregar
             </button>
           )
@@ -258,7 +259,7 @@ const DrawerCarrito = ({ carrito, carritoOpen, setCarritoOpen, onActualizar, onA
               <span>{currencySymbol}{totalCarrito.toFixed(2)}</span>
             </div>
             <button onClick={onIrAlCheckout}
-              style={{ width: '100%', padding: '0.75rem', borderRadius: 12, border: 'none', background: PRIMARY, color: 'var(--primary-text,white)', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              style={{ width: '100%', padding: '0.75rem', borderRadius: 12, border: 'none', background: '#10b981', color: 'white', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               Confirmar pedido <ChevronRight size={16} />
             </button>
           </div>
@@ -328,7 +329,7 @@ const SucursalSelector = ({ sucursales, sucursalId, onCambiar }) => {
     <div ref={ref} style={{ position: 'relative' }}>
       <button onClick={() => setOpen(o => !o)}
         style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0.35rem 0.65rem', borderRadius: 8, border: '1px solid #e5e7eb', background: open ? '#f3f4f6' : 'none', cursor: 'pointer', fontSize: '0.8rem', color: '#374151' }}>
-        <MapPin size={13} style={{ color: PRIMARY, flexShrink: 0 }} />
+        <MapPin size={13} style={{ color: '#ef4444', flexShrink: 0 }} />
         <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
           {actual ? actual.nombre : 'Sucursal'}
         </span>
@@ -337,18 +338,25 @@ const SucursalSelector = ({ sucursales, sucursalId, onCambiar }) => {
       {open && (
         <div style={{ position: 'absolute', top: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)', background: 'white', border: '1px solid #e5e7eb', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: 220, zIndex: 100, overflow: 'hidden' }}>
           <p style={{ fontSize: '0.68rem', color: '#9ca3af', padding: '0.6rem 1rem 0.3rem', margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Seleccioná tu sucursal</p>
-          {sucursales.map(s => (
-            <button key={s.id} onClick={() => { onCambiar(s.id); setOpen(false); }}
-              style={{ width: '100%', padding: '0.6rem 1rem', background: s.id === sucursalId ? 'var(--primary-bg, #ecfdf5)' : 'none', border: 'none', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'flex-start', gap: 10 }}
-              onMouseEnter={e => { if (s.id !== sucursalId) e.currentTarget.style.background = '#f9fafb'; }}
-              onMouseLeave={e => { if (s.id !== sucursalId) e.currentTarget.style.background = 'none'; }}>
-              <MapPin size={14} style={{ color: s.id === sucursalId ? PRIMARY : '#9ca3af', marginTop: 2, flexShrink: 0 }} />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: s.id === sucursalId ? 700 : 500, color: s.id === sucursalId ? PRIMARY : '#111827' }}>{s.nombre}</span>
-                {s.direccion && <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{s.direccion}</span>}
-              </div>
-            </button>
-          ))}
+          {sucursales.map(s => {
+            const cerrada = s.tienda_activa === false;
+            return (
+              <button key={s.id}
+                onClick={() => { if (!cerrada) { onCambiar(s.id); setOpen(false); } }}
+                style={{ width: '100%', padding: '0.6rem 1rem', background: s.id === sucursalId ? 'var(--primary-bg, #ecfdf5)' : 'none', border: 'none', cursor: cerrada ? 'default' : 'pointer', textAlign: 'left', display: 'flex', alignItems: 'flex-start', gap: 10, opacity: cerrada ? 0.55 : 1 }}
+                onMouseEnter={e => { if (s.id !== sucursalId && !cerrada) e.currentTarget.style.background = '#f9fafb'; }}
+                onMouseLeave={e => { if (s.id !== sucursalId) e.currentTarget.style.background = 'none'; }}>
+                <MapPin size={14} style={{ color: '#ef4444', marginTop: 2, flexShrink: 0 }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: s.id === sucursalId ? 700 : 500, color: s.id === sucursalId ? PRIMARY : '#111827' }}>{s.nombre}</span>
+                    {cerrada && <span style={{ fontSize: '0.65rem', background: '#fee2e2', color: '#ef4444', borderRadius: 99, padding: '1px 6px', fontWeight: 600 }}>Cerrada</span>}
+                  </div>
+                  {s.direccion && <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{s.direccion}</span>}
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -364,6 +372,7 @@ const TiendaCatalogoView = ({
   masVendidos, loadingMasVendidos,
   productos, loading, total, totalPages, page, perPage, onPageChange,
   searchInput, onSearchChange,
+  sort, onSortChange,
   carrito, carritoOpen, setCarritoOpen, agregarAlCarrito, actualizarCantidad, vaciarCarrito,
   totalCarrito, cantidadCarrito,
   onIrAlCheckout, onLoginClick, onLogoutClick,
@@ -371,10 +380,36 @@ const TiendaCatalogoView = ({
   const currencySymbol = config?.currency_symbol || '$';
   const storeName = config?.company_name || config?.empresa_nombre || 'Tienda';
   const getCantidadEnCarrito = (productoId) => (carrito.find(i => i.producto_id === productoId)?.cantidad || 0);
+  const sucursalCerrada = sucursales.find(s => s.id === sucursalId)?.tienda_activa === false;
 
   const [kgModal, setKgModal] = useState(null);
   const handleAgregarPeso = (producto) => setKgModal(producto);
   const handleConfirmarKg = (cantidad) => { agregarAlCarrito(kgModal, cantidad); setKgModal(null); };
+
+  const footerRef = useRef(null);
+  const [cartBottom, setCartBottom] = useState(24);
+  useEffect(() => {
+    const footer = footerRef.current;
+    if (!footer) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setCartBottom(entry.intersectionRect.height + 24);
+        } else {
+          setCartBottom(24);
+        }
+      },
+      { threshold: Array.from({ length: 101 }, (_, i) => i / 100) }
+    );
+    observer.observe(footer);
+    return () => observer.disconnect();
+  }, []);
+
+  const masVendidosRef = useRef(null);
+  const isMobile = window.innerWidth < 768;
+  const scrollMasVendidos = (dir) => {
+    masVendidosRef.current?.scrollBy({ left: dir * 530, behavior: 'smooth' });
+  };
 
   return (
     <div style={{
@@ -402,7 +437,7 @@ const TiendaCatalogoView = ({
             }
             <div className="hidden sm:flex sm:flex-col" style={{ gap: '1px' }}>
               <span style={{ fontWeight: 700, fontSize: '1rem', color: '#111827', lineHeight: 1.2 }}>{storeName}</span>
-              <span style={{ fontSize: '0.6rem', color: '#9ca3af', letterSpacing: '0.04em' }}>powered by <strong style={{ color: PRIMARY }}>PULS</strong></span>
+              <span style={{ fontSize: '0.6rem', color: '#9ca3af', letterSpacing: '0.04em' }}>powered by <a href="/" target="_blank" rel="noreferrer" style={{ color: '#10b981', fontWeight: 700, textDecoration: 'none' }}>PULS</a></span>
             </div>
           </div>
           {/* Centro: sucursal */}
@@ -426,7 +461,7 @@ const TiendaCatalogoView = ({
               style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
               <ShoppingCart size={22} style={{ color: '#374151' }} />
               {cantidadCarrito > 0 && (
-                <span style={{ position: 'absolute', top: -4, right: -4, background: PRIMARY, color: 'var(--primary-text,white)', borderRadius: '50%', width: 18, height: 18, fontSize: '0.65rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ position: 'absolute', top: -4, right: -4, background: '#10b981', color: 'white', borderRadius: '50%', width: 18, height: 18, fontSize: '0.65rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {cantidadCarrito > 99 ? '99+' : cantidadCarrito}
                 </span>
               )}
@@ -435,28 +470,25 @@ const TiendaCatalogoView = ({
         </div>
       </header>
 
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '1.5rem 1rem' }}>
-
-        {/* ── Buscador ── */}
-        <div style={{ position: 'relative', marginBottom: '1.5rem' }}>
-          <Search style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', width: 18, height: 18 }} />
-          <input type="text" placeholder="Buscar productos..." value={searchInput} onChange={e => onSearchChange(e.target.value)}
-            style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.75rem', borderRadius: 12, border: '1.5px solid #e5e7eb', fontSize: '0.95rem', outline: 'none', background: 'white', boxSizing: 'border-box', transition: 'border-color .15s' }}
-            onFocus={e => e.target.style.borderColor = PRIMARY}
-            onBlur={e => e.target.style.borderColor = '#e5e7eb'}
-          />
-          {searchInput && (
-            <button onClick={() => onSearchChange('')}
-              style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}>
-              <X size={16} />
-            </button>
-          )}
-        </div>
-
-        {/* ── Categorías ── */}
-        {categorias.length > 0 && (
-          <section style={{ marginBottom: '2rem' }}>
-            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, scrollbarWidth: 'none' }}>
+      {/* ── Buscador + Categorías (sticky) ── */}
+      <div style={{ position: 'sticky', top: 60, zIndex: 20, background: 'rgba(255,255,255,0.75)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0.75rem 1rem' }}>
+          <div style={{ position: 'relative', marginBottom: categorias.length > 0 ? '0.6rem' : 0 }}>
+            <Search style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', width: 18, height: 18 }} />
+            <input type="text" placeholder="Buscar productos..." value={searchInput} onChange={e => onSearchChange(e.target.value)}
+              style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.75rem', borderRadius: 12, border: '1.5px solid #e5e7eb', fontSize: '0.95rem', outline: 'none', background: 'white', boxSizing: 'border-box', transition: 'border-color .15s' }}
+              onFocus={e => e.target.style.borderColor = PRIMARY}
+              onBlur={e => e.target.style.borderColor = '#e5e7eb'}
+            />
+            {searchInput && (
+              <button onClick={() => onSearchChange('')}
+                style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}>
+                <X size={16} />
+              </button>
+            )}
+          </div>
+          {categorias.length > 0 && (
+            <div className="tienda-cats-scroll" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
               <button onClick={() => onCategoriaClick(null)}
                 style={{ flexShrink: 0, padding: '0.5rem 1rem', borderRadius: 999, border: `1.5px solid ${!categoriaActiva ? PRIMARY : '#e5e7eb'}`, background: !categoriaActiva ? PRIMARY : 'white', color: !categoriaActiva ? 'var(--primary-text,white)' : '#374151', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', transition: 'all .15s' }}>
                 Todas
@@ -468,7 +500,22 @@ const TiendaCatalogoView = ({
                 </button>
               ))}
             </div>
-          </section>
+          )}
+        </div>
+      </div>
+
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '1.5rem 1rem' }}>
+
+        {/* ── Sucursal cerrada ── */}
+        {sucursales.find(s => s.id === sucursalId)?.tienda_activa === false && (
+          <div style={{ background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: 14, padding: '1.25rem 1.5rem', marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <p style={{ fontWeight: 700, color: '#dc2626', margin: 0, fontSize: '1rem' }}>Esta sucursal está cerrada</p>
+            {sucursales.some(s => s.id !== sucursalId && s.tienda_activa !== false) && (
+              <p style={{ color: '#6b7280', margin: 0, fontSize: '0.85rem' }}>
+                Probá seleccionando otra sucursal disponible.
+              </p>
+            )}
+          </div>
         )}
 
         {/* ── Más vendidos ── */}
@@ -477,27 +524,53 @@ const TiendaCatalogoView = ({
             <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#111827', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Star size={18} style={{ color: '#f59e0b', fill: '#f59e0b' }} /> Más vendidos
             </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '1rem' }}>
-              {masVendidos.map(p => (
-                <ProductCard key={p.id} producto={p} currencySymbol={currencySymbol}
-                  cantidadEnCarrito={getCantidadEnCarrito(p.id)}
-                  onAgregar={agregarAlCarrito}
-                  onAgregarPeso={handleAgregarPeso}
-                  onActualizar={actualizarCantidad}
-                  companyLogo={config?.company_logo}
-                />
-              ))}
+            <div style={{ position: 'relative' }}>
+              {!isMobile && (
+                <button onClick={() => scrollMasVendidos(-1)}
+                  style={{ position: 'absolute', left: -16, top: '50%', transform: 'translateY(-50%)', zIndex: 5, width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'white', boxShadow: '0 2px 10px rgba(0,0,0,0.15)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#374151' }}>
+                  <ChevronLeft size={18} />
+                </button>
+              )}
+              <div ref={masVendidosRef} style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: 8, scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                {masVendidos.map(p => (
+                  <div key={p.id} style={{ flexShrink: 0, width: 160, display: 'flex', flexDirection: 'column' }}>
+                    <ProductCard producto={p} currencySymbol={currencySymbol}
+                      cantidadEnCarrito={getCantidadEnCarrito(p.id)}
+                      onAgregar={agregarAlCarrito}
+                      onAgregarPeso={handleAgregarPeso}
+                      onActualizar={actualizarCantidad}
+                      companyLogo={config?.company_logo}
+                      sucursalCerrada={sucursalCerrada}
+                      style={{ flex: 1 }}
+                    />
+                  </div>
+                ))}
+              </div>
+              {!isMobile && (
+                <button onClick={() => scrollMasVendidos(1)}
+                  style={{ position: 'absolute', right: -16, top: '50%', transform: 'translateY(-50%)', zIndex: 5, width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'white', boxShadow: '0 2px 10px rgba(0,0,0,0.15)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#374151' }}>
+                  <ChevronRight size={18} />
+                </button>
+              )}
             </div>
           </section>
         )}
 
         {/* ── Grilla de productos ── */}
         <section>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-            <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#111827', margin: 0 }}>
-              {searchInput ? `Resultados para "${searchInput}"` : categoriaActiva ? categorias.find(c => c.id === categoriaActiva)?.nombre || 'Productos' : 'Todos los productos'}
-            </h2>
-            {!loading && <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>{total} producto{total !== 1 ? 's' : ''}</span>}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', gap: 8 }}>
+            <div className="tienda-section-title-group" style={{ minWidth: 0 }}>
+              <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#111827', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+                {searchInput ? `Resultados para "${searchInput}"` : categoriaActiva ? categorias.find(c => c.id === categoriaActiva)?.nombre || 'Productos' : 'Todos los productos'}
+              </h2>
+              {!loading && <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>{total} producto{total !== 1 ? 's' : ''}</span>}
+            </div>
+            <select value={sort} onChange={e => onSortChange(e.target.value)}
+              style={{ fontSize: '0.8rem', color: '#374151', border: '1.5px solid #e5e7eb', borderRadius: 8, padding: '0.3rem 0.6rem', background: 'white', cursor: 'pointer', outline: 'none', flexShrink: 0 }}>
+              <option value="nombre_asc">Ordenar por</option>
+              <option value="precio_asc">Menor precio</option>
+              <option value="precio_desc">Mayor precio</option>
+            </select>
           </div>
 
           {loading ? (
@@ -521,16 +594,72 @@ const TiendaCatalogoView = ({
                     onAgregarPeso={handleAgregarPeso}
                     onActualizar={actualizarCantidad}
                     companyLogo={config?.company_logo}
+                    sucursalCerrada={sucursalCerrada}
                   />
                 ))}
               </div>
-              <div style={{ background: 'white', borderRadius: 12, overflow: 'hidden' }}>
+              <div id="tienda-paginacion" style={{ background: 'white', borderRadius: 12, overflow: 'hidden' }}>
                 <PaginationView currentPage={page} totalPages={totalPages} totalItems={total} itemsPerPage={perPage} onPageChange={onPageChange} itemName="productos" />
               </div>
             </>
           )}
         </section>
       </div>
+
+      {/* ── Footer ── */}
+      <footer ref={footerRef} style={{ marginTop: isMobile ? '0.5rem' : '2rem', padding: '2rem 1rem', paddingBottom: isMobile && cantidadCarrito > 0 && !carritoOpen ? '5rem' : '2rem', background: PRIMARY }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '2rem', alignItems: isMobile ? 'center' : 'flex-start' }}>
+
+            {/* Columna izquierda: info empresa */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'center' : 'flex-start', gap: '0.6rem', textAlign: isMobile ? 'center' : 'left' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {config?.company_logo
+                  ? <img src={config.company_logo} alt={storeName} style={{ height: 36, objectFit: 'contain' }} />
+                  : <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <span style={{ color: 'white', fontWeight: 700, fontSize: '1rem' }}>{storeName.charAt(0).toUpperCase()}</span>
+                    </div>
+                }
+                <span style={{ fontWeight: 700, fontSize: '1.05rem', color: 'white' }}>{storeName}</span>
+              </div>
+              {config?.tienda_descripcion && (
+                <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.8)', margin: 0, lineHeight: 1.5 }}>{config.tienda_descripcion}</p>
+              )}
+              {config?.tienda_horario && (
+                <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.7)', margin: 0 }}>🕐 {config.tienda_horario}</p>
+              )}
+              <div style={{ marginTop: '0.25rem', background: 'white', borderRadius: 999, padding: '0.3rem 0.85rem', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: '0.7rem', color: '#9ca3af', letterSpacing: '0.04em' }}>Powered by</span>
+                <a href="/" target="_blank" rel="noreferrer" style={{ color: '#10b981', fontWeight: 700, fontSize: '0.7rem', textDecoration: 'none', letterSpacing: '0.04em' }}>PULS</a>
+              </div>
+            </div>
+
+            {/* Columna derecha: sucursales */}
+            {sucursales?.length > 0 && sucursales.some(s => s.direccion || s.telefono) && (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'center' : 'flex-start', gap: '0.75rem' }}>
+                <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Sucursales</span>
+                {sucursales.filter(s => s.direccion || s.telefono).map(s => (
+                  <div key={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'white' }}>{s.nombre}</span>
+                    {s.direccion && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <MapPin size={11} style={{ color: '#ef4444', flexShrink: 0 }} />
+                        <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.75)' }}>{s.direccion}</span>
+                      </div>
+                    )}
+                    {s.telefono && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.75)' }}>📞 {s.telefono}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+          </div>
+        </div>
+      </footer>
 
       <DrawerCarrito
         carrito={carrito} carritoOpen={carritoOpen} setCarritoOpen={setCarritoOpen}
@@ -541,7 +670,10 @@ const TiendaCatalogoView = ({
 
       {cantidadCarrito > 0 && !carritoOpen && (
         <button onClick={() => setCarritoOpen(true)}
-          style={{ position: 'fixed', bottom: '1.5rem', right: '1.5rem', background: PRIMARY, color: 'var(--primary-text,white)', border: 'none', borderRadius: 999, padding: '0.85rem 1.25rem', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer', boxShadow: '0 4px 20px rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', gap: 8, zIndex: 35 }}>
+          style={isMobile
+            ? { position: 'fixed', bottom: 0, left: 0, right: 0, background: PRIMARY, color: 'var(--primary-text,white)', border: 'none', borderRadius: 0, padding: '1rem 1.5rem', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', boxShadow: '0 -2px 12px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, zIndex: 35 }
+            : { position: 'fixed', bottom: cartBottom, right: '1.5rem', background: PRIMARY, color: 'var(--primary-text,white)', border: 'none', borderRadius: 999, padding: '0.85rem 1.25rem', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer', boxShadow: '0 4px 20px rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', gap: 8, zIndex: 35, transition: 'bottom 0.2s ease' }
+          }>
           <ShoppingCart size={18} /> {cantidadCarrito} · {currencySymbol}{totalCarrito.toFixed(2)}
         </button>
       )}

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Polyline, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -21,15 +21,24 @@ const redIcon  = makeIcon('#ef4444');
 
 function FitBounds({ points }) {
   const map = useMap();
+  const fitted = useRef(false);
   useEffect(() => {
-    if (points.length >= 2) {
-      map.fitBounds(L.latLngBounds(points), { padding: [16, 16] });
-    }
+    if (fitted.current) return;
+    fitted.current = true;
+    const id = setTimeout(() => {
+      try {
+        map.invalidateSize();
+        if (points.length >= 2) {
+          map.fitBounds(L.latLngBounds(points), { padding: [16, 16], animate: false });
+        }
+      } catch (_) {}
+    }, 0);
+    return () => clearTimeout(id);
   }, [map, points]);
   return null;
 }
 
-export default function MapaPedido({ clienteLat, clienteLng, sucursalLat, sucursalLng }) {
+export default function MapaPedido({ clienteLat, clienteLng, sucursalLat, sucursalLng, radioKm }) {
   const [ruta, setRuta] = useState(null);
 
   const tieneSucursal = sucursalLat != null && sucursalLng != null;
@@ -47,15 +56,19 @@ export default function MapaPedido({ clienteLat, clienteLng, sucursalLat, sucurs
   }, [clienteLat, clienteLng, sucursalLat, sucursalLng, tieneSucursal]);
 
   const center = [clienteLat, clienteLng];
-  const boundsPoints = [[clienteLat, clienteLng]];
-  if (tieneSucursal) boundsPoints.push([sucursalLat, sucursalLng]);
+  const boundsPoints = useMemo(() => {
+    const pts = [[clienteLat, clienteLng]];
+    if (tieneSucursal) pts.push([sucursalLat, sucursalLng]);
+    return pts;
+  }, [clienteLat, clienteLng, sucursalLat, sucursalLng, tieneSucursal]);
 
   return (
+    <div style={{ borderRadius: 10, overflow: 'hidden', width: '100%', height: 220, minWidth: 0 }}>
     <MapContainer
       center={center}
       zoom={14}
-      style={{ width: '100%', height: 220, borderRadius: 10, minWidth: 0 }}
-      zoomControl={false}
+      style={{ width: '100%', height: '100%' }}
+      zoomControl={true}
       scrollWheelZoom={false}
     >
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="" />
@@ -66,8 +79,13 @@ export default function MapaPedido({ clienteLat, clienteLng, sucursalLat, sucurs
         />
       )}
       {tieneSucursal && <Marker position={[sucursalLat, sucursalLng]} icon={blueIcon} />}
+      {tieneSucursal && radioKm > 0 && (
+        <Circle center={[sucursalLat, sucursalLng]} radius={radioKm * 1000}
+          pathOptions={{ color: '#10b981', fillColor: '#10b981', fillOpacity: 0.08, weight: 2, dashArray: '6 4' }} />
+      )}
       <Marker position={[clienteLat, clienteLng]} icon={redIcon} />
       {boundsPoints.length >= 2 && <FitBounds points={boundsPoints} />}
     </MapContainer>
+    </div>
   );
 }

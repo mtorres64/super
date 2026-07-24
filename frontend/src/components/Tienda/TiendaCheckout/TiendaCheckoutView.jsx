@@ -1,5 +1,5 @@
-import React, { Suspense, lazy } from 'react';
-import { ArrowLeft, MapPin, Store, FileText, CheckCircle, ShoppingCart, Building2, Banknote, CreditCard, ArrowRightLeft } from 'lucide-react';
+import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, MapPin, Store, FileText, CheckCircle, ShoppingCart, Building2, Banknote, CreditCard, ArrowRightLeft, ChevronDown } from 'lucide-react';
 const MapaPicker = lazy(() => import('./MapaPicker'));
 
 const PRIMARY = 'var(--primary, #10b981)';
@@ -18,7 +18,36 @@ const MEDIOS_PAGO = [
   { value: 'tarjeta',       label: 'Tarjeta',                 Icon: CreditCard,       desc: 'Al recibir o retirar el pedido' },
 ];
 
-const isMobile = () => window.innerWidth < 640;
+
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatDistancia(km) {
+  return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
+}
+
+function AnimatedPrice({ value, prefix = '', style }) {
+  const [animKey, setAnimKey] = useState(0);
+  const prev = useRef(value);
+  useEffect(() => {
+    if (prev.current !== value) {
+      prev.current = value;
+      setAnimKey(k => k + 1);
+    }
+  }, [value]);
+  return (
+    <span style={style}>
+      <span key={animKey} className={animKey > 0 ? 'price-changed' : ''}>
+        {prefix}{typeof value === 'number' ? value.toFixed(2) : value}
+      </span>
+    </span>
+  );
+}
 
 const TiendaCheckoutView = ({
   config, empresa_id, tiendaUser, isEcommerce,
@@ -28,7 +57,7 @@ const TiendaCheckoutView = ({
   coordenadas, setCoordenadas,
   medioPago, setMedioPago,
   observaciones, setObservaciones, loading,
-  costoEnvio, totalCarrito, totalFinal, currencySymbol,
+  costoEnvio, costoExtraDistancia = 0, totalCarrito, totalFinal, currencySymbol,
   pedidoConfirmado, onConfirmar, onVolverCatalogo,
 }) => {
   const setDir = (field, value) => setDirEcommerce(prev => ({ ...prev, [field]: value }));
@@ -39,6 +68,14 @@ const TiendaCheckoutView = ({
   };
   const sucursalActual = sucursales.find(s => s.id === sucursalId);
   const storeName = config?.company_name || config?.empresa_nombre || 'Tienda';
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
+  const [sucursalExpanded, setSucursalExpanded] = useState(false);
+  const [entregaExpanded, setEntregaExpanded] = useState(false);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
 
   // ── Confirmación exitosa ─────────────────────────────────────────────────────
   if (pedidoConfirmado) {
@@ -82,51 +119,106 @@ const TiendaCheckoutView = ({
         </div>
       </header>
 
-      <div style={{ maxWidth: 800, margin: '0 auto', padding: '1.5rem 1rem', display: 'grid', gridTemplateColumns: isMobile() ? '1fr' : 'minmax(0,1fr) minmax(0,340px)', gap: '1.5rem' }}>
+      <div style={{ maxWidth: 800, margin: '0 auto', padding: '1.5rem 1rem', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0,1fr) minmax(0,340px)', gap: '1.5rem' }}>
 
         {/* Columna izquierda: formulario */}
         <form id="checkout-form" onSubmit={onConfirmar} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
           {/* Sucursal (solo si hay más de una) */}
           {sucursales.length > 1 && (
-            <div style={{ background: 'white', borderRadius: 16, padding: '1.25rem', boxShadow: '0 1px 8px rgba(0,0,0,0.06)' }}>
-              <h3 style={{ fontWeight: 700, color: '#111827', fontSize: '0.95rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Building2 size={16} /> Sucursal
-              </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {sucursales.map(s => (
-                  <button key={s.id} type="button" onClick={() => onCambiarSucursal(s.id)} disabled={cambiandoSucursal}
-                    style={{ padding: '0.75rem 1rem', borderRadius: 12, border: `2px solid ${s.id === sucursalId ? PRIMARY : '#e5e7eb'}`, background: s.id === sucursalId ? PRIMARY_BG : 'white', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, transition: 'all .15s', opacity: cambiandoSucursal ? 0.6 : 1 }}>
-                    <span style={{ fontWeight: 600, fontSize: '0.875rem', color: s.id === sucursalId ? PRIMARY : '#111827' }}>{s.nombre}</span>
-                    {s.direccion && <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{s.direccion}</span>}
-                  </button>
-                ))}
-              </div>
-              {cambiandoSucursal && <p style={{ fontSize: '0.78rem', color: '#9ca3af', marginTop: 8 }}>Recalculando precios del carrito...</p>}
+            <div style={{ background: 'white', borderRadius: 16, boxShadow: '0 1px 8px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+              {/* Header colapsable */}
+              <button type="button" onClick={() => setSucursalExpanded(p => !p)}
+                style={{ width: '100%', padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+                <Building2 size={16} style={{ color: '#6b7280', flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: '0.72rem', color: '#9ca3af', margin: '0 0 2px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Sucursal</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontWeight: 700, fontSize: '0.9rem', color: PRIMARY }}>{sucursalActual?.nombre}</span>
+                    {coordenadas && sucursalActual?.lat && sucursalActual?.lng && (
+                      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: PRIMARY }}>
+                        · {formatDistancia(haversineKm(coordenadas.lat, coordenadas.lng, sucursalActual.lat, sucursalActual.lng))}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <ChevronDown size={18} style={{ color: '#9ca3af', flexShrink: 0, transition: 'transform .2s', transform: sucursalExpanded ? 'rotate(180deg)' : 'none' }} />
+              </button>
+              {/* Lista desplegable */}
+              {sucursalExpanded && (
+                <div style={{ borderTop: '1px solid #f3f4f6', padding: '0.75rem 1.25rem 1.25rem', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {sucursales.map(s => {
+                    const cerrada = s.tienda_activa === false;
+                    return (
+                      <button key={s.id} type="button" disabled={cambiandoSucursal || cerrada}
+                        onClick={() => { if (!cerrada) { onCambiarSucursal(s.id); setSucursalExpanded(false); } }}
+                        style={{ padding: '0.75rem 1rem', borderRadius: 12, border: `2px solid ${s.id === sucursalId ? PRIMARY : '#e5e7eb'}`, background: s.id === sucursalId ? PRIMARY_BG : cerrada ? '#f9fafb' : 'white', cursor: cerrada ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8, transition: 'all .15s', opacity: cambiandoSucursal ? 0.6 : cerrada ? 0.55 : 1, width: '100%', textAlign: 'left' }}>
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontWeight: 600, fontSize: '0.875rem', color: s.id === sucursalId ? PRIMARY : cerrada ? '#9ca3af' : '#111827' }}>{s.nombre}</span>
+                            {cerrada && <span style={{ fontSize: '0.65rem', background: '#fee2e2', color: '#ef4444', borderRadius: 99, padding: '1px 6px', fontWeight: 600 }}>Cerrada</span>}
+                          </div>
+                          {s.direccion && <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{s.direccion}</span>}
+                        </div>
+                        {coordenadas && s.lat && s.lng && !cerrada && (
+                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: s.id === sucursalId ? PRIMARY : '#6b7280', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                            {formatDistancia(haversineKm(coordenadas.lat, coordenadas.lng, s.lat, s.lng))}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                  {cambiandoSucursal && <p style={{ fontSize: '0.78rem', color: '#9ca3af', margin: 0 }}>Recalculando precios del carrito...</p>}
+                </div>
+              )}
             </div>
           )}
 
           {/* Tipo de entrega */}
-          <div style={{ background: 'white', borderRadius: 16, padding: '1.25rem', boxShadow: '0 1px 8px rgba(0,0,0,0.06)' }}>
-            <h3 style={{ fontWeight: 700, color: '#111827', fontSize: '0.95rem', marginBottom: '1rem' }}>Tipo de entrega</h3>
-            <div style={{ display: 'flex', gap: 10 }}>
-              {config?.tienda_envio_activo !== false && (
-                <button type="button" onClick={() => setTipoEntrega('domicilio')}
-                  style={{ flex: 1, padding: '0.85rem', borderRadius: 12, border: `2px solid ${tipoEntrega === 'domicilio' ? PRIMARY : '#e5e7eb'}`, background: tipoEntrega === 'domicilio' ? PRIMARY_BG : 'white', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, transition: 'all .15s' }}>
-                  <MapPin size={20} style={{ color: PRIMARY }} />
-                  <span style={{ fontWeight: 600, fontSize: '0.85rem', color: '#111827' }}>Envío a domicilio</span>
-                  {costoEnvio > 0 && tipoEntrega !== 'domicilio' && <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>+ {currencySymbol}{costoEnvio.toFixed(0)}</span>}
-                </button>
-              )}
-              {config?.tienda_retiro_activo !== false && (
-                <button type="button" onClick={() => setTipoEntrega('retiro')}
-                  style={{ flex: 1, padding: '0.85rem', borderRadius: 12, border: `2px solid ${tipoEntrega === 'retiro' ? PRIMARY : '#e5e7eb'}`, background: tipoEntrega === 'retiro' ? PRIMARY_BG : 'white', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, transition: 'all .15s' }}>
-                  <Store size={20} style={{ color: PRIMARY }} />
-                  <span style={{ fontWeight: 600, fontSize: '0.85rem', color: '#111827' }}>Retiro en local</span>
-                  <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Sin costo</span>
-                </button>
-              )}
-            </div>
+          <div style={{ background: 'white', borderRadius: 16, boxShadow: '0 1px 8px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+            {/* Header colapsable */}
+            <button type="button" onClick={() => setEntregaExpanded(p => !p)}
+              style={{ width: '100%', padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+              {tipoEntrega === 'domicilio' ? <MapPin size={16} style={{ color: '#6b7280', flexShrink: 0 }} /> : <Store size={16} style={{ color: '#6b7280', flexShrink: 0 }} />}
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: '0.72rem', color: '#9ca3af', margin: '0 0 2px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Entrega</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontWeight: 700, fontSize: '0.9rem', color: PRIMARY }}>
+                    {tipoEntrega === 'domicilio' ? 'Envío a domicilio' : 'Retiro en local'}
+                  </span>
+                  <span style={{ fontSize: '0.78rem', color: PRIMARY, fontWeight: 600 }}>
+                    · {tipoEntrega === 'domicilio' ? (costoEnvio > 0 ? `${currencySymbol}${costoEnvio.toFixed(0)}` : 'Gratis') : 'Sin costo'}
+                  </span>
+                </div>
+              </div>
+              <ChevronDown size={18} style={{ color: '#9ca3af', flexShrink: 0, transition: 'transform .2s', transform: entregaExpanded ? 'rotate(180deg)' : 'none' }} />
+            </button>
+            {/* Opciones desplegables */}
+            {entregaExpanded && (
+              <div style={{ borderTop: '1px solid #f3f4f6', padding: '0.75rem 1.25rem 1.25rem', display: 'flex', gap: 10 }}>
+                {config?.tienda_envio_activo !== false && sucursalActual?.envio_activo !== false && (
+                  <button type="button" onClick={() => { setTipoEntrega('domicilio'); setEntregaExpanded(false); }}
+                    style={{ flex: 1, padding: '0.85rem', borderRadius: 12, border: `2px solid ${tipoEntrega === 'domicilio' ? PRIMARY : '#e5e7eb'}`, background: tipoEntrega === 'domicilio' ? PRIMARY_BG : 'white', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, transition: 'all .15s' }}>
+                    <MapPin size={20} style={{ color: PRIMARY }} />
+                    <span style={{ fontWeight: 600, fontSize: '0.85rem', color: '#111827' }}>Envío a domicilio</span>
+                    {costoEnvio > 0 && <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>+ {currencySymbol}{costoEnvio.toFixed(0)}</span>}
+                  </button>
+                )}
+                {config?.tienda_retiro_activo !== false && (
+                  <button type="button" onClick={() => { setTipoEntrega('retiro'); setEntregaExpanded(false); }}
+                    style={{ flex: 1, padding: '0.85rem', borderRadius: 12, border: `2px solid ${tipoEntrega === 'retiro' ? PRIMARY : '#e5e7eb'}`, background: tipoEntrega === 'retiro' ? PRIMARY_BG : 'white', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, transition: 'all .15s' }}>
+                    <Store size={20} style={{ color: PRIMARY }} />
+                    <span style={{ fontWeight: 600, fontSize: '0.85rem', color: '#111827' }}>Retiro en local</span>
+                    <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Sin costo</span>
+                  </button>
+                )}
+              </div>
+            )}
+            {config?.tienda_envio_activo !== false && sucursalActual?.envio_activo === false && (
+              <p style={{ margin: '0 1.25rem 1rem', fontSize: '0.8rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: 6 }}>
+                ℹ️ Por el momento esta sucursal no realiza envíos a domicilio.
+              </p>
+            )}
           </div>
 
           {/* Dirección (solo si es domicilio) */}
@@ -140,6 +232,9 @@ const TiendaCheckoutView = ({
                   coordenadas={coordenadas}
                   onCoordenadas={setCoordenadas}
                   onDireccion={setDireccion}
+                  direccionInicial={direccion}
+                  sucursal={sucursalActual}
+                  radioKm={sucursalActual?.radio_envio_km}
                 />
               </Suspense>
               <div className="form-group" style={{ margin: 0 }}>
@@ -244,7 +339,7 @@ const TiendaCheckoutView = ({
 
         {/* Columna derecha: resumen */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div style={{ background: 'white', borderRadius: 16, padding: '1.25rem', boxShadow: '0 1px 8px rgba(0,0,0,0.06)', position: isMobile() ? 'static' : 'sticky', top: 70 }}>
+          <div style={{ background: 'white', borderRadius: 16, padding: '1.25rem', boxShadow: '0 1px 8px rgba(0,0,0,0.06)', position: isMobile ? 'static' : 'sticky', top: 70 }}>
             <h3 style={{ fontWeight: 700, color: '#111827', fontSize: '0.95rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
               <ShoppingCart size={16} /> Resumen del pedido
             </h3>
@@ -252,19 +347,25 @@ const TiendaCheckoutView = ({
               {carrito.map(item => (
                 <div key={item.producto_id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                   <span style={{ color: '#374151', flex: 1, paddingRight: 8 }}>{item.nombre} <span style={{ color: '#9ca3af' }}>×{item.cantidad}</span></span>
-                  <span style={{ fontWeight: 600, color: '#111827', whiteSpace: 'nowrap' }}>{currencySymbol}{(item.precio_unitario * item.cantidad).toFixed(2)}</span>
+                  <AnimatedPrice value={item.precio_unitario * item.cantidad} prefix={currencySymbol} style={{ fontWeight: 600, color: '#111827', whiteSpace: 'nowrap' }} />
                 </div>
               ))}
             </div>
             <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#6b7280' }}>
                 <span>Subtotal</span>
-                <span>{currencySymbol}{totalCarrito.toFixed(2)}</span>
+                <AnimatedPrice value={totalCarrito} prefix={currencySymbol} />
               </div>
               {costoEnvio > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#6b7280' }}>
                   <span>Envío</span>
-                  <span>{currencySymbol}{costoEnvio.toFixed(2)}</span>
+                  <AnimatedPrice value={costoExtraDistancia > 0 ? costoEnvio - costoExtraDistancia : costoEnvio} prefix={currencySymbol} />
+                </div>
+              )}
+              {costoExtraDistancia > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#d97706', background: '#fffbeb', borderRadius: 6, padding: '4px 8px' }}>
+                  <span>Recargo por distancia</span>
+                  <span>+ {currencySymbol}{costoExtraDistancia.toFixed(0)}</span>
                 </div>
               )}
               {costoEnvio === 0 && tipoEntrega === 'domicilio' && (
@@ -275,7 +376,7 @@ const TiendaCheckoutView = ({
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1rem', color: '#111827', paddingTop: 4 }}>
                 <span>Total</span>
-                <span>{currencySymbol}{totalFinal.toFixed(2)}</span>
+                <AnimatedPrice value={totalFinal} prefix={currencySymbol} style={{ fontWeight: 700, fontSize: '1rem' }} />
               </div>
             </div>
 
@@ -313,11 +414,30 @@ const TiendaCheckoutView = ({
               </div>
             )}
 
-            <button type="submit" form="checkout-form" className="btn btn-primary btn-lg w-full"
-              disabled={loading || carrito.length === 0}
-              style={{ borderRadius: 12, marginTop: '1rem' }}>
-              {loading ? <><div className="spinner" />Procesando...</> : `Confirmar pedido · ${currencySymbol}${calcTotal(medioPago).toFixed(2)}`}
-            </button>
+            {(() => {
+              const montoMinimo = config?.tienda_monto_minimo || 0;
+              const bajoDemanda = montoMinimo > 0 && totalCarrito < montoMinimo;
+              return (
+                <>
+                  {bajoDemanda && (
+                    <div style={{ textAlign: 'center', marginTop: '0.75rem' }}>
+                      <p style={{ fontSize: '0.8rem', color: '#ef4444', margin: '0 0 6px' }}>
+                        Mínimo de pedido: {currencySymbol}{montoMinimo.toFixed(0)} (te faltan {currencySymbol}{(montoMinimo - totalCarrito).toFixed(0)})
+                      </p>
+                      <button type="button" onClick={onVolverCatalogo}
+                        style={{ fontSize: '0.8rem', color: 'var(--primary,#10b981)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline', padding: 0 }}>
+                        Seguir comprando
+                      </button>
+                    </div>
+                  )}
+                  <button type="submit" form="checkout-form" className="btn btn-primary btn-lg w-full"
+                    disabled={loading || carrito.length === 0 || bajoDemanda}
+                    style={{ borderRadius: 12, marginTop: '0.5rem', opacity: bajoDemanda ? 0.5 : 1, cursor: bajoDemanda ? 'not-allowed' : 'pointer', background: '#10b981', borderColor: '#10b981' }}>
+                    {loading ? <><div className="spinner" />Procesando...</> : <>Confirmar pedido · <AnimatedPrice value={calcTotal(medioPago)} prefix={currencySymbol} /></>}
+                  </button>
+                </>
+              );
+            })()}
           </div>
         </div>
 
