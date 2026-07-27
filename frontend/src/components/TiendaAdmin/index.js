@@ -1114,6 +1114,8 @@ const TabConfiguracion = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sucursales, setSucursales] = useState([]);
+  const isInitializedRef = useRef(false);
+  const autoSaveTimerRef = useRef(null);
 
   const [sucursalesTiendaActiva, setSucursalesTiendaActiva] = useState({});
   const [tiendaModo, setTiendaModo] = useState('pedidos');
@@ -1227,7 +1229,7 @@ const TabConfiguracion = () => {
         setSucursalesTramoKm(tramos);
       })
       .catch(() => toast.error('Error al cargar configuración'))
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); isInitializedRef.current = true; });
   }, []);
 
   const handleToggleEnvio = async (branchId) => {
@@ -1278,12 +1280,8 @@ const TabConfiguracion = () => {
     }
   };
 
-  const handleSave = async (e) => {
-    e.preventDefault();
-    if (tiendaModo === 'ecommerce' && !ecommerceSucursalId) {
-      toast.error('Seleccioná una sucursal para la tienda online');
-      return;
-    }
+  const handleSave = async () => {
+    if (tiendaModo === 'ecommerce' && !ecommerceSucursalId) return;
     setSaving(true);
     try {
       await axios.put(`${API}/config`, {
@@ -1297,16 +1295,22 @@ const TabConfiguracion = () => {
         tienda_monto_minimo: parseFloat(montoMinimo) || 0,
         tienda_alias: alias,
       });
-      toast.success('Configuración guardada');
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al guardar');
     } finally { setSaving(false); }
   };
 
+  useEffect(() => {
+    if (!isInitializedRef.current) return;
+    clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(handleSave, 800);
+    return () => clearTimeout(autoSaveTimerRef.current);
+  }, [tiendaModo, ecommerceSucursalId, descripcion, horario, envioActivo, costoEnvio, retiroActivo, montoMinimo, alias]); // eslint-disable-line
+
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><div className="animate-spin rounded-full h-7 w-7 border-2 border-gray-200 border-t-green-600" /></div>;
 
   return (
-    <form onSubmit={handleSave} style={{ maxWidth: 560, display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+    <div style={{ maxWidth: 560, display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
       {/* Ubicación y estado de sucursales */}
       {sucursales.length > 0 && (
@@ -1589,10 +1593,12 @@ const TabConfiguracion = () => {
         );
       })()}
 
-      <button type="submit" className="btn btn-primary" disabled={saving}>
-        {saving ? <><div className="spinner" />Guardando...</> : 'Guardar configuración'}
-      </button>
-    </form>
+      {saving && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', color: '#6b7280' }}>
+          <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Guardando...
+        </div>
+      )}
+    </div>
   );
 };
 

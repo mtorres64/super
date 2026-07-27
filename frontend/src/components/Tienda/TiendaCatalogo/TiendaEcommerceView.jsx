@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, ShoppingCart, X, Plus, Minus, User, ChevronRight, Package, LogOut, ChevronDown, Truck, Store, Scale } from 'lucide-react';
+import { Search, ShoppingCart, X, Plus, Minus, User, ChevronRight, ChevronLeft, Package, LogOut, ChevronDown, Truck, Store, Scale, MapPin, Clock } from 'lucide-react';
 import PaginationView from '../../Pagination/PaginationView';
 
 const PRIMARY = 'var(--primary, #10b981)';
@@ -79,7 +79,7 @@ const ModalKg = ({ producto, currencySymbol, onClose, onConfirm }) => {
 
 // ── Tarjeta de producto ───────────────────────────────────────────────────────
 
-const ProductCard = ({ producto, onAgregar, onAgregarPeso, cantidadEnCarrito, onActualizar, currencySymbol, companyLogo }) => {
+const ProductCard = ({ producto, onAgregar, onAgregarPeso, cantidadEnCarrito, onActualizar, currencySymbol, companyLogo, onVerDetalle }) => {
   const esPeso = producto.tipo === 'por_peso';
 
   return (
@@ -91,8 +91,8 @@ const ProductCard = ({ producto, onAgregar, onAgregarPeso, cantidadEnCarrito, on
       onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 6px 24px rgba(0,0,0,0.10)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
       onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'none'; }}
     >
-      {/* Imagen */}
-      <div style={{ aspectRatio: '1 / 1', width: '100%', background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative', overflow: 'hidden' }}>
+      {/* Imagen — click abre detalle */}
+      <div onClick={() => onVerDetalle?.(producto)} style={{ aspectRatio: '1 / 1', width: '100%', background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative', overflow: 'hidden', cursor: 'pointer' }}>
         {producto.imagen
           ? <img src={driveToProxyUrl(producto.imagen)} alt={producto.nombre} style={{ height: '100%', width: '100%', objectFit: 'cover' }} />
           : companyLogo
@@ -114,7 +114,7 @@ const ProductCard = ({ producto, onAgregar, onAgregarPeso, cantidadEnCarrito, on
 
       {/* Info */}
       <div style={{ padding: '0.9rem', flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <p style={{ fontSize: '0.875rem', color: '#374151', lineHeight: 1.4, flex: 1, margin: 0 }}>{producto.nombre}</p>
+        <p onClick={() => onVerDetalle?.(producto)} style={{ fontSize: '0.875rem', color: '#374151', lineHeight: 1.4, flex: 1, margin: 0, cursor: 'pointer' }}>{producto.nombre}</p>
         <div>
           <p style={{ fontSize: '1.3rem', fontWeight: 700, color: '#111827', margin: 0 }}>
             {currencySymbol}{producto.precio?.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -169,6 +169,185 @@ const ProductCard = ({ producto, onAgregar, onAgregarPeso, cantidadEnCarrito, on
             </button>
           )
         )}
+      </div>
+    </div>
+  );
+};
+
+// ── Pantalla detalle producto ─────────────────────────────────────────────────
+
+const ModalProducto = ({ producto, config, currencySymbol, companyLogo, cantidadEnCarrito, onAgregar, onAgregarPeso, onActualizar, sucursalCerrada, onClose }) => {
+  const esPeso = producto.tipo === 'por_peso';
+  const isMobile = window.innerWidth < 768;
+
+  const paymentAdj = config?.payment_method_adjustments || {};
+  const metodosPago = [
+    { key: 'efectivo', label: 'Efectivo', icon: '💵' },
+    { key: 'tarjeta', label: 'Tarjeta', icon: '💳' },
+    { key: 'transferencia', label: 'Transferencia', icon: '🏦' },
+  ].filter(m => paymentAdj[m.key] !== undefined);
+
+  useEffect(() => {
+    const handleKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleKey);
+    document.body.style.overflow = 'hidden';
+    return () => { document.removeEventListener('keydown', handleKey); document.body.style.overflow = ''; };
+  }, [onClose]);
+
+  const BotonesCarrito = () => (
+    esPeso ? (
+      cantidadEnCarrito > 0 ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button onClick={() => onActualizar(producto.id, 0)}
+            style={{ width: 48, height: 48, borderRadius: 12, border: '1.5px solid #fecaca', background: '#fef2f2', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <X size={18} />
+          </button>
+          <span style={{ fontWeight: 700, color: '#111827', flex: 1, textAlign: 'center', fontSize: '1rem' }}>{cantidadEnCarrito} kg en carrito</span>
+          <button onClick={() => onAgregarPeso(producto)}
+            style={{ flex: 2, height: 48, borderRadius: 12, border: 'none', background: PRIMARY, color: 'var(--primary-text,white)', cursor: 'pointer', fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <Plus size={15} /> Agregar más
+          </button>
+        </div>
+      ) : (
+        <button onClick={() => onAgregarPeso(producto)}
+          style={{ width: '100%', height: 52, borderRadius: 12, border: 'none', background: PRIMARY, color: 'var(--primary-text,white)', cursor: 'pointer', fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <Scale size={18} /> Elegir cantidad (kg)
+        </button>
+      )
+    ) : (
+      cantidadEnCarrito > 0 ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#f9fafb', borderRadius: 12, padding: '0.5rem 1rem' }}>
+          <button onClick={() => onActualizar(producto.id, cantidadEnCarrito - 1)}
+            style={{ width: 40, height: 40, borderRadius: 10, border: `2px solid ${PRIMARY}`, background: 'white', color: PRIMARY, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Minus size={16} />
+          </button>
+          <span style={{ fontWeight: 800, color: '#111827', flex: 1, textAlign: 'center', fontSize: '1.2rem' }}>{cantidadEnCarrito}</span>
+          <button onClick={() => onActualizar(producto.id, cantidadEnCarrito + 1)}
+            style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: PRIMARY, color: 'var(--primary-text,white)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Plus size={16} />
+          </button>
+        </div>
+      ) : (
+        <button onClick={() => { onAgregar(producto); }}
+          style={{ width: '100%', height: 52, borderRadius: 12, border: 'none', background: PRIMARY, color: 'var(--primary-text,white)', cursor: 'pointer', fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <ShoppingCart size={18} /> Agregar al carrito
+        </button>
+      )
+    )
+  );
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: '#f3f4f6', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+
+      {/* Barra superior */}
+      <div style={{ background: 'white', borderBottom: '1px solid #e5e7eb', padding: '0 1.25rem', height: 56, display: 'flex', alignItems: 'center', gap: 12, position: 'sticky', top: 0, zIndex: 10, flexShrink: 0 }}>
+        <button onClick={onClose} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', color: PRIMARY, fontWeight: 600, fontSize: '0.9rem', padding: '0.4rem 0.6rem', borderRadius: 8 }}>
+          <ChevronLeft size={20} /> Volver
+        </button>
+        <span style={{ fontSize: '0.85rem', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{producto.nombre}</span>
+      </div>
+
+      {/* Contenido */}
+      <div style={{ maxWidth: 1100, margin: '0 auto', width: '100%', padding: '1.5rem 1.25rem', display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '1.5rem', alignItems: 'flex-start' }}>
+
+        {/* Columna imagen */}
+        <div style={{ width: isMobile ? '100%' : '55%', flexShrink: 0 }}>
+          <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', aspectRatio: '1/1' }}>
+            {producto.imagen
+              ? <img src={driveToProxyUrl(producto.imagen)} alt={producto.nombre} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '1rem', boxSizing: 'border-box' }} />
+              : companyLogo
+                ? <img src={companyLogo} alt="logo" style={{ width: '50%', objectFit: 'contain', opacity: 0.3 }} />
+                : <Package size={80} style={{ color: PRIMARY, opacity: 0.2 }} />
+            }
+          </div>
+          {esPeso && (
+            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '0.4rem 0.85rem', width: 'fit-content' }}>
+              <Scale size={13} style={{ color: 'var(--primary,#10b981)' }} />
+              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--primary,#10b981)' }}>Producto vendido por peso (kg)</span>
+            </div>
+          )}
+        </div>
+
+        {/* Columna info */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+          {/* Nombre y precio */}
+          <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', padding: '1.5rem' }}>
+            <h1 style={{ fontSize: isMobile ? '1.1rem' : '1.35rem', fontWeight: 700, color: '#111827', margin: '0 0 1rem', lineHeight: 1.35 }}>{producto.nombre}</h1>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: '1.25rem' }}>
+              <span style={{ fontSize: isMobile ? '1.8rem' : '2.2rem', fontWeight: 800, color: '#111827' }}>
+                {currencySymbol}{producto.precio?.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+              </span>
+              {esPeso && <span style={{ fontSize: '0.9rem', color: '#9ca3af' }}>/ kg</span>}
+            </div>
+            <BotonesCarrito />
+          </div>
+
+          {/* Descripción */}
+          {producto.descripcion && (
+            <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', padding: '1.25rem' }}>
+              <p style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', margin: '0 0 0.6rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Descripción</p>
+              <p style={{ fontSize: '0.95rem', color: '#4b5563', margin: 0, lineHeight: 1.7 }}>{producto.descripcion}</p>
+            </div>
+          )}
+
+          {/* Medios de pago */}
+          {metodosPago.length > 0 && (
+            <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', padding: '1.25rem' }}>
+              <p style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', margin: '0 0 0.85rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Medios de pago</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {metodosPago.map(m => {
+                  const adj = paymentAdj[m.key] || 0;
+                  return (
+                    <div key={m.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0', borderBottom: '1px solid #f3f4f6' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ fontSize: '1.2rem' }}>{m.icon}</span>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#111827' }}>{m.label}</span>
+                      </div>
+                      {adj !== 0 ? (
+                        <span style={{ fontSize: '0.8rem', color: adj > 0 ? '#ef4444' : '#10b981', fontWeight: 700, background: adj > 0 ? '#fef2f2' : '#f0fdf4', padding: '2px 8px', borderRadius: 999 }}>
+                          {adj > 0 ? `+${adj}% recargo` : `${Math.abs(adj)}% descuento`}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 600 }}>Sin recargo</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Entrega */}
+          {(config?.tienda_envio_activo !== false || config?.tienda_retiro_activo !== false) && (
+            <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', padding: '1.25rem' }}>
+              <p style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', margin: '0 0 0.85rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Formas de entrega</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {config?.tienda_envio_activo !== false && (
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                    <Truck size={20} style={{ color: PRIMARY, flexShrink: 0, marginTop: 2 }} />
+                    <div>
+                      <p style={{ margin: 0, fontWeight: 600, color: '#111827', fontSize: '0.9rem' }}>Envío a domicilio</p>
+                      <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: config?.tienda_costo_envio > 0 ? '#6b7280' : '#10b981', fontWeight: config?.tienda_costo_envio > 0 ? 400 : 700 }}>
+                        {config?.tienda_costo_envio > 0 ? `Costo: ${currencySymbol}${config.tienda_costo_envio.toLocaleString('es-AR')}` : 'Gratis'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {config?.tienda_retiro_activo !== false && (
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                    <Store size={20} style={{ color: '#6b7280', flexShrink: 0, marginTop: 2 }} />
+                    <div>
+                      <p style={{ margin: 0, fontWeight: 600, color: '#111827', fontSize: '0.9rem' }}>Retiro en sucursal</p>
+                      <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: '#10b981', fontWeight: 700 }}>Gratis</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+        </div>
       </div>
     </div>
   );
@@ -324,7 +503,8 @@ const TiendaEcommerceView = ({
   const storeName = config?.company_name || config?.empresa_nombre || 'Tienda';
   const getCantidadEnCarrito = (id) => (carrito.find(i => i.producto_id === id)?.cantidad || 0);
 
-  const [kgModal, setKgModal] = useState(null); // null | producto
+  const [kgModal, setKgModal] = useState(null);
+  const [productoDetalle, setProductoDetalle] = useState(null);
 
   const handleAgregarPeso = (producto) => setKgModal(producto);
 
@@ -497,6 +677,7 @@ const TiendaEcommerceView = ({
                     onAgregarPeso={handleAgregarPeso}
                     onActualizar={actualizarCantidad}
                     companyLogo={config?.company_logo}
+                    onVerDetalle={setProductoDetalle}
                   />
                 ))}
               </div>
@@ -527,13 +708,27 @@ const TiendaEcommerceView = ({
         </button>
       )}
 
-      {/* Modal cantidad kg */}
       {kgModal && (
         <ModalKg
           producto={kgModal}
           currencySymbol={currencySymbol}
           onClose={() => setKgModal(null)}
           onConfirm={handleConfirmarKg}
+        />
+      )}
+
+      {productoDetalle && (
+        <ModalProducto
+          producto={productoDetalle}
+          config={config}
+          currencySymbol={currencySymbol}
+          companyLogo={config?.company_logo}
+          cantidadEnCarrito={getCantidadEnCarrito(productoDetalle.id)}
+          onAgregar={agregarAlCarrito}
+          onAgregarPeso={handleAgregarPeso}
+          onActualizar={actualizarCantidad}
+          sucursalCerrada={false}
+          onClose={() => setProductoDetalle(null)}
         />
       )}
     </div>

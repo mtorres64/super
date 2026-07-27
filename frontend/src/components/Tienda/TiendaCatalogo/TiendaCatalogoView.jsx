@@ -78,7 +78,7 @@ const ModalKg = ({ producto, currencySymbol, onClose, onConfirm }) => {
 
 // ── Tarjeta de producto ───────────────────────────────────────────────────────
 
-const ProductCard = ({ producto, onAgregar, onAgregarPeso, cantidadEnCarrito, onActualizar, currencySymbol, companyLogo, style, sucursalCerrada }) => {
+const ProductCard = ({ producto, onAgregar, onAgregarPeso, cantidadEnCarrito, onActualizar, currencySymbol, companyLogo, style, sucursalCerrada, onVerDetalle }) => {
   const esPeso = producto.tipo === 'por_peso';
 
   return (
@@ -90,8 +90,8 @@ const ProductCard = ({ producto, onAgregar, onAgregarPeso, cantidadEnCarrito, on
       onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.13)'}
       onMouseLeave={e => e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.07)'}
     >
-      {/* Imagen o placeholder */}
-      <div style={{ aspectRatio: '1 / 1', width: '100%', background: 'var(--primary-bg, #ecfdf5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative', overflow: 'hidden' }}>
+      {/* Imagen o placeholder — click abre detalle */}
+      <div onClick={() => onVerDetalle?.(producto)} style={{ aspectRatio: '1 / 1', width: '100%', background: 'var(--primary-bg, #ecfdf5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative', overflow: 'hidden', cursor: 'pointer' }}>
         {producto.imagen
           ? <img src={driveToProxyUrl(producto.imagen)} alt={producto.nombre} style={{ height: '100%', width: '100%', objectFit: 'cover' }} />
           : companyLogo
@@ -113,7 +113,7 @@ const ProductCard = ({ producto, onAgregar, onAgregarPeso, cantidadEnCarrito, on
 
       {/* Info */}
       <div style={{ padding: '0.85rem', flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#111827', lineHeight: 1.3, flex: 1 }}>{producto.nombre}</p>
+        <p onClick={() => onVerDetalle?.(producto)} style={{ fontSize: '0.85rem', fontWeight: 600, color: '#111827', lineHeight: 1.3, flex: 1, cursor: 'pointer' }}>{producto.nombre}</p>
         <p style={{ fontSize: '1.05rem', fontWeight: 700, color: PRIMARY, margin: 0 }}>
           {currencySymbol}{producto.precio?.toFixed(2)}
           {esPeso && <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#9ca3af' }}> / kg</span>}
@@ -157,6 +157,178 @@ const ProductCard = ({ producto, onAgregar, onAgregarPeso, cantidadEnCarrito, on
               <Plus size={13} /> Agregar
             </button>
           )
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ── Modal detalle producto ────────────────────────────────────────────────────
+
+const ModalProducto = ({ producto, config, currencySymbol, companyLogo, cantidadEnCarrito, onAgregar, onAgregarPeso, onActualizar, sucursalCerrada, onClose }) => {
+  const esPeso = producto.tipo === 'por_peso';
+  const [kgModal, setKgModal] = useState(null);
+  const isMobile = window.innerWidth < 640;
+
+  const paymentAdj = config?.payment_method_adjustments || {};
+  const metodosPago = [
+    { key: 'efectivo', label: 'Efectivo', icon: '💵' },
+    { key: 'tarjeta', label: 'Tarjeta', icon: '💳' },
+    { key: 'transferencia', label: 'Transferencia', icon: '🏦' },
+  ].filter(m => paymentAdj[m.key] !== undefined);
+
+  useEffect(() => {
+    const handleKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleKey);
+    document.body.style.overflow = 'hidden';
+    return () => { document.removeEventListener('keydown', handleKey); document.body.style.overflow = ''; };
+  }, [onClose]);
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 200, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : '1rem' }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: 'white', borderRadius: isMobile ? '20px 20px 0 0' : 20,
+        width: '100%', maxWidth: isMobile ? '100%' : 560,
+        maxHeight: isMobile ? '92vh' : '88vh',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        boxShadow: '0 24px 80px rgba(0,0,0,0.25)',
+      }}>
+        {/* Imagen */}
+        <div style={{ position: 'relative', background: 'var(--primary-bg,#ecfdf5)', flexShrink: 0 }}>
+          <div style={{ aspectRatio: isMobile ? '4/3' : '16/9', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            {producto.imagen
+              ? <img src={driveToProxyUrl(producto.imagen)} alt={producto.nombre} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              : companyLogo
+                ? <img src={companyLogo} alt="logo" style={{ height: '50%', objectFit: 'contain', opacity: 0.35 }} />
+                : <Package size={64} style={{ color: PRIMARY, opacity: 0.3 }} />
+            }
+          </div>
+          <button onClick={onClose} style={{ position: 'absolute', top: 12, right: 12, width: 32, height: 32, borderRadius: '50%', background: 'rgba(0,0,0,0.4)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+            <X size={16} />
+          </button>
+          {esPeso && (
+            <div style={{ position: 'absolute', top: 12, left: 12, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Scale size={11} style={{ color: 'var(--primary,#10b981)' }} />
+              <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--primary,#10b981)' }}>por kg</span>
+            </div>
+          )}
+        </div>
+
+        {/* Contenido scrolleable */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem' }}>
+          <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#111827', margin: '0 0 0.5rem' }}>{producto.nombre}</h2>
+
+          <p style={{ fontSize: '1.5rem', fontWeight: 800, color: PRIMARY, margin: '0 0 1rem' }}>
+            {currencySymbol}{producto.precio?.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+            {esPeso && <span style={{ fontSize: '0.85rem', fontWeight: 400, color: '#9ca3af' }}> / kg</span>}
+          </p>
+
+          {producto.descripcion && (
+            <div style={{ marginBottom: '1rem' }}>
+              <p style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Descripción</p>
+              <p style={{ fontSize: '0.9rem', color: '#6b7280', margin: 0, lineHeight: 1.6 }}>{producto.descripcion}</p>
+            </div>
+          )}
+
+          {/* Métodos de pago */}
+          {metodosPago.length > 0 && (
+            <div style={{ marginBottom: '1rem' }}>
+              <p style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Medios de pago</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {metodosPago.map(m => {
+                  const adj = paymentAdj[m.key] || 0;
+                  return (
+                    <div key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '0.4rem 0.75rem' }}>
+                      <span>{m.icon}</span>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151' }}>{m.label}</span>
+                      {adj !== 0 && (
+                        <span style={{ fontSize: '0.72rem', color: adj > 0 ? '#ef4444' : '#10b981', fontWeight: 700 }}>
+                          {adj > 0 ? `+${adj}%` : `${adj}%`}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Métodos de envío */}
+          <div style={{ marginBottom: '1rem' }}>
+            <p style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Entrega</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {config?.tienda_envio_activo !== false && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '0.5rem 0.85rem' }}>
+                  <span>🚚</span>
+                  <span style={{ fontSize: '0.85rem', color: '#374151', fontWeight: 500 }}>
+                    Envío a domicilio
+                    {config?.tienda_costo_envio > 0
+                      ? <span style={{ color: '#6b7280', fontWeight: 400 }}> · {currencySymbol}{config.tienda_costo_envio.toLocaleString('es-AR')}</span>
+                      : <span style={{ color: '#10b981', fontWeight: 700 }}> · Gratis</span>
+                    }
+                  </span>
+                </div>
+              )}
+              {config?.tienda_retiro_activo !== false && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '0.5rem 0.85rem' }}>
+                  <span>🏪</span>
+                  <span style={{ fontSize: '0.85rem', color: '#374151', fontWeight: 500 }}>Retiro en sucursal · Gratis</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Botón agregar */}
+        <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid #f3f4f6', flexShrink: 0 }}>
+          {esPeso ? (
+            cantidadEnCarrito > 0 ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button onClick={() => onActualizar(producto.id, 0)}
+                  style={{ width: 44, height: 44, borderRadius: 10, border: '1.5px solid #fecaca', background: '#fef2f2', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <X size={16} />
+                </button>
+                <span style={{ fontWeight: 700, color: '#111827', flex: 1, textAlign: 'center' }}>{cantidadEnCarrito} kg</span>
+                <button onClick={sucursalCerrada ? undefined : () => onAgregarPeso(producto)} disabled={sucursalCerrada}
+                  style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: sucursalCerrada ? '#e5e7eb' : PRIMARY, color: sucursalCerrada ? '#9ca3af' : 'var(--primary-text,white)', cursor: sucursalCerrada ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  <Plus size={15} /> Agregar más
+                </button>
+              </div>
+            ) : (
+              <button onClick={sucursalCerrada ? undefined : () => onAgregarPeso(producto)} disabled={sucursalCerrada}
+                style={{ width: '100%', height: 48, borderRadius: 12, border: 'none', background: sucursalCerrada ? '#e5e7eb' : PRIMARY, color: sucursalCerrada ? '#9ca3af' : 'var(--primary-text,white)', cursor: sucursalCerrada ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <Scale size={16} /> Elegir cantidad
+              </button>
+            )
+          ) : (
+            cantidadEnCarrito > 0 ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button onClick={() => onActualizar(producto.id, cantidadEnCarrito - 1)}
+                  style={{ width: 44, height: 44, borderRadius: 10, border: `1.5px solid ${PRIMARY}`, background: 'white', color: PRIMARY, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Minus size={16} />
+                </button>
+                <span style={{ fontWeight: 800, color: '#111827', flex: 1, textAlign: 'center', fontSize: '1.1rem' }}>{cantidadEnCarrito}</span>
+                <button onClick={sucursalCerrada ? undefined : () => onActualizar(producto.id, cantidadEnCarrito + 1)} disabled={sucursalCerrada}
+                  style={{ width: 44, height: 44, borderRadius: 10, border: 'none', background: sucursalCerrada ? '#e5e7eb' : PRIMARY, color: sucursalCerrada ? '#9ca3af' : 'var(--primary-text,white)', cursor: sucursalCerrada ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Plus size={16} />
+                </button>
+              </div>
+            ) : (
+              <button onClick={sucursalCerrada ? undefined : () => { onAgregar(producto); onClose(); }} disabled={sucursalCerrada}
+                style={{ width: '100%', height: 48, borderRadius: 12, border: 'none', background: sucursalCerrada ? '#e5e7eb' : PRIMARY, color: sucursalCerrada ? '#9ca3af' : 'var(--primary-text,white)', cursor: sucursalCerrada ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <Plus size={18} /> Agregar al carrito
+              </button>
+            )
+          )}
+        </div>
+
+        {kgModal && (
+          <ModalKg
+            producto={kgModal}
+            currencySymbol={currencySymbol}
+            onClose={() => setKgModal(null)}
+            onConfirm={(cantidad) => { onAgregar(kgModal, cantidad); setKgModal(null); }}
+          />
         )}
       </div>
     </div>
@@ -386,6 +558,8 @@ const TiendaCatalogoView = ({
   const handleAgregarPeso = (producto) => setKgModal(producto);
   const handleConfirmarKg = (cantidad) => { agregarAlCarrito(kgModal, cantidad); setKgModal(null); };
 
+  const [productoDetalle, setProductoDetalle] = useState(null);
+
   const footerRef = useRef(null);
   const [cartBottom, setCartBottom] = useState(24);
   useEffect(() => {
@@ -541,6 +715,7 @@ const TiendaCatalogoView = ({
                       onActualizar={actualizarCantidad}
                       companyLogo={config?.company_logo}
                       sucursalCerrada={sucursalCerrada}
+                      onVerDetalle={setProductoDetalle}
                       style={{ flex: 1 }}
                     />
                   </div>
@@ -595,6 +770,7 @@ const TiendaCatalogoView = ({
                     onActualizar={actualizarCantidad}
                     companyLogo={config?.company_logo}
                     sucursalCerrada={sucursalCerrada}
+                    onVerDetalle={setProductoDetalle}
                   />
                 ))}
               </div>
@@ -684,6 +860,21 @@ const TiendaCatalogoView = ({
           currencySymbol={currencySymbol}
           onClose={() => setKgModal(null)}
           onConfirm={handleConfirmarKg}
+        />
+      )}
+
+      {productoDetalle && (
+        <ModalProducto
+          producto={productoDetalle}
+          config={config}
+          currencySymbol={currencySymbol}
+          companyLogo={config?.company_logo}
+          cantidadEnCarrito={getCantidadEnCarrito(productoDetalle.id)}
+          onAgregar={agregarAlCarrito}
+          onAgregarPeso={handleAgregarPeso}
+          onActualizar={actualizarCantidad}
+          sucursalCerrada={sucursalCerrada}
+          onClose={() => setProductoDetalle(null)}
         />
       )}
     </div>
