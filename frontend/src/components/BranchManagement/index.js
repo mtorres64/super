@@ -411,7 +411,6 @@ const BranchManagement = () => {
 
   const getProductCurrentMargen = (product, pendingForProduct) => {
     if (pendingForProduct?.margen !== undefined) return pendingForProduct.margen;
-    if (product.margen_sucursal !== null && product.margen_sucursal !== undefined) return product.margen_sucursal;
     const precioRef = product.precio_sucursal ?? product.precio_global;
     const costo = product.costo_sucursal;
     if (costo > 0) return parseFloat(((precioRef - costo) / costo * 100).toFixed(2));

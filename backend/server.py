@@ -2924,15 +2924,26 @@ async def update_product(product_id: str, product_data: ProductUpdate, user: Use
         await db.products.update_one({"id": product_id, "empresa_id": user.empresa_id}, {"$set": update_data})
 
     # Update costo/margen in all branch_products if precio_costo provided
+    # Use aggregation pipeline so each branch recomputes margen from its own precio
     if precio_costo is not None:
-        final_precio = update_data.get("precio") or existing_product.get("precio", 0)
-        margen = round((final_precio - precio_costo) / precio_costo * 100, 2) if precio_costo else None
-        bp_set = {"costo": precio_costo}
-        if margen is not None:
-            bp_set["margen"] = margen
         await db.branch_products.update_many(
             {"product_id": product_id, "empresa_id": user.empresa_id},
-            {"$set": bp_set}
+            [{"$set": {
+                "costo": precio_costo,
+                "margen": {
+                    "$cond": {
+                        "if": {"$and": [{"$gt": [precio_costo, 0]}, {"$gt": ["$precio", 0]}]},
+                        "then": {"$round": [
+                            {"$multiply": [
+                                {"$divide": [{"$subtract": ["$precio", precio_costo]}, precio_costo]},
+                                100
+                            ]},
+                            2
+                        ]},
+                        "else": None
+                    }
+                }
+            }}]
         )
 
     updated_product = await db.products.find_one({"id": product_id, "empresa_id": user.empresa_id})
