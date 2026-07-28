@@ -19,6 +19,15 @@ const ProductsSoldReport = () => {
   const [branchFilter, setBranchFilter] = useState('all');
   const [categoriaFilter, setCategoriaFilter] = useState('all');
   const [productoFilter, setProductoFilter] = useState('all');
+
+  const resetFilters = () => {
+    setDateFilter('month');
+    setCustomDateFrom('');
+    setCustomDateTo('');
+    setBranchFilter('all');
+    setCategoriaFilter('all');
+    setProductoFilter('all');
+  };
   const [page, setPage] = useState(1);
   const itemsPerPage = 20;
 
@@ -308,6 +317,7 @@ const ProductsSoldReport = () => {
       setCustomDateFrom={setCustomDateFrom}
       customDateTo={customDateTo}
       setCustomDateTo={setCustomDateTo}
+      onResetFilters={resetFilters}
       generatingPdf={generatingPdf}
       handleExportPDF={handleExportPDF}
       exportToXLSX={exportToXLSX}

@@ -13,7 +13,14 @@ const MargensReport = () => {
   const [branchFilter, setBranchFilter] = useState('all');
   const [customDateFrom, setCustomDateFrom] = useState('');
   const [customDateTo, setCustomDateTo] = useState('');
-  const [detailModal, setDetailModal] = useState(null); // { type, row }
+  const [detailModal, setDetailModal] = useState(null);
+
+  const resetFilters = () => {
+    setDateFilter('month');
+    setBranchFilter('all');
+    setCustomDateFrom('');
+    setCustomDateTo('');
+  }; // { type, row }
   const [expandedSection, setExpandedSection] = useState('por_fecha');
 
   useEffect(() => {
@@ -100,6 +107,7 @@ const MargensReport = () => {
       setCustomDateFrom={setCustomDateFrom}
       customDateTo={customDateTo}
       setCustomDateTo={setCustomDateTo}
+      onResetFilters={resetFilters}
       detailModal={detailModal}
       setDetailModal={setDetailModal}
       expandedSection={expandedSection}

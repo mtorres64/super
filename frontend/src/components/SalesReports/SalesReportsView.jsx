@@ -2,13 +2,13 @@ import React from 'react';
 import {
   Calendar,
   Download,
+  RotateCcw,
   DollarSign,
   ShoppingBag,
   TrendingUp,
   Filter,
   Building2,
   Printer,
-  RotateCcw,
   RefreshCw,
   X,
   User,
@@ -23,6 +23,7 @@ import Pagination from '../Pagination';
 import ReturnModal from '../ReturnModal';
 import TicketModal from '../TicketModal';
 import SortIcon from '../ui/SortIcon';
+import DatePickerInput from '../ui/DatePickerInput';
 
 const SalesReportsView = ({
   loading,
@@ -61,6 +62,7 @@ const SalesReportsView = ({
   onSetPage,
   onSetCustomDateFrom,
   onSetCustomDateTo,
+  onResetFilters,
   onSetReturnModal,
   onHandleReprintSale,
   onHandleExportPDF,
@@ -178,10 +180,11 @@ const SalesReportsView = ({
           )}
 
           {/* Filtro fecha */}
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-gray-400" />
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
             <select
-              className="form-select"
+              className="form-select flex-shrink-0"
+              style={{ width: '13rem' }}
               value={dateFilter}
               onChange={(e) => onSetDateFilter(e.target.value)}
             >
@@ -191,24 +194,17 @@ const SalesReportsView = ({
               <option value="all">Todas</option>
               <option value="custom">Rango personalizado</option>
             </select>
+            {dateFilter === 'custom' && (
+              <>
+                <DatePickerInput value={customDateFrom} onChange={onSetCustomDateFrom} style={{ width: '9rem' }} />
+                <DatePickerInput value={customDateTo} onChange={onSetCustomDateTo} style={{ width: '9rem' }} />
+              </>
+            )}
           </div>
-
-          {dateFilter === 'custom' && (
-            <>
-              <input
-                type="date"
-                className="form-input"
-                value={customDateFrom}
-                onChange={(e) => onSetCustomDateFrom(e.target.value)}
-              />
-              <input
-                type="date"
-                className="form-input"
-                value={customDateTo}
-                onChange={(e) => onSetCustomDateTo(e.target.value)}
-              />
-            </>
-          )}
+          <button onClick={onResetFilters} className="btn btn-secondary btn-sm flex items-center gap-1.5 flex-shrink-0 ml-auto" title="Restablecer filtros">
+            <RotateCcw className="w-3.5 h-3.5" />
+            Restablecer
+          </button>
         </div>
       </div>
 

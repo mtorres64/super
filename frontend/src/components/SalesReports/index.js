@@ -43,6 +43,16 @@ const SalesReports = () => {
   const [customDateFrom, setCustomDateFrom] = useState('');
   const [customDateTo, setCustomDateTo] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  const resetFilters = () => {
+    setDateFilter('today');
+    setBranchFilter('all');
+    setUserFilter('all');
+    setCustomDateFrom('');
+    setCustomDateTo('');
+    setSearchQuery('');
+    setPage(1);
+  };
   const [returnModal, setReturnModal] = useState(null);
   const [reprintSale, setReprintSale] = useState(null);
   const [reprintReturns, setReprintReturns] = useState([]);
@@ -594,6 +604,7 @@ const SalesReports = () => {
       onSetPage={setPage}
       onSetCustomDateFrom={setCustomDateFrom}
       onSetCustomDateTo={setCustomDateTo}
+      onResetFilters={resetFilters}
       onSetReturnModal={setReturnModal}
       onSetReprintSale={setReprintSale}
       onSetReprintReturns={setReprintReturns}

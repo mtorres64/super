@@ -7,6 +7,7 @@ import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
 import { getCategoryIcon, ICON_OPTIONS } from '../../utils/categoryIcons';
 import BulkEditModal from './BulkEditModal';
+import NuevoProductoModal from './NuevoProductoModal';
 import { useFormValidation } from '../../hooks/useFormValidation';
 import FieldError from '../ui/FieldError';
 
@@ -29,6 +30,9 @@ const ProductManagementView = ({
   categories,
   loading,
   showModal,
+  showNuevoProductoModal,
+  setShowNuevoProductoModal,
+  handleNuevoProductoCreated,
   editingProduct,
   searchTerm,
   setSearchTerm,
@@ -1386,6 +1390,13 @@ const ProductManagementView = ({
           onClose={closeBulkEditModal}
           onSave={handleBulkEditSave}
           saving={bulkEditSaving}
+        />
+      )}
+
+      {showNuevoProductoModal && (
+        <NuevoProductoModal
+          onClose={() => setShowNuevoProductoModal(false)}
+          onProductCreated={handleNuevoProductoCreated}
         />
       )}
     </div>

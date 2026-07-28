@@ -1,4 +1,5 @@
 import React from 'react';
+import DatePickerInput from '../ui/DatePickerInput';
 import {
   Calendar,
   Download,
@@ -10,6 +11,7 @@ import {
   Printer,
   ShoppingCart,
   Building2,
+  RotateCcw,
 } from 'lucide-react';
 import SortIcon from '../ui/SortIcon';
 import PaginationView from '../Pagination/PaginationView';
@@ -40,6 +42,7 @@ const ProductsSoldReportView = ({
   setCustomDateFrom,
   customDateTo,
   setCustomDateTo,
+  onResetFilters,
   generatingPdf,
   handleExportPDF,
   exportToXLSX,
@@ -85,10 +88,11 @@ const ProductsSoldReportView = ({
           </div>
 
           {/* Período */}
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-gray-400" />
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
             <select
-              className="form-select"
+              className="form-select flex-shrink-0"
+              style={{ width: '13rem' }}
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
             >
@@ -98,24 +102,13 @@ const ProductsSoldReportView = ({
               <option value="all">Todas las fechas</option>
               <option value="custom">Rango personalizado</option>
             </select>
+            {dateFilter === 'custom' && (
+              <>
+                <DatePickerInput value={customDateFrom} onChange={setCustomDateFrom} style={{ width: '9rem' }} />
+                <DatePickerInput value={customDateTo} onChange={setCustomDateTo} style={{ width: '9rem' }} />
+              </>
+            )}
           </div>
-
-          {dateFilter === 'custom' && (
-            <>
-              <input
-                type="date"
-                className="form-input"
-                value={customDateFrom}
-                onChange={(e) => setCustomDateFrom(e.target.value)}
-              />
-              <input
-                type="date"
-                className="form-input"
-                value={customDateTo}
-                onChange={(e) => setCustomDateTo(e.target.value)}
-              />
-            </>
-          )}
 
           {/* Sucursal */}
           {branches.length > 1 && (
@@ -163,6 +156,10 @@ const ProductsSoldReportView = ({
               ))}
             </select>
           </div>
+          <button onClick={onResetFilters} className="btn btn-secondary btn-sm flex items-center gap-1.5 flex-shrink-0 ml-auto" title="Restablecer filtros">
+            <RotateCcw className="w-3.5 h-3.5" />
+            Restablecer
+          </button>
         </div>
       </div>
 

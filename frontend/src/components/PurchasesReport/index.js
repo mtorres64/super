@@ -20,6 +20,14 @@ const PurchasesReport = () => {
   const [customDateFrom, setCustomDateFrom] = useState('');
   const [customDateTo, setCustomDateTo] = useState('');
 
+  const resetFilters = () => {
+    setDateFilter('month');
+    setBranchFilter('all');
+    setProveedorFilter('all');
+    setCustomDateFrom('');
+    setCustomDateTo('');
+  };
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -368,6 +376,7 @@ const PurchasesReport = () => {
       setCustomDateFrom={setCustomDateFrom}
       customDateTo={customDateTo}
       setCustomDateTo={setCustomDateTo}
+      onResetFilters={resetFilters}
       generatingPdf={generatingPdf}
       handleExportPDF={handleExportPDF}
       exportToXLSX={exportToXLSX}

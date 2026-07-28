@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   ShoppingBag,
   Plus,
+  RotateCcw,
   Edit,
   Trash2,
   Search,
@@ -20,8 +21,10 @@ import {
   Printer
 } from 'lucide-react';
 import SortIcon from '../ui/SortIcon';
+import DatePickerInput from '../ui/DatePickerInput';
 import DistribuirModal from './DistribuirModal';
 import RemitoModal from './RemitoModal';
+import NuevoProductoModal from '../ProductManagement/NuevoProductoModal';
 import Pagination from '../Pagination';
 import { useFormValidation } from '../../hooks/useFormValidation';
 import FieldError from '../ui/FieldError';
@@ -122,6 +125,19 @@ const ComprasView = ({
   currentProveedoresPage,
   totalProveedoresPages,
   onProveedoresPageChange,
+  showNuevoProductoModal,
+  nuevoProductoInitialNombre,
+  openNuevoProductoModal,
+  closeNuevoProductoModal,
+  handleNuevoProductoCreated,
+  newlyCreatedIndex,
+  dateFilter,
+  onSetDateFilter,
+  customDateFrom,
+  onSetCustomDateFrom,
+  customDateTo,
+  onSetCustomDateTo,
+  onResetFilters,
 }) => {
   const compraV = useFormValidation(COMPRA_RULES);
   const proveedorV = useFormValidation(PROVEEDOR_RULES);
@@ -176,21 +192,50 @@ const ComprasView = ({
       {activeTab === 'facturas' && (
         <>
           <div className="bg-white rounded-lg shadow p-4 mb-6">
-            <div className="flex justify-between items-center gap-3 flex-wrap">
-              <div className="relative flex-1 min-w-[200px]">
+            <div className="flex justify-start items-center gap-3 flex-wrap">
+              <div className="relative w-1/3 min-w-[200px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Buscar por N° factura o proveedor..."
+                  placeholder="Buscar por N° factura, proveedor o producto..."
                   className="form-input pl-10"
                   value={searchCompra}
                   onChange={e => setSearchCompra(e.target.value)}
                 />
               </div>
-              <button onClick={() => openCompraModal()} className="btn btn-primary">
-                <Plus className="w-4 h-4" />
-                Nueva Factura
-              </button>
+              <div className="flex items-center gap-2 flex-shrink-0 flex-wrap sm:flex-nowrap">
+                <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <select
+                  className="form-select flex-shrink-0"
+                  style={{ width: '13rem' }}
+                  value={dateFilter}
+                  onChange={e => onSetDateFilter(e.target.value)}
+                >
+                  <option value="today">Hoy</option>
+                  <option value="week">Última semana</option>
+                  <option value="month">Último mes</option>
+                  <option value="all">Todas</option>
+                  <option value="custom">Rango personalizado</option>
+                </select>
+                {dateFilter === 'custom' && (
+                  <>
+                    <DatePickerInput value={customDateFrom} onChange={onSetCustomDateFrom} style={{ width: '9rem' }} />
+                    <DatePickerInput value={customDateTo} onChange={onSetCustomDateTo} style={{ width: '9rem' }} />
+                  </>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
+                {(searchCompra || dateFilter !== 'all' || customDateFrom || customDateTo) && (
+                  <button onClick={onResetFilters} className="btn btn-secondary btn-sm flex items-center gap-1.5" title="Restablecer filtros">
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Restablecer
+                  </button>
+                )}
+                <button onClick={() => openCompraModal()} className="btn btn-primary">
+                  <Plus className="w-4 h-4" />
+                  Nueva Factura
+                </button>
+              </div>
             </div>
           </div>
 
@@ -212,11 +257,9 @@ const ComprasView = ({
                     <th onClick={() => comprasRequestSort('created_at')} className="cursor-pointer select-none hover:bg-gray-50">Fecha <SortIcon columnKey="created_at" sortConfig={comprasSortConfig} /></th>
                     <th onClick={() => comprasRequestSort('numero_factura')} className="cursor-pointer select-none hover:bg-gray-50">N° Factura <SortIcon columnKey="numero_factura" sortConfig={comprasSortConfig} /></th>
                     <th onClick={() => comprasRequestSort('proveedor_nombre')} className="cursor-pointer select-none hover:bg-gray-50">Proveedor <SortIcon columnKey="proveedor_nombre" sortConfig={comprasSortConfig} /></th>
-                    <th>Sucursal</th>
-                    <th style={{ textAlign: 'right' }}>Subtotal</th>
-                    <th style={{ textAlign: 'right' }}>Impuestos</th>
+                    <th>Productos</th>
                     <th style={{ textAlign: 'right' }} onClick={() => comprasRequestSort('total')} className="cursor-pointer select-none hover:bg-gray-50">Total <SortIcon columnKey="total" sortConfig={comprasSortConfig} /></th>
-                    <th>Acciones</th>
+                    <th style={{ textAlign: 'right' }}>Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -239,13 +282,22 @@ const ComprasView = ({
                         <ChevronDown className={`md:hidden w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200 ${expandedRows.has(compra.id) ? 'rotate-180' : ''}`} />
                       </td>
                       <td data-label="Proveedor" className="text-gray-700">{compra.proveedor_nombre || '—'}</td>
-                      <td data-label="Sucursal" className="text-gray-700 text-sm">
-                        {compra.sucursal_id
-                          ? (branches.find(b => b.id === compra.sucursal_id)?.nombre || '—')
-                          : '—'}
+                      <td data-label="Productos" className="text-gray-700 text-sm">
+                        {(() => {
+                          const nombres = (compra.items || []).map(i => i.descripcion).filter(Boolean);
+                          if (!nombres.length) return <span className="text-gray-400">—</span>;
+                          const visibles = nombres.slice(0, 3);
+                          const resto = nombres.length - visibles.length;
+                          return (
+                            <div className="flex flex-wrap gap-1">
+                              {visibles.map((n, i) => (
+                                <span key={i} className="bg-gray-100 text-gray-600 rounded px-1.5 py-0.5 text-xs truncate max-w-[140px]">{n}</span>
+                              ))}
+                              {resto > 0 && <span className="text-xs text-gray-400 self-center">+{resto}</span>}
+                            </div>
+                          );
+                        })()}
                       </td>
-                      <td data-label="Subtotal" className="text-right text-gray-700">{formatMoney(compra.subtotal)}</td>
-                      <td data-label="Impuestos" className="text-right text-gray-700">{formatMoney(compra.impuestos)}</td>
                       <td data-label="Total" className="text-right font-semibold text-gray-900">{formatMoney(compra.total)}</td>
                       <td data-mobile="actions">
                         <div className="flex gap-2 justify-end">
@@ -523,7 +575,7 @@ const ComprasView = ({
 
                         return (
                           <React.Fragment key={idx}>
-                            <tr className="border-t border-gray-100 align-top">
+                            <tr className={`border-t border-gray-100 align-top ${idx === newlyCreatedIndex ? 'bg-green-50' : ''}`}>
                               {/* Description with autocomplete */}
                               <td className="px-2 py-1">
                                 <input
@@ -538,7 +590,7 @@ const ComprasView = ({
                                   placeholder={compraForm.sucursal_id ? 'Buscar producto...' : 'Descripción del artículo'}
                                 />
                                 {item.product_id && (
-                                  <div className="flex flex-wrap gap-3 mt-1 text-xs text-blue-700 items-center">
+                                  <div className={`flex flex-wrap gap-3 mt-1 text-xs items-center ${idx === newlyCreatedIndex ? 'text-green-700' : 'text-blue-700'}`}>
                                     <span className="flex items-center gap-1">
                                       <Package className="w-3 h-3" />
                                       Costo anterior: {item.costo_actual != null ? `$${formatMoney(item.costo_actual)}` : 'sin datos'}
@@ -669,7 +721,11 @@ const ComprasView = ({
                 <button type="button" onClick={closeCompraModalAnim} className="btn btn-secondary">
                   Cancelar
                 </button>
-                <button type="submit" className="btn btn-primary">
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={!editingCompra && !compraForm.items.some(it => it.descripcion?.trim() && parseInt(it.cantidad) > 0 && parseFloat(it.precio_unitario) > 0)}
+                >
                   <Save className="w-4 h-4" />
                   {editingCompra ? 'Guardar Cambios' : 'Registrar Factura'}
                 </button>
@@ -683,10 +739,9 @@ const ComprasView = ({
 
       {/* ── AUTOCOMPLETE PORTAL (fuera del overflow del modal) ── */}
       {openAutocompleteIndex !== null && (() => {
-        const options = getAutocompleteOptions(
-          compraForm.items[openAutocompleteIndex]?.descripcion || ''
-        );
-        if (options.length === 0) return null;
+        const query = compraForm.items[openAutocompleteIndex]?.descripcion || '';
+        if (!query) return null;
+        const options = getAutocompleteOptions(query);
         return createPortal(
           <div
             style={{
@@ -699,6 +754,9 @@ const ComprasView = ({
             className="bg-white border border-gray-200 rounded-lg shadow-xl max-h-56 overflow-y-auto"
             onMouseDown={e => e.preventDefault()}
           >
+            {options.length === 0 && (
+              <div className="px-3 py-2 text-sm text-gray-400 border-b border-gray-100">Sin resultados</div>
+            )}
             {options.map((prod, optIdx) => (
               <button
                 key={prod.product_id}
@@ -715,6 +773,17 @@ const ComprasView = ({
                 </div>
               </button>
             ))}
+            <button
+              type="button"
+              onMouseDown={() => openNuevoProductoModal(openAutocompleteIndex, query)}
+              className="w-full text-left px-3 py-2 border-t border-gray-200 hover:bg-green-50"
+            >
+              <div className="font-medium text-sm flex items-center gap-1.5" style={{ color: 'var(--primary)' }}>
+                <Plus className="w-3.5 h-3.5 flex-shrink-0" />
+                Crear nuevo producto
+              </div>
+              <div className="text-xs text-gray-500 mt-0.5 pl-5">&ldquo;{query.length > 30 ? query.slice(0, 30) + '…' : query}&rdquo;</div>
+            </button>
           </div>,
           document.body
         );
@@ -877,6 +946,14 @@ const ComprasView = ({
           formatDate={formatDate}
           formatMoney={formatMoney}
           config={comprasConfig}
+        />
+      )}
+
+      {showNuevoProductoModal && (
+        <NuevoProductoModal
+          initialNombre={nuevoProductoInitialNombre}
+          onClose={closeNuevoProductoModal}
+          onProductCreated={handleNuevoProductoCreated}
         />
       )}
     </div>

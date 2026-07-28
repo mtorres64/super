@@ -10,6 +10,13 @@ const IncomeExpenseReport = () => {
   const [customDateTo, setCustomDateTo] = useState('');
   const [branchFilter, setBranchFilter] = useState('all');
   const [branches, setBranches] = useState([]);
+
+  const resetFilters = () => {
+    setDateFilter('month');
+    setBranchFilter('all');
+    setCustomDateFrom('');
+    setCustomDateTo('');
+  };
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -82,6 +89,7 @@ const IncomeExpenseReport = () => {
       data={data}
       loading={loading}
       formatMoney={formatMoney}
+      onResetFilters={resetFilters}
     />
   );
 };

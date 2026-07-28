@@ -78,6 +78,12 @@ const Compras = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
+  // Nuevo producto modal (desde autocomplete de compras)
+  const [showNuevoProductoModal, setShowNuevoProductoModal] = useState(false);
+  const [nuevoProductoPendingIndex, setNuevoProductoPendingIndex] = useState(null);
+  const [nuevoProductoInitialNombre, setNuevoProductoInitialNombre] = useState('');
+  const [newlyCreatedIndex, setNewlyCreatedIndex] = useState(null);
+
   // Proveedores state
   const [proveedores, setProveedores] = useState([]);
   const [loadingProveedores, setLoadingProveedores] = useState(true);
@@ -87,9 +93,21 @@ const Compras = () => {
   const [searchProveedor, setSearchProveedor] = useState('');
   const [currentComprasPage, setCurrentComprasPage] = useState(1);
   const [currentProveedoresPage, setCurrentProveedoresPage] = useState(1);
+  const [dateFilter, setDateFilter] = useState('all');
+  const [customDateFrom, setCustomDateFrom] = useState('');
+  const [customDateTo, setCustomDateTo] = useState('');
+
+  const resetComprasFilters = () => {
+    setSearchCompra('');
+    setDateFilter('all');
+    setCustomDateFrom('');
+    setCustomDateTo('');
+  };
 
   useEffect(() => { setCurrentComprasPage(1); }, [searchCompra]);
   useEffect(() => { setCurrentProveedoresPage(1); }, [searchProveedor]);
+
+  useEffect(() => { fetchCompras(); }, [dateFilter, customDateFrom, customDateTo]);
 
   useEffect(() => {
     fetchCompras();
@@ -350,7 +368,27 @@ const Compras = () => {
 
   const fetchCompras = async () => {
     try {
-      const res = await axios.get(`${API}/compras`);
+      const params = {};
+      const arMidnight = (y, m, d) => new Date(Date.UTC(y, m, d, 0, 0, 0));
+      const now = new Date();
+      if (dateFilter === 'today') {
+        params.fecha_desde = arMidnight(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+        params.fecha_hasta = arMidnight(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
+      } else if (dateFilter === 'week') {
+        params.fecha_desde = arMidnight(now.getFullYear(), now.getMonth(), now.getDate() - 6).toISOString();
+        params.fecha_hasta = arMidnight(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
+      } else if (dateFilter === 'month') {
+        params.fecha_desde = arMidnight(now.getFullYear(), now.getMonth(), now.getDate() - 29).toISOString();
+        params.fecha_hasta = arMidnight(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
+      } else if (dateFilter === 'custom' && customDateFrom) {
+        const [y1, m1, d1] = customDateFrom.split('-').map(Number);
+        params.fecha_desde = arMidnight(y1, m1 - 1, d1).toISOString();
+        if (customDateTo) {
+          const [y2, m2, d2] = customDateTo.split('-').map(Number);
+          params.fecha_hasta = arMidnight(y2, m2 - 1, d2 + 1).toISOString();
+        }
+      }
+      const res = await axios.get(`${API}/compras`, { params });
       setCompras(res.data);
     } catch {
       toast.error('Error al cargar las compras');
@@ -566,6 +604,43 @@ const Compras = () => {
     setDeleteTarget(null);
   };
 
+  const openNuevoProductoModal = (itemIndex, nombre = '') => {
+    setNuevoProductoPendingIndex(itemIndex);
+    setNuevoProductoInitialNombre(nombre);
+    setShowNuevoProductoModal(true);
+    setOpenAutocompleteIndex(null);
+  };
+
+  const closeNuevoProductoModal = () => {
+    setShowNuevoProductoModal(false);
+    setNuevoProductoPendingIndex(null);
+    setNuevoProductoInitialNombre('');
+  };
+
+  const handleNuevoProductoCreated = (createdProduct, branchPricing = {}) => {
+    fetchGlobalProducts();
+    if (nuevoProductoPendingIndex !== null) {
+      // Usar el precio de la sucursal seleccionada en el form, o la primera sucursal activa
+      const currentBranchId = compraForm.sucursal_id;
+      const bp = (currentBranchId && branchPricing[currentBranchId]?.activo)
+        ? branchPricing[currentBranchId]
+        : Object.values(branchPricing).find(b => b.activo);
+
+      const productForSelect = {
+        product_id: createdProduct.id,
+        nombre: createdProduct.nombre,
+        codigo_barras: createdProduct.codigo_barras || null,
+        precio_sucursal: bp ? (parseFloat(bp.precio) || null) : null,
+        precio_global: createdProduct.precio || 0,
+        margen_sucursal: bp && bp.margen !== '' ? parseFloat(bp.margen) : null,
+        costo_sucursal: bp ? (parseFloat(bp.costo) || null) : null,
+      };
+      handleSelectProduct(nuevoProductoPendingIndex, productForSelect);
+      setNewlyCreatedIndex(nuevoProductoPendingIndex);
+    }
+    closeNuevoProductoModal();
+  };
+
   const confirmDeleteCompra = async () => {
     if (!deleteTarget) return;
     closeDeleteModalAnim();
@@ -733,9 +808,15 @@ const Compras = () => {
 
   // ── Filters ───────────────────────────────────────────────────────────────────
 
-  const filteredCompras = compras.filter(c =>
-    c.numero_factura.toLowerCase().includes(searchCompra.trim().toLowerCase()) ||
-    (c.proveedor_nombre && c.proveedor_nombre.toLowerCase().includes(searchCompra.trim().toLowerCase()))
+  const filteredCompras = compras.filter(c => {
+    const q = searchCompra.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      (c.numero_factura && c.numero_factura.toLowerCase().includes(q)) ||
+      (c.proveedor_nombre && c.proveedor_nombre.toLowerCase().includes(q)) ||
+      (c.items && c.items.some(it => it.descripcion && it.descripcion.toLowerCase().includes(q)))
+    );
+  }
   );
 
   const filteredProveedores = proveedores.filter(p =>
@@ -863,6 +944,19 @@ const Compras = () => {
       handleOpenRemitoModal={handleOpenRemitoModal}
       closeRemitoModalAnim={closeRemitoModalAnim}
       comprasConfig={comprasConfig}
+      showNuevoProductoModal={showNuevoProductoModal}
+      nuevoProductoInitialNombre={nuevoProductoInitialNombre}
+      openNuevoProductoModal={openNuevoProductoModal}
+      closeNuevoProductoModal={closeNuevoProductoModal}
+      handleNuevoProductoCreated={handleNuevoProductoCreated}
+      newlyCreatedIndex={newlyCreatedIndex}
+      dateFilter={dateFilter}
+      onSetDateFilter={setDateFilter}
+      customDateFrom={customDateFrom}
+      onSetCustomDateFrom={setCustomDateFrom}
+      customDateTo={customDateTo}
+      onSetCustomDateTo={setCustomDateTo}
+      onResetFilters={resetComprasFilters}
     />
   );
 };

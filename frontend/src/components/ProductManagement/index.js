@@ -24,6 +24,7 @@ const ProductManagement = () => {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const searchTimerRef = useRef(null);
   const [showModal, setShowModal] = useState(false);
+  const [showNuevoProductoModal, setShowNuevoProductoModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [newCategory, setNewCategory] = useState({ nombre: '', descripcion: '', icono: '' });
@@ -215,10 +216,15 @@ const ProductManagement = () => {
       setComboSearch('');
       setShowComboDropdown(false);
       setEditingProduct(product);
+      setShowModal(true);
     } else {
-      resetForm();
+      setShowNuevoProductoModal(true);
     }
-    setShowModal(true);
+  };
+
+  const handleNuevoProductoCreated = () => {
+    setShowNuevoProductoModal(false);
+    loadProducts(currentPage, debouncedSearch, config?.items_per_page || 50);
   };
 
   const addComboItem = () => {
@@ -628,6 +634,9 @@ const ProductManagement = () => {
       categories={categories}
       loading={loading}
       showModal={showModal}
+      showNuevoProductoModal={showNuevoProductoModal}
+      setShowNuevoProductoModal={setShowNuevoProductoModal}
+      handleNuevoProductoCreated={handleNuevoProductoCreated}
       editingProduct={editingProduct}
       searchTerm={searchTerm}
       setSearchTerm={setSearchTerm}

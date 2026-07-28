@@ -2749,6 +2749,22 @@ html.dark .ticket-separator    { color: #5c5c5c; }
 /* ================================================
    DISABLE ANIMATIONS
    ================================================ */
+@keyframes branch-config-expand {
+  from { opacity: 0; transform: translateY(-10px) scaleY(0.95); }
+  to   { opacity: 1; transform: translateY(0)     scaleY(1);    }
+}
+
+.branch-config-enter {
+  animation: branch-config-expand 0.35s ease-out both;
+  transform-origin: top;
+}
+
+.no-animations .branch-config-enter {
+  animation: none !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
+
 .no-animations .modal-overlay,
 .no-animations .modal-overlay.closing,
 .no-animations .modal-content,

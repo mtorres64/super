@@ -4874,7 +4874,7 @@ async def get_compras(
         if fecha_desde:
             query["fecha"]["$gte"] = fecha_desde
         if fecha_hasta:
-            query["fecha"]["$lte"] = fecha_hasta
+            query["fecha"]["$lt"] = fecha_hasta
     compras = await db.compras.find(query).sort("fecha", -1).to_list(1000)
     return [Compra(**c) for c in compras]
 

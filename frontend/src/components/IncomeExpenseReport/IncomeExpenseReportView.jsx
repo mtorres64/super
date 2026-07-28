@@ -1,11 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Scale, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
-
-const PERIOD_OPTIONS = [
-  { key: 'month',  label: 'Este mes' },
-  { key: 'year',   label: 'Este año' },
-  { key: 'custom', label: 'Personalizado' },
-];
+import { Scale, TrendingUp, TrendingDown, Wallet, Calendar, RotateCcw } from 'lucide-react';
+import DatePickerInput from '../ui/DatePickerInput';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, ReferenceLine,
@@ -59,6 +54,7 @@ const IncomeExpenseReportView = ({
   branches,
   data, loading,
   formatMoney,
+  onResetFilters,
 }) => {
   const [chartColors, setChartColors] = useState({ primary: '#10b981', secondary: '#60a5fa' });
 
@@ -95,49 +91,25 @@ const IncomeExpenseReportView = ({
       {/* Filtros */}
       <div className="bg-white rounded-lg shadow p-4 mb-6">
         <div className="flex flex-wrap gap-3 items-end">
-          <div>
-            <label className="form-label mb-1">Período</label>
-            <div className="flex gap-1 flex-wrap items-center">
-              {PERIOD_OPTIONS.map(opt => (
-                <button
-                  key={opt.key}
-                  type="button"
-                  onClick={() => setDateFilter(opt.key)}
-                  className={`px-3 rounded font-medium transition-colors border ${
-                    dateFilter === opt.key ? 'text-white' : 'bg-white text-gray-600 border-gray-300'
-                  }`}
-                  style={{
-                    padding: '0.625rem 0.75rem',
-                    fontSize: '0.9375rem',
-                    lineHeight: '1.5',
-                    ...(dateFilter === opt.key
-                      ? { background: 'var(--primary)', borderColor: 'var(--primary)' }
-                      : {})
-                  }}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
+            <select
+              className="form-select flex-shrink-0"
+              style={{ width: '13rem' }}
+              value={dateFilter}
+              onChange={e => setDateFilter(e.target.value)}
+            >
+              <option value="month">Este mes</option>
+              <option value="year">Este año</option>
+              <option value="custom">Rango personalizado</option>
+            </select>
+            {dateFilter === 'custom' && (
+              <>
+                <DatePickerInput value={customDateFrom} onChange={setCustomDateFrom} style={{ width: '9rem' }} />
+                <DatePickerInput value={customDateTo} onChange={setCustomDateTo} style={{ width: '9rem' }} />
+              </>
+            )}
           </div>
-
-          {dateFilter === 'custom' && (
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                className="form-input"
-                value={customDateFrom}
-                onChange={e => setCustomDateFrom(e.target.value)}
-              />
-              <span className="text-gray-400">—</span>
-              <input
-                type="date"
-                className="form-input"
-                value={customDateTo}
-                onChange={e => setCustomDateTo(e.target.value)}
-              />
-            </div>
-          )}
 
           {branches.length > 0 && (
             <div>
@@ -155,6 +127,10 @@ const IncomeExpenseReportView = ({
               </select>
             </div>
           )}
+          <button onClick={onResetFilters} className="btn btn-secondary btn-sm flex items-center gap-1.5 flex-shrink-0 ml-auto" title="Restablecer filtros">
+            <RotateCcw className="w-3.5 h-3.5" />
+            Restablecer
+          </button>
         </div>
       </div>
 
