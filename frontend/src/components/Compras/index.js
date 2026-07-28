@@ -82,7 +82,7 @@ const Compras = () => {
   const [showNuevoProductoModal, setShowNuevoProductoModal] = useState(false);
   const [nuevoProductoPendingIndex, setNuevoProductoPendingIndex] = useState(null);
   const [nuevoProductoInitialNombre, setNuevoProductoInitialNombre] = useState('');
-  const [newlyCreatedIndex, setNewlyCreatedIndex] = useState(null);
+  const [newlyCreatedIndices, setNewlyCreatedIndices] = useState(new Set());
 
   // Proveedores state
   const [proveedores, setProveedores] = useState([]);
@@ -437,15 +437,19 @@ const Compras = () => {
   const handleSelectProduct = (index, product) => {
     const updatedItems = [...compraForm.items];
     const precio = product.precio_sucursal ?? product.precio_global ?? 0;
+    const costoConocido = product.costo_sucursal ?? (precio > 0 && product.margen_sucursal != null
+      ? parseFloat((precio / (1 + product.margen_sucursal / 100)).toFixed(2))
+      : null);
     updatedItems[index] = {
       ...updatedItems[index],
       descripcion: product.nombre,
       product_id: product.product_id,
       precio_actual: precio,
       margen_actual: product.margen_sucursal ?? null,
-      costo_actual: product.costo_sucursal ?? (precio > 0 && product.margen_sucursal != null
-        ? parseFloat((precio / (1 + product.margen_sucursal / 100)).toFixed(2))
-        : null),
+      costo_actual: costoConocido,
+      precio_unitario: costoConocido != null && costoConocido > 0
+        ? String(costoConocido)
+        : updatedItems[index].precio_unitario,
       actualizar_precio: autoUpdatePrices,
     };
     const qty = parseFloat(updatedItems[index].cantidad) || 0;
@@ -540,6 +544,7 @@ const Compras = () => {
     setCompraForm(emptyCompraForm);
     setBranchProducts([]);
     setOpenAutocompleteIndex(null);
+    setNewlyCreatedIndices(new Set());
   };
 
   const buildPayload = () => {
@@ -636,7 +641,7 @@ const Compras = () => {
         costo_sucursal: bp ? (parseFloat(bp.costo) || null) : null,
       };
       handleSelectProduct(nuevoProductoPendingIndex, productForSelect);
-      setNewlyCreatedIndex(nuevoProductoPendingIndex);
+      setNewlyCreatedIndices(prev => new Set([...prev, nuevoProductoPendingIndex]));
     }
     closeNuevoProductoModal();
   };
@@ -949,7 +954,7 @@ const Compras = () => {
       openNuevoProductoModal={openNuevoProductoModal}
       closeNuevoProductoModal={closeNuevoProductoModal}
       handleNuevoProductoCreated={handleNuevoProductoCreated}
-      newlyCreatedIndex={newlyCreatedIndex}
+      newlyCreatedIndices={newlyCreatedIndices}
       dateFilter={dateFilter}
       onSetDateFilter={setDateFilter}
       customDateFrom={customDateFrom}

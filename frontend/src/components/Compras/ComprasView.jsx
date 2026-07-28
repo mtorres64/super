@@ -6,12 +6,10 @@ import {
   RotateCcw,
   Edit,
   Trash2,
-  Search,
   Save,
   X,
   Building2,
   FileText,
-  TrendingUp,
   Package,
   Truck,
   Calendar,
@@ -22,6 +20,7 @@ import {
 } from 'lucide-react';
 import SortIcon from '../ui/SortIcon';
 import DatePickerInput from '../ui/DatePickerInput';
+import SearchInput from '../ui/SearchInput';
 import DistribuirModal from './DistribuirModal';
 import RemitoModal from './RemitoModal';
 import NuevoProductoModal from '../ProductManagement/NuevoProductoModal';
@@ -130,7 +129,7 @@ const ComprasView = ({
   openNuevoProductoModal,
   closeNuevoProductoModal,
   handleNuevoProductoCreated,
-  newlyCreatedIndex,
+  newlyCreatedIndices,
   dateFilter,
   onSetDateFilter,
   customDateFrom,
@@ -193,16 +192,12 @@ const ComprasView = ({
         <>
           <div className="bg-white rounded-lg shadow p-4 mb-6">
             <div className="flex justify-start items-center gap-3 flex-wrap">
-              <div className="relative w-1/3 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar por N° factura, proveedor o producto..."
-                  className="form-input pl-10"
-                  value={searchCompra}
-                  onChange={e => setSearchCompra(e.target.value)}
-                />
-              </div>
+              <SearchInput
+                value={searchCompra}
+                onChange={setSearchCompra}
+                placeholder="Buscar por N° factura, proveedor o producto..."
+                wrapperClassName="w-1/3 min-w-[200px]"
+              />
               <div className="flex items-center gap-2 flex-shrink-0 flex-wrap sm:flex-nowrap">
                 <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
                 <select
@@ -356,16 +351,12 @@ const ComprasView = ({
         <>
           <div className="bg-white rounded-lg shadow p-4 mb-6">
             <div className="flex justify-between items-center gap-3 flex-wrap">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar proveedor o RUC/CUIT..."
-                  className="form-input pl-10"
-                  value={searchProveedor}
-                  onChange={e => setSearchProveedor(e.target.value)}
-                />
-              </div>
+              <SearchInput
+                value={searchProveedor}
+                onChange={setSearchProveedor}
+                placeholder="Buscar proveedor o RUC/CUIT..."
+                wrapperClassName="flex-1 min-w-[200px]"
+              />
               <button onClick={() => openProveedorModal()} className="btn btn-primary">
                 <Plus className="w-4 h-4" />
                 Nuevo Proveedor
@@ -518,43 +509,12 @@ const ComprasView = ({
               {/* Items table — scrollable */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '0 1.5rem' }}>
               <div className="mb-4">
-                {(() => {
-                  const itemsConSugerido = compraForm.items.filter(it => {
-                    const c = parseFloat(it.precio_unitario) || 0;
-                    return it.product_id && c > 0 && it.margen_actual != null;
-                  });
-                  const checkedCount = itemsConSugerido.filter(it => it.actualizar_precio ?? autoUpdatePrices).length;
-                  const allChecked = itemsConSugerido.length > 0 && checkedCount === itemsConSugerido.length;
-                  const someChecked = checkedCount > 0 && !allChecked;
-                  return (
-                    <div className="flex justify-between items-center mb-2">
-                      <label className="form-label mb-0">Ítems</label>
-                      <div className="flex items-center gap-3">
-                        {itemsConSugerido.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => handleToggleAllPrices(!allChecked)}
-                            className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none"
-                          >
-                            Actualizar todos los precios
-                            <span
-                              className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none"
-                              style={{ background: allChecked ? 'var(--primary)' : someChecked ? '#86efac' : '#d1d5db' }}
-                            >
-                              <span
-                                className="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform"
-                                style={{ transform: allChecked ? 'translateX(1.1rem)' : someChecked ? 'translateX(0.65rem)' : 'translateX(0.2rem)' }}
-                              />
-                            </span>
-                          </button>
-                        )}
-                        <button type="button" onClick={addItem} className="btn btn-color-secondary btn-sm">
-                          <Plus className="w-3 h-3" /> Agregar ítem
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })()}
+                <div className="flex justify-between items-center mb-2">
+                  <label className="form-label mb-0">Ítems</label>
+                  <button type="button" onClick={addItem} className="btn btn-color-secondary btn-sm">
+                    <Plus className="w-3 h-3" /> Agregar ítem
+                  </button>
+                </div>
                 <div className="border border-gray-200 rounded-lg overflow-hidden">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
@@ -568,14 +528,9 @@ const ComprasView = ({
                     </thead>
                     <tbody>
                       {compraForm.items.map((item, idx) => {
-                        const costoNuevo = parseFloat(item.precio_unitario) || 0;
-                        const precioSugerido = item.product_id && costoNuevo > 0 && item.margen_actual != null
-                          ? Math.ceil(costoNuevo * (1 + item.margen_actual / 100) / 100) * 100
-                          : null;
-
                         return (
                           <React.Fragment key={idx}>
-                            <tr className={`border-t border-gray-100 align-top ${idx === newlyCreatedIndex ? 'bg-green-50' : ''}`}>
+                            <tr className={`border-t border-gray-100 align-top ${newlyCreatedIndices.has(idx) ? 'bg-green-50' : ''}`}>
                               {/* Description with autocomplete */}
                               <td className="px-2 py-1">
                                 <input
@@ -590,7 +545,7 @@ const ComprasView = ({
                                   placeholder={compraForm.sucursal_id ? 'Buscar producto...' : 'Descripción del artículo'}
                                 />
                                 {item.product_id && (
-                                  <div className={`flex flex-wrap gap-3 mt-1 text-xs items-center ${idx === newlyCreatedIndex ? 'text-green-700' : 'text-blue-700'}`}>
+                                  <div className={`flex flex-wrap gap-3 mt-1 text-xs items-center ${newlyCreatedIndices.has(idx) ? 'text-green-700' : 'text-blue-700'}`}>
                                     <span className="flex items-center gap-1">
                                       <Package className="w-3 h-3" />
                                       Costo anterior: {item.costo_actual != null ? `$${formatMoney(item.costo_actual)}` : 'sin datos'}
@@ -598,20 +553,6 @@ const ComprasView = ({
                                     <span>Precio venta: ${formatMoney(item.precio_actual)}</span>
                                     {item.margen_actual != null && (
                                       <span>Margen: {item.margen_actual}%</span>
-                                    )}
-                                    {precioSugerido != null && costoNuevo > 0 && (
-                                      <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                                        <input
-                                          type="checkbox"
-                                          checked={item.actualizar_precio ?? autoUpdatePrices}
-                                          onChange={e => handleItemChange(idx, 'actualizar_precio', e.target.checked)}
-                                          className="w-3.5 h-3.5 accent-green-600"
-                                        />
-                                        <span className={`flex items-center gap-1 font-semibold ${(item.actualizar_precio ?? autoUpdatePrices) ? 'text-green-700' : 'text-gray-400 line-through'}`}>
-                                          <TrendingUp className="w-3 h-3" />
-                                          Precio sugerido: ${formatMoney(precioSugerido)}
-                                        </span>
-                                      </label>
                                     )}
                                   </div>
                                 )}

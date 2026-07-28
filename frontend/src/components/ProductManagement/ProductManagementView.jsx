@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Plus, Edit, Trash2, Package, Search, Save, X,
+  Plus, Edit, Trash2, Package, Save, X,
   Download, Upload, FileText, Tag, Layers, Minus, CircleDot, SlidersHorizontal, ChevronDown, MoreVertical,
 } from 'lucide-react';
 import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
+import SearchInput from '../ui/SearchInput';
 import { getCategoryIcon, ICON_OPTIONS } from '../../utils/categoryIcons';
 import BulkEditModal from './BulkEditModal';
 import NuevoProductoModal from './NuevoProductoModal';
@@ -286,29 +287,14 @@ const ProductManagementView = ({
       {/* Search Bar + Filters */}
       <div className="bg-white rounded-lg shadow p-4 mb-6">
         <div className="flex gap-3 items-center">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar productos..."
-              className="form-input pl-10"
-              style={searchTerm ? { paddingRight: '2.25rem' } : {}}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyDown={handleSearchKeyDown}
-            />
-            {searchTerm && (
-              loading
-                ? <div className="absolute right-3 top-1/2 -translate-y-1/2"><div className="spinner spinner-on-light w-4 h-4 text-gray-400" /></div>
-                : <button
-                    type="button"
-                    onClick={clearSearch}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-            )}
-          </div>
+          <SearchInput
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Buscar productos..."
+            wrapperClassName="flex-1"
+            loading={loading}
+            onKeyDown={handleSearchKeyDown}
+          />
 
           {/* Botón filtros — solo mobile */}
           <button

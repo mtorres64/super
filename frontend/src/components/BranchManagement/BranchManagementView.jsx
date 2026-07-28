@@ -5,7 +5,6 @@ import {
   Edit,
   ChevronRight,
   ArrowLeft,
-  Search,
   Save,
   X,
   Users,
@@ -24,6 +23,7 @@ import {
 } from 'lucide-react';
 import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
+import SearchInput from '../ui/SearchInput';
 import { getCategoryIcon } from '../../utils/categoryIcons';
 import BranchBulkEditModal from './BranchBulkEditModal';
 import { useFormValidation } from '../../hooks/useFormValidation';
@@ -340,25 +340,14 @@ const BranchManagementView = ({
 
         <div className="bg-white rounded-lg shadow p-4 mb-4">
           <div className="flex gap-3 items-center">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar productos..."
-                className="form-input pl-10"
-                style={searchTerm ? { paddingRight: '2.25rem' } : {}}
-                value={searchTerm}
-                onChange={(e) => onSearch(e.target.value)}
-                onKeyDown={handleSearchKeyDown}
-              />
-              {searchTerm && (
-                loadingProducts
-                  ? <div className="absolute right-3 top-1/2 -translate-y-1/2"><div className="spinner spinner-on-light w-4 h-4 text-gray-400" /></div>
-                  : <button type="button" onClick={onClearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                      <X className="h-4 w-4" />
-                    </button>
-              )}
-            </div>
+            <SearchInput
+              value={searchTerm}
+              onChange={onSearch}
+              placeholder="Buscar productos..."
+              wrapperClassName="flex-1"
+              loading={loadingProducts}
+              onKeyDown={handleSearchKeyDown}
+            />
 
             {/* Botón filtros — solo mobile */}
             <button

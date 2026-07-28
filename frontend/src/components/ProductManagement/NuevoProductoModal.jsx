@@ -58,6 +58,7 @@ const NuevoProductoModal = ({ onClose, onProductCreated, initialNombre = '' }) =
   const [branchError, setBranchError] = useState(false);
   const [loadingBranches, setLoadingBranches] = useState(true);
   const [branchVisible, setBranchVisible] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Reemplaza a (autocomplete por sucursal)
   const [branchReplace, setBranchReplace] = useState({});     // { [branchId]: { product_id, nombre, branch_product_id } | null }
@@ -299,6 +300,7 @@ const NuevoProductoModal = ({ onClose, onProductCreated, initialNombre = '' }) =
       }
     }
     setBranchError(false);
+    setSaving(true);
     try {
       const productData = {
         ...formData,
@@ -363,6 +365,8 @@ const NuevoProductoModal = ({ onClose, onProductCreated, initialNombre = '' }) =
           ? detail.map(d => d.msg).join(', ')
           : 'Error al guardar el producto';
       toast.error(msg);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -738,9 +742,12 @@ const NuevoProductoModal = ({ onClose, onProductCreated, initialNombre = '' }) =
             <button type="button" onClick={close} className="btn btn-secondary">
               Cancelar
             </button>
-            <button type="submit" className="btn btn-primary">
-              <Save className="w-4 h-4" />
-              Crear Producto
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving
+                ? <span className="spinner w-4 h-4" />
+                : <Save className="w-4 h-4" />
+              }
+              {saving ? 'Guardando...' : 'Crear Producto'}
             </button>
           </div>
         </form>
