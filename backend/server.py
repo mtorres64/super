@@ -682,6 +682,9 @@ class Configuration(BaseModel):
     # Pagination Settings
     items_per_page: int = 10
 
+    # Search History
+    search_history_count: int = 3  # 0 = disabled
+
     # POS Display Settings
     product_view_mode: str = "cards"  # "cards" | "rows"
 
@@ -731,6 +734,7 @@ class ConfigurationUpdate(BaseModel):
     receipt_width: Optional[int] = None
     receipt_format: Optional[str] = None
     items_per_page: Optional[int] = None
+    search_history_count: Optional[int] = None
     product_view_mode: Optional[str] = None
     company_logo: Optional[str] = None
     primary_color: Optional[str] = None

@@ -143,6 +143,9 @@ const applyTheme = (token) => {
     }
     if (data?.secondary_color) applyColorVar(data.secondary_color, 'secondary');
     if (data?.tertiary_color)  applyColorVar(data.tertiary_color,  'tertiary');
+    if (data?.search_history_count != null) {
+      localStorage.setItem('search_history_count', String(data.search_history_count));
+    }
   }).catch(() => {});
 };
 

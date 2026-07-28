@@ -23,7 +23,8 @@ import {
   ZapOff,
   Moon,
   Sun,
-  FileText
+  FileText,
+  Search
 } from 'lucide-react';
 import { COLOR_THEMES, getContrastColor } from './index';
 
@@ -728,6 +729,29 @@ const SettingsView = ({
                         />
                         <span className="slider"></span>
                       </label>
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-200">
+                      <div className="flex items-center">
+                        <Search className="w-5 h-5 text-gray-400 mr-3" />
+                        <div>
+                          <h4 className="font-medium text-gray-900">Historial de búsquedas</h4>
+                          <p className="text-sm text-gray-500">Búsquedas recientes accesibles en todos los campos de búsqueda</p>
+                        </div>
+                      </div>
+                      <select
+                        className="form-select w-32 text-sm"
+                        value={config?.search_history_count ?? 3}
+                        onChange={(e) => updateConfig('search_history_count', parseInt(e.target.value))}
+                      >
+                        <option value="0">Apagado</option>
+                        <option value="1">1 búsqueda</option>
+                        <option value="2">2 búsquedas</option>
+                        <option value="3">3 búsquedas</option>
+                        <option value="5">5 búsquedas</option>
+                        <option value="8">8 búsquedas</option>
+                        <option value="10">10 búsquedas</option>
+                      </select>
                     </div>
                   </div>
                 </div>

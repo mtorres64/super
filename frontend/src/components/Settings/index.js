@@ -171,6 +171,9 @@ const Settings = () => {
           const baseTheme = preset || buildCustomTheme(config.primary_color);
           persistTheme({ ...baseTheme, secondary: config.secondary_color, tertiary: config.tertiary_color });
         }
+        if (config?.search_history_count != null) {
+          localStorage.setItem('search_history_count', String(config.search_history_count));
+        }
       } catch (error) {
         toast.error(error.response?.data?.detail || 'Error al guardar configuración');
       } finally {
