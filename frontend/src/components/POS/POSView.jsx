@@ -91,6 +91,11 @@ const POSView = ({
   calculateTotal,
   paymentMethod,
   setPaymentMethod,
+  pagoSplit,
+  setPagoSplit,
+  pagos,
+  setPagos,
+  splitValid,
   loading,
   processSale,
   generarPresupuesto,
@@ -146,6 +151,13 @@ const POSView = ({
   const [slideDir, setSlideDir] = useState('right');
   const [openDiscountItemId, setOpenDiscountItemId] = useState(null);
   const discountBlurTimer = useRef(null);
+  const efectivoInputRef = useRef(null);
+
+  useEffect(() => {
+    if (pagoSplit) {
+      setTimeout(() => efectivoInputRef.current?.focus(), 50);
+    }
+  }, [pagoSplit]);
 
   useEffect(() => {
     if (openDiscountItemId === null) return;
@@ -916,53 +928,167 @@ const POSView = ({
               </div>
 
               <div className="payment-methods">
-                <label className="form-label">Método de Pago</label>
-                <div className="space-y-2">
-                  <div className="payment-method">
-                    <input
-                      type="radio"
-                      id="efectivo"
-                      name="payment"
-                      value="efectivo"
-                      checked={paymentMethod === 'efectivo'}
-                      onChange={(e) => setPaymentMethod(e.target.value)}
-                    />
-                    <label htmlFor="efectivo" className="ml-2 flex items-center cursor-pointer">
-                      <DollarSign className="w-4 h-4 mr-2" />
-                      Efectivo
-                    </label>
-                  </div>
-
-                  <div className="payment-method">
-                    <input
-                      type="radio"
-                      id="tarjeta"
-                      name="payment"
-                      value="tarjeta"
-                      checked={paymentMethod === 'tarjeta'}
-                      onChange={(e) => setPaymentMethod(e.target.value)}
-                    />
-                    <label htmlFor="tarjeta" className="ml-2 flex items-center cursor-pointer">
-                      <CreditCard className="w-4 h-4 mr-2" />
-                      Tarjeta
-                    </label>
-                  </div>
-
-                  <div className="payment-method">
-                    <input
-                      type="radio"
-                      id="transferencia"
-                      name="payment"
-                      value="transferencia"
-                      checked={paymentMethod === 'transferencia'}
-                      onChange={(e) => setPaymentMethod(e.target.value)}
-                    />
-                    <label htmlFor="transferencia" className="ml-2 flex items-center cursor-pointer">
-                      <Smartphone className="w-4 h-4 mr-2" />
-                      Transferencia
-                    </label>
-                  </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <label className="form-label" style={{ marginBottom: 0 }}>Método de Pago</label>
+                  {config?.pago_dividido_habilitado && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !pagoSplit;
+                        setPagoSplit(next);
+                        if (next) {
+                          setPagos([
+                            { metodo: 'efectivo', monto: '' },
+                            { metodo: 'tarjeta', monto: '' },
+                            { metodo: 'transferencia', monto: '' },
+                          ]);
+                        }
+                      }}
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        border: '1px solid',
+                        borderColor: pagoSplit ? 'var(--primary, #10b981)' : '#d1d5db',
+                        background: pagoSplit ? 'var(--primary, #10b981)' : 'transparent',
+                        color: pagoSplit ? '#fff' : '#6b7280',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Dividido
+                    </button>
+                  )}
                 </div>
+
+                {pagoSplit ? (
+                  <div>
+                    {(() => {
+                      const total = calculateTotal();
+                      const paid = pagos.reduce((s, p) => s + (parseFloat(p.monto) || 0), 0);
+                      const remaining = total - paid;
+                      const isComplete = Math.abs(remaining) <= 0.5;
+                      const hasChange = remaining < -0.5;
+                      return (
+                        <div style={{
+                          fontSize: '0.78rem',
+                          marginBottom: '0.5rem',
+                          fontWeight: 600,
+                          color: isComplete || hasChange ? '#16a34a' : '#dc2626',
+                        }}>
+                          {isComplete
+                            ? `✓ Completo (${config?.currency_symbol || '$'}${formatAmount(total)})`
+                            : hasChange
+                            ? `Vuelto: ${config?.currency_symbol || '$'}${formatAmount(Math.abs(remaining))}`
+                            : `Restante: ${config?.currency_symbol || '$'}${formatAmount(remaining)}`}
+                        </div>
+                      );
+                    })()}
+                    {[
+                      { key: 'efectivo', label: 'Efectivo', icon: <DollarSign className="w-4 h-4" style={{ flexShrink: 0 }} /> },
+                      { key: 'tarjeta', label: 'Tarjeta', icon: <CreditCard className="w-4 h-4" style={{ flexShrink: 0 }} /> },
+                      { key: 'transferencia', label: 'Transfer.', icon: <Smartphone className="w-4 h-4" style={{ flexShrink: 0 }} /> },
+                    ].map(({ key, label, icon }) => {
+                      const entry = pagos.find(p => p.metodo === key) || { metodo: key, monto: '' };
+                      const othersPaid = pagos
+                        .filter(p => p.metodo !== key)
+                        .reduce((s, p) => s + (parseFloat(p.monto) || 0), 0);
+                      const remaining = Math.max(0, calculateTotal() - othersPaid);
+                      return (
+                        <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.35rem' }}>
+                          {icon}
+                          <span style={{ fontSize: '0.8rem', flex: 1 }}>{label}</span>
+                          <input
+                            ref={key === 'efectivo' ? efectivoInputRef : null}
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={entry.monto}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setPagos(pagos.map(p => p.metodo === key ? { ...p, monto: val } : p));
+                            }}
+                            placeholder="0"
+                            style={{
+                              width: '90px',
+                              padding: '2px 5px',
+                              border: '1px solid #d1d5db',
+                              borderRadius: '4px',
+                              fontSize: '0.78rem',
+                              textAlign: 'right',
+                            }}
+                          />
+                          <button
+                            type="button"
+                            title={`Completar con saldo restante: ${config?.currency_symbol || '$'}${formatAmount(remaining)}`}
+                            onClick={() => setPagos(pagos.map(p => p.metodo === key ? { ...p, monto: String(Math.round(remaining)) } : p))}
+                            style={{
+                              flexShrink: 0,
+                              padding: '2px 5px',
+                              fontSize: '0.7rem',
+                              fontWeight: 700,
+                              background: remaining > 0 ? 'var(--primary, #10b981)' : '#e5e7eb',
+                              color: remaining > 0 ? '#fff' : '#9ca3af',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: remaining > 0 ? 'pointer' : 'default',
+                              lineHeight: 1,
+                            }}
+                          >
+                            +R
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="payment-method">
+                      <input
+                        type="radio"
+                        id="efectivo"
+                        name="payment"
+                        value="efectivo"
+                        checked={paymentMethod === 'efectivo'}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
+                      />
+                      <label htmlFor="efectivo" className="ml-2 flex items-center cursor-pointer">
+                        <DollarSign className="w-4 h-4 mr-2" />
+                        Efectivo
+                      </label>
+                    </div>
+
+                    <div className="payment-method">
+                      <input
+                        type="radio"
+                        id="tarjeta"
+                        name="payment"
+                        value="tarjeta"
+                        checked={paymentMethod === 'tarjeta'}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
+                      />
+                      <label htmlFor="tarjeta" className="ml-2 flex items-center cursor-pointer">
+                        <CreditCard className="w-4 h-4 mr-2" />
+                        Tarjeta
+                      </label>
+                    </div>
+
+                    <div className="payment-method">
+                      <input
+                        type="radio"
+                        id="transferencia"
+                        name="payment"
+                        value="transferencia"
+                        checked={paymentMethod === 'transferencia'}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
+                      />
+                      <label htmlFor="transferencia" className="ml-2 flex items-center cursor-pointer">
+                        <Smartphone className="w-4 h-4 mr-2" />
+                        Transferencia
+                      </label>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
@@ -978,7 +1104,7 @@ const POSView = ({
 
               <button
                 onClick={processSale}
-                disabled={loading || cart.length === 0}
+                disabled={loading || cart.length === 0 || !splitValid}
                 className="btn btn-lg w-full"
                 style={modifyingSaleId
                   ? { background: '#f59e0b', borderColor: '#d97706', color: '#fff' }

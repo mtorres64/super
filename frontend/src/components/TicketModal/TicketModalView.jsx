@@ -22,7 +22,7 @@ const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, t
 
   const totalReturns  = returns.reduce((s, r) => s + r.total, 0);
   const netSubtotal   = sale.subtotal - totalReturns;
-  const pct           = (config?.payment_method_adjustments || {})[sale.metodo_pago] ?? 0;
+  const pct           = (sale.pagos?.length > 1) ? 0 : ((config?.payment_method_adjustments || {})[sale.metodo_pago] ?? 0);
   const saleDescuento = sale.descuento || 0;
   const storedAdj     = sale.total - sale.subtotal - (sale.impuestos || 0);
   const paymentAdj    = totalReturns > 0 ? (netSubtotal * pct / 100) : storedAdj + saleDescuento;
@@ -183,11 +183,19 @@ const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, t
           <div className="ticket-info-row">
             <span>Pago:</span>
             <span>
-              {sale.metodo_pago === 'efectivo' ? 'Efectivo'
-                : sale.metodo_pago === 'tarjeta' ? 'Tarjeta'
-                : 'Transferencia'}
+              {sale.pagos?.length > 1
+                ? 'Pago Dividido'
+                : sale.metodo_pago === 'efectivo' ? 'Efectivo'
+                  : sale.metodo_pago === 'tarjeta' ? 'Tarjeta'
+                  : 'Transferencia'}
             </span>
           </div>
+          {sale.pagos?.length > 1 && sale.pagos.map((p, i) => (
+            <div key={i} className="ticket-info-row" style={{ paddingLeft: '1rem', fontSize: '0.75em' }}>
+              <span>{p.metodo === 'efectivo' ? 'Efectivo' : p.metodo === 'tarjeta' ? 'Tarjeta' : 'Transferencia'}:</span>
+              <span>{sym}{formatAmount(p.monto)}</span>
+            </div>
+          ))}
 
           <div className="ticket-separator">{'- '.repeat(16)}</div>
 

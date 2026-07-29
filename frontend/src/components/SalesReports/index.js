@@ -216,11 +216,26 @@ const SalesReports = () => {
     const paymentMethods = {};
     salesData.forEach(sale => {
       const net = sale.total - (netTotals[sale.id] || 0);
-      if (paymentMethods[sale.metodo_pago]) {
-        paymentMethods[sale.metodo_pago].count++;
-        paymentMethods[sale.metodo_pago].total += net;
+      if (sale.pagos && sale.pagos.length > 1) {
+        const totalPagos = sale.pagos.reduce((s, p) => s + p.monto, 0);
+        sale.pagos.forEach(p => {
+          const key = p.metodo;
+          const share = totalPagos > 0 ? (p.monto / totalPagos) * net : 0;
+          if (paymentMethods[key]) {
+            paymentMethods[key].count++;
+            paymentMethods[key].total += share;
+          } else {
+            paymentMethods[key] = { count: 1, total: share };
+          }
+        });
       } else {
-        paymentMethods[sale.metodo_pago] = { count: 1, total: net };
+        const key = sale.metodo_pago;
+        if (paymentMethods[key]) {
+          paymentMethods[key].count++;
+          paymentMethods[key].total += net;
+        } else {
+          paymentMethods[key] = { count: 1, total: net };
+        }
       }
     });
 
@@ -449,7 +464,9 @@ const SalesReports = () => {
       Sucursal: getBranchName(sale.branch_id),
       Cajero: getCajeroName(sale.cajero_id) || sale.cajero_id,
       Total: sale.total,
-      'Metodo Pago': getPaymentMethodLabel(sale.metodo_pago),
+      'Metodo Pago': sale.pagos?.length > 1
+        ? sale.pagos.map(p => `${getPaymentMethodLabel(p.metodo)} $${p.monto}`).join(' + ')
+        : getPaymentMethodLabel(sale.metodo_pago),
       Items: sale.items.length,
     }));
     const ws = XLSX.utils.json_to_sheet(rows);

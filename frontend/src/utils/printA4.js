@@ -27,7 +27,7 @@ export function printDocumentA4(sale, {
   const letraComp    = TIPO_CBTE_LETRA[sale.tipo_comprobante] || '';
   const totalReturns  = returns.reduce((s, r) => s + r.total, 0);
   const netSubtotal   = sale.subtotal - totalReturns;
-  const pct           = (config.payment_method_adjustments || {})[sale.metodo_pago] ?? 0;
+  const pct           = (sale.pagos?.length > 1) ? 0 : ((config.payment_method_adjustments || {})[sale.metodo_pago] ?? 0);
   const saleDescuento = sale.descuento || 0;
   const storedAdj     = sale.total - sale.subtotal - (sale.impuestos || 0);
   const paymentAdj    = totalReturns > 0 ? (netSubtotal * pct / 100) : storedAdj + saleDescuento;
@@ -138,7 +138,9 @@ export function printDocumentA4(sale, {
   if (cajeroName) infoR('Cajero:', cajeroName, midX + 2, right);
   y += 6;
 
-  const metodoPagoLabel = sale.metodo_pago === 'efectivo' ? 'Efectivo'
+  const metodoPagoLabel = sale.pagos?.length > 1
+    ? sale.pagos.map(p => `${p.metodo === 'efectivo' ? 'Efectivo' : p.metodo === 'tarjeta' ? 'Tarjeta' : 'Transferencia'}: $${p.monto}`).join(' / ')
+    : sale.metodo_pago === 'efectivo' ? 'Efectivo'
     : sale.metodo_pago === 'tarjeta' ? 'Tarjeta' : 'Transferencia';
   infoR('Método de pago:', metodoPagoLabel, margin, midX - 2);
   y += 8;

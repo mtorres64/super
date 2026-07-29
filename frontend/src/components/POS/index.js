@@ -39,6 +39,12 @@ const defaultInvoiceConfig = {
   observaciones: '',
 };
 
+const defaultPagos = [
+  { metodo: 'efectivo', monto: '' },
+  { metodo: 'tarjeta', monto: '' },
+  { metodo: 'transferencia', monto: '' },
+];
+
 const POS = () => {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -46,7 +52,7 @@ const POS = () => {
   const [configLoaded, setConfigLoaded] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [barcode, setBarcode] = useState('');
-  const [tabs, setTabs] = useState([{ id: 1, cart: [], paymentMethod: 'efectivo', colorIndex: 0, customer: null, invoiceConfig: { ...defaultInvoiceConfig }, modifyingSaleId: null, modifyingInvoiceNum: null }]);
+  const [tabs, setTabs] = useState([{ id: 1, cart: [], paymentMethod: 'efectivo', pagoSplit: false, pagos: defaultPagos, colorIndex: 0, customer: null, invoiceConfig: { ...defaultInvoiceConfig }, modifyingSaleId: null, modifyingInvoiceNum: null }]);
   const [showInvoicePanel, setShowInvoicePanel] = useState(false);
   const [activeTabId, setActiveTabId] = useState(1);
   const [nextTabId, setNextTabId] = useState(2);
@@ -98,6 +104,9 @@ const POS = () => {
     const sub = calculateSubtotal();
     const tax = calculateTax();
     const adj = calculatePaymentAdjustment();
+    const pagosFilled = pagoSplit
+      ? pagos.filter(p => parseFloat(p.monto) > 0).map(p => ({ metodo: p.metodo, monto: parseFloat(p.monto) }))
+      : null;
     setPresupuestoReceipt({
       _esPresupuesto: true,
       items: cart.map(item => ({
@@ -110,7 +119,8 @@ const POS = () => {
       subtotal: sub,
       impuestos: tax,
       total: sub + tax + adj,
-      metodo_pago: paymentMethod,
+      metodo_pago: pagoSplit && pagosFilled?.length > 0 ? pagosFilled[0].metodo : paymentMethod,
+      pagos: pagosFilled?.length > 1 ? pagosFilled : null,
       fecha: new Date().toISOString(),
       afip_estado: null,
     });
@@ -128,11 +138,17 @@ const POS = () => {
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
   const cart = activeTab.cart;
   const paymentMethod = activeTab.paymentMethod;
+  const pagoSplit = activeTab.pagoSplit || false;
+  const pagos = Array.isArray(activeTab.pagos) ? activeTab.pagos : defaultPagos;
   const selectedCustomer = activeTab.customer || null;
   const setCart = (newCart) =>
     setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, cart: newCart } : t));
   const setPaymentMethod = (pm) =>
     setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, paymentMethod: pm } : t));
+  const setPagoSplit = (v) =>
+    setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, pagoSplit: v } : t));
+  const setPagos = (p) =>
+    setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, pagos: p } : t));
   const setSelectedCustomer = (c) =>
     setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, customer: c } : t));
 
@@ -684,6 +700,7 @@ const POS = () => {
   };
 
   const calculatePaymentAdjustment = () => {
+    if (pagoSplit) return 0;
     const adjustments = config?.payment_method_adjustments || {};
     const pct = adjustments[paymentMethod] ?? 0;
     if (pct === 0) return 0;
@@ -721,11 +738,38 @@ const POS = () => {
       return;
     }
 
+    if (pagoSplit) {
+      const pagosFilled = pagos.filter(p => parseFloat(p.monto) > 0);
+      if (pagosFilled.length < 2) {
+        toast.error('En pago dividido, ingrese monto en al menos dos métodos');
+        return;
+      }
+      const totalPagos = pagosFilled.reduce((s, p) => s + parseFloat(p.monto), 0);
+      if (totalPagos < calculateTotal() - 0.5) {
+        toast.error(`Falta cubrir el total de la compra`);
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       const descuento = calculateDiscount();
       const impuestosExtraTotal = calculateImpuestosExtra();
       const tipoAfip = TIPO_COMPROBANTE_AFIP[invoiceConfig.tipo_comprobante];
+      const pagosFilled = (() => {
+        if (!pagoSplit) return null;
+        const raw = pagos.filter(p => parseFloat(p.monto) > 0).map(p => ({ metodo: p.metodo, monto: parseFloat(p.monto) }));
+        const totalPagado = raw.reduce((s, p) => s + p.monto, 0);
+        const vuelto = totalPagado - calculateTotal();
+        if (vuelto <= 0.5) return raw;
+        // Descontar vuelto del efectivo; si no hay efectivo, del primer método
+        const idxEfectivo = raw.findIndex(p => p.metodo === 'efectivo');
+        const idx = idxEfectivo >= 0 ? idxEfectivo : 0;
+        return raw.map((p, i) => i === idx ? { ...p, monto: Math.max(0, p.monto - vuelto) } : p).filter(p => p.monto > 0);
+      })();
+      const primaryMethod = pagoSplit && pagosFilled?.length > 0
+        ? pagosFilled.reduce((max, p) => p.monto > max.monto ? p : max, pagosFilled[0]).metodo
+        : paymentMethod;
       const saleData = {
         items: cart.map(item => ({
           producto_id: item.product_id || item.id,
@@ -734,7 +778,8 @@ const POS = () => {
           subtotal: getEffectivePrice(item) * item.quantity,
           ...(item.descuento > 0 && { descuento: item.descuento }),
         })),
-        metodo_pago: paymentMethod,
+        metodo_pago: primaryMethod,
+        ...(pagoSplit && pagosFilled?.length > 1 && { pagos: pagosFilled }),
         ...(selectedCustomer && selectedCustomer.id && { cliente_id: selectedCustomer.id }),
         ...(tipoAfip && { tipo_comprobante: tipoAfip }),
         ...(invoiceConfig.cuit_receptor && { cuit_receptor: invoiceConfig.cuit_receptor }),
@@ -823,7 +868,7 @@ const POS = () => {
 
   const addSaleTab = () => {
     const newId = nextTabId;
-    setTabs(prev => [...prev, { id: newId, cart: [], paymentMethod: 'efectivo', colorIndex: prev.length % TAB_COLORS.length, customer: null, invoiceConfig: { ...defaultInvoiceConfig }, modifyingSaleId: null, modifyingInvoiceNum: null }]);
+    setTabs(prev => [...prev, { id: newId, cart: [], paymentMethod: 'efectivo', pagoSplit: false, pagos: defaultPagos, colorIndex: prev.length % TAB_COLORS.length, customer: null, invoiceConfig: { ...defaultInvoiceConfig }, modifyingSaleId: null, modifyingInvoiceNum: null }]);
     setActiveTabId(newId);
     setNextTabId(prev => prev + 1);
     focusSearch();
@@ -984,6 +1029,8 @@ const POS = () => {
             id: newId,
             cart: cartItems,
             paymentMethod: sale.metodo_pago || 'efectivo',
+            pagoSplit: false,
+            pagos: defaultPagos,
             colorIndex: prev.length % TAB_COLORS.length,
             customer: null,
             invoiceConfig: saleInvoiceConfig,
@@ -1073,6 +1120,15 @@ const POS = () => {
       calculateTotal={calculateTotal}
       paymentMethod={paymentMethod}
       setPaymentMethod={setPaymentMethod}
+      pagoSplit={pagoSplit}
+      setPagoSplit={setPagoSplit}
+      pagos={pagos}
+      setPagos={setPagos}
+      splitValid={!pagoSplit || (() => {
+        const filled = pagos.filter(p => parseFloat(p.monto) > 0);
+        if (filled.length < 2) return false;
+        return filled.reduce((s, p) => s + parseFloat(p.monto), 0) >= calculateTotal() - 0.5;
+      })()}
       loading={loading}
       processSale={processSale}
       saleReceipt={saleReceipt}

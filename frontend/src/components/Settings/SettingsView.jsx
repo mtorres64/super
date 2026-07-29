@@ -293,6 +293,21 @@ const SettingsView = ({
                 </div>
               </div>
 
+              {/* Pago Dividido */}
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <div>
+                  <h4 className="font-medium text-gray-900">Pago Dividido</h4>
+                  <p className="text-sm text-gray-500">Permite pagar una venta con múltiples métodos de pago simultáneamente</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => updateConfig('pago_dividido_habilitado', !config?.pago_dividido_habilitado)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${config?.pago_dividido_habilitado ? 'bg-green-500' : 'bg-gray-300'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${config?.pago_dividido_habilitado ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+
               {/* Payment Method Adjustments */}
               <div>
                 <h4 className="text-base font-semibold text-gray-900 mb-1">Ajustes por Método de Pago</h4>

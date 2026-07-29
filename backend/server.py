@@ -248,6 +248,10 @@ class PaymentMethod(str, Enum):
     TARJETA = "tarjeta"
     TRANSFERENCIA = "transferencia"
 
+class PagoSplit(BaseModel):
+    metodo: PaymentMethod
+    monto: float
+
 class ProductType(str, Enum):
     CODIGO_BARRAS = "codigo_barras"
     POR_PESO = "por_peso"
@@ -702,6 +706,7 @@ class Configuration(BaseModel):
         "tarjeta": 0.0,
         "transferencia": 0.0
     })
+    pago_dividido_habilitado: bool = False
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -741,6 +746,7 @@ class ConfigurationUpdate(BaseModel):
     secondary_color: Optional[str] = None
     tertiary_color: Optional[str] = None
     payment_method_adjustments: Optional[dict] = None
+    pago_dividido_habilitado: Optional[bool] = None
 
 class User(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -913,11 +919,13 @@ class Sale(BaseModel):
     impuestos_extra_total: float = 0.0
     condicion_iva_receptor: Optional[str] = None
     observaciones_comprobante: Optional[str] = None
+    pagos: Optional[List[PagoSplit]] = None
     factura_payload: Optional[dict] = None      # Datos mínimos AFIP/ARCA para generación de comprobante
 
 class SaleCreate(BaseModel):
     items: List[SaleItem]
     metodo_pago: PaymentMethod
+    pagos: Optional[List[PagoSplit]] = None
     tipo_comprobante: Optional[int] = None      # si None → usa default de AfipConfig
     cuit_receptor: Optional[str] = None         # requerido si tipo_comprobante = 1
     cliente_id: Optional[str] = None
@@ -3552,10 +3560,13 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
     base_total = total_amount * (1 + tax_rate)
     # Apply payment method adjustment
     adjustments = (config.get('payment_method_adjustments') or {}) if config else {}
-    adjustment_pct = adjustments.get(sale_data.metodo_pago.value, 0.0)
-    adjustment_amount = base_total * (adjustment_pct / 100.0)
     descuento = sale_data.descuento or 0.0
     impuestos_extra_total = sale_data.impuestos_extra_total or 0.0
+    if sale_data.pagos and len(sale_data.pagos) > 1:
+        adjustment_amount = 0
+    else:
+        adjustment_pct = adjustments.get(sale_data.metodo_pago.value, 0.0)
+        adjustment_amount = base_total * (adjustment_pct / 100.0)
     total = base_total + adjustment_amount - descuento + impuestos_extra_total
 
     # Create sale
@@ -3569,6 +3580,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
         impuestos=impuestos,
         total=total,
         metodo_pago=sale_data.metodo_pago,
+        pagos=sale_data.pagos if (sale_data.pagos and len(sale_data.pagos) > 1) else None,
         numero_factura=numero_factura,
         cliente_id=sale_data.cliente_id,
         descuento=descuento,
@@ -3588,12 +3600,16 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
     )
 
     # Create cash movement
+    if sale_data.pagos and len(sale_data.pagos) > 1:
+        pago_desc = ' + '.join(f"{p.metodo.value.capitalize()} ${p.monto:.0f}" for p in sale_data.pagos)
+    else:
+        pago_desc = sale_data.metodo_pago.value.capitalize()
     movement = CashMovement(
         empresa_id=user.empresa_id,
         session_id=current_session['id'],
         tipo=MovementType.VENTA,
         monto=total,
-        descripcion=f"Venta {numero_factura} - {sale_data.metodo_pago.value.capitalize()}",
+        descripcion=f"Venta {numero_factura} - {pago_desc}",
         venta_id=sale.id
     )
     await db.cash_movements.insert_one(movement.dict())
@@ -3772,10 +3788,13 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
     impuestos = total_amount * tax_rate
     base_total = total_amount * (1 + tax_rate)
     adjustments = (config.get('payment_method_adjustments') or {}) if config else {}
-    adjustment_pct = adjustments.get(sale_data.metodo_pago.value, 0.0)
-    adjustment_amount = base_total * (adjustment_pct / 100.0)
     descuento = sale_data.descuento or 0.0
     impuestos_extra_total = sale_data.impuestos_extra_total or 0.0
+    if sale_data.pagos and len(sale_data.pagos) > 1:
+        adjustment_amount = 0
+    else:
+        adjustment_pct = adjustments.get(sale_data.metodo_pago.value, 0.0)
+        adjustment_amount = base_total * (adjustment_pct / 100.0)
     total = base_total + adjustment_amount - descuento + impuestos_extra_total
 
     # Update the sale
@@ -3786,6 +3805,7 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
         "impuestos": impuestos,
         "total": total,
         "metodo_pago": sale_data.metodo_pago.value,
+        "pagos": [p.dict() for p in sale_data.pagos] if (sale_data.pagos and len(sale_data.pagos) > 1) else None,
         "cliente_id": sale_data.cliente_id,
         "descuento": descuento,
         "impuestos_extra_total": impuestos_extra_total,
@@ -4460,6 +4480,20 @@ async def get_cash_session_report(session_id: str, user: User = Depends(get_curr
     def net_total(sale):
         return sale.total - returned_by_sale.get(sale.id, 0)
 
+    method_income = {'efectivo': 0.0, 'tarjeta': 0.0, 'transferencia': 0.0}
+    for s in sales:
+        returned = returned_by_sale.get(s.id, 0)
+        if s.pagos and len(s.pagos) > 1:
+            ratio = (1 - returned / s.total) if s.total > 0 else 1
+            for p in s.pagos:
+                key = p.metodo.value if hasattr(p.metodo, 'value') else p.metodo
+                if key in method_income:
+                    method_income[key] += p.monto * ratio
+        else:
+            key = s.metodo_pago.value if hasattr(s.metodo_pago, 'value') else s.metodo_pago
+            if key in method_income:
+                method_income[key] += net_total(s)
+
     return {
         "session": CashSession(**session),
         "movements": movements,
@@ -4468,9 +4502,9 @@ async def get_cash_session_report(session_id: str, user: User = Depends(get_curr
         "branch": branch_info,
         "resumen": {
             "total_ventas": len(sales),
-            "ingresos_efectivo": sum(net_total(s) for s in sales if s.metodo_pago == 'efectivo'),
-            "ingresos_tarjeta": sum(net_total(s) for s in sales if s.metodo_pago == 'tarjeta'),
-            "ingresos_transferencia": sum(net_total(s) for s in sales if s.metodo_pago == 'transferencia'),
+            "ingresos_efectivo": method_income['efectivo'],
+            "ingresos_tarjeta": method_income['tarjeta'],
+            "ingresos_transferencia": method_income['transferencia'],
         }
     }
 

@@ -434,13 +434,15 @@ const SalesReportsView = ({
                   </td>
                   <td className="text-center" data-label="Pago">
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                      sale.metodo_pago === 'efectivo'
+                      sale.pagos?.length > 1
+                        ? 'bg-orange-100 text-orange-800'
+                        : sale.metodo_pago === 'efectivo'
                         ? 'bg-green-100 text-green-800'
                         : sale.metodo_pago === 'tarjeta'
                         ? 'bg-blue-100 text-blue-800'
                         : 'bg-purple-100 text-purple-800'
                     }`}>
-                      {getPaymentMethodLabel(sale.metodo_pago)}
+                      {sale.pagos?.length > 1 ? 'Dividido' : getPaymentMethodLabel(sale.metodo_pago)}
                     </span>
                   </td>
                   <td className="hidden md:table-cell" data-label="Estado">
