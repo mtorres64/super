@@ -2397,8 +2397,8 @@ html.dark .modal-sticky-bottom {
    TICKET PRINT AREA
    ================================================ */
 #ticket-print-area {
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 12px;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 13px;
   line-height: 1.6;
   color: #000;
   width: 100%;
@@ -2416,29 +2416,26 @@ html.dark .modal-sticky-bottom {
 
 .ticket-company-name {
   text-align: center;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: bold;
   margin-bottom: 2px;
 }
 
 .ticket-line {
   text-align: center;
-  font-size: 11px;
+  font-size: 13px;
   color: #333;
 }
 
 .ticket-separator {
-  text-align: center;
-  color: #aaa;
+  border-bottom: 1px dashed #999;
   margin: 6px 0;
-  font-size: 11px;
-  letter-spacing: 1px;
 }
 
 .ticket-info-row {
   display: flex;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 13px;
   margin-bottom: 2px;
 }
 
@@ -2446,7 +2443,7 @@ html.dark .modal-sticky-bottom {
   display: flex;
   justify-content: space-between;
   font-weight: bold;
-  font-size: 11px;
+  font-size: 13px;
   margin-bottom: 4px;
 }
 
@@ -2455,26 +2452,26 @@ html.dark .modal-sticky-bottom {
 }
 
 .ticket-item-name {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: bold;
 }
 
 .ticket-item-detail {
   display: flex;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 13px;
   color: #444;
 }
 
 .ticket-total-row {
   display: flex;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 13px;
   margin-bottom: 2px;
 }
 
 .ticket-total-final {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: bold;
   color: #000;
   margin-top: 4px;
@@ -2482,7 +2479,7 @@ html.dark .modal-sticky-bottom {
 
 .ticket-footer {
   text-align: center;
-  font-size: 11px;
+  font-size: 13px;
   margin-top: 4px;
   color: #333;
 }
@@ -2493,7 +2490,7 @@ html.dark .modal-sticky-bottom {
 @media print {
   @page {
     size: 80mm auto;
-    margin: 4mm;
+    margin: 2mm 1mm;
   }
 
   body * {
@@ -2509,11 +2506,30 @@ html.dark .modal-sticky-bottom {
     position: fixed;
     left: 0;
     top: 0;
-    width: 72mm;
-    max-width: 72mm;
+    width: 78mm;
+    max-width: 78mm;
     background: white;
-    padding: 0 4mm;
+    padding: 0 1mm;
     margin: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  #ticket-print-area,
+  #ticket-print-area * {
+    color: #000 !important;
+    font-weight: 600 !important;
+  }
+
+  #ticket-print-area .ticket-separator {
+    border-bottom-color: #000 !important;
+  }
+
+  #ticket-print-area .ticket-company-name,
+  #ticket-print-area .ticket-total-final,
+  #ticket-print-area .ticket-items-header,
+  #ticket-print-area .ticket-item-name {
+    font-weight: 800 !important;
   }
 
   .ticket-modal-overlay,

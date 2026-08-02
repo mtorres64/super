@@ -64,7 +64,7 @@ const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, t
             </div>
           )}
 
-          <div className="ticket-separator">{'- '.repeat(16)}</div>
+          <div className="ticket-separator" />
 
           {/* ── Encabezado del comprobante ── */}
           {sale._esPresupuesto ? (
@@ -197,7 +197,7 @@ const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, t
             </div>
           ))}
 
-          <div className="ticket-separator">{'- '.repeat(16)}</div>
+          <div className="ticket-separator" />
 
           {/* ── Items ── */}
           <div className="ticket-items-header">
@@ -214,7 +214,7 @@ const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, t
             </div>
           ))}
 
-          <div className="ticket-separator">{'- '.repeat(16)}</div>
+          <div className="ticket-separator" />
 
           {/* ── Devoluciones ── */}
           {returns.length > 0 && (
@@ -242,7 +242,7 @@ const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, t
                 <span>Total devuelto:</span>
                 <span>-{sym}{formatAmount(totalReturns)}</span>
               </div>
-              <div className="ticket-separator">{'- '.repeat(16)}</div>
+              <div className="ticket-separator" />
             </>
           )}
 
@@ -288,7 +288,7 @@ const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, t
           {/* ── CAE / ARCA ── */}
           {sale.cae && (
             <>
-              <div className="ticket-separator">{'- '.repeat(16)}</div>
+              <div className="ticket-separator" />
               <div style={{
                 textAlign: 'center', fontSize: '9px', fontWeight: 'bold',
                 letterSpacing: '0.5px', margin: '3px 0'
@@ -317,7 +317,7 @@ const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, t
             </div>
           )}
 
-          <div className="ticket-separator">{'- '.repeat(16)}</div>
+          <div className="ticket-separator" />
           <div className="ticket-footer">
             {config?.receipt_footer_text || '¡Gracias por su compra!'}
           </div>
