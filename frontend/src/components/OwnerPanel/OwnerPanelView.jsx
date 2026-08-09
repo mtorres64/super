@@ -2008,6 +2008,7 @@ const EmpresaConfigPanel = ({ empresaId, token }) => {
         default_minimum_stock: String(d.default_minimum_stock ?? 10),
         low_stock_alert_enabled: d.low_stock_alert_enabled ?? true,
         auto_update_inventory: d.auto_update_inventory ?? true,
+        allow_negative_stock: d.allow_negative_stock ?? false,
         print_receipt_auto: d.print_receipt_auto ?? false,
         show_receipt_after_sale: d.show_receipt_after_sale ?? true,
         receipt_width: String(d.receipt_width ?? 80),
@@ -2058,6 +2059,7 @@ const EmpresaConfigPanel = ({ empresaId, token }) => {
         default_minimum_stock: parseInt(cfg.default_minimum_stock) || null,
         low_stock_alert_enabled: cfg.low_stock_alert_enabled,
         auto_update_inventory: cfg.auto_update_inventory,
+        allow_negative_stock: cfg.allow_negative_stock,
         print_receipt_auto: cfg.print_receipt_auto,
         show_receipt_after_sale: cfg.show_receipt_after_sale,
         receipt_width: parseInt(cfg.receipt_width) || null,
@@ -2206,6 +2208,7 @@ const EmpresaConfigPanel = ({ empresaId, token }) => {
                 <div className="space-y-3">
                   <Toggle field="low_stock_alert_enabled" label="Alertas de stock bajo habilitadas" />
                   <Toggle field="auto_update_inventory" label="Actualización automática de inventario" />
+                  <Toggle field="allow_negative_stock" label="Permitir venta sin stock (no descuenta si no alcanza)" />
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Stock mínimo por defecto</label>
                     <input type="number" value={cfg.default_minimum_stock} onChange={set('default_minimum_stock')} className={inputCls} min="0" />

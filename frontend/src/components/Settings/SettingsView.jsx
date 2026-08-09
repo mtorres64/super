@@ -509,6 +509,25 @@ const SettingsView = ({
                   </label>
                 </div>
 
+                {config?.auto_update_inventory && (
+                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg ml-6 border-l-4 border-gray-200">
+                    <div>
+                      <h4 className="font-medium text-gray-900">Permitir Venta sin Stock</h4>
+                      <p className="text-sm text-gray-500">
+                        Si no hay stock suficiente, el producto se puede vender igual pero no se descuenta del inventario
+                      </p>
+                    </div>
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={config?.allow_negative_stock || false}
+                        onChange={(e) => updateConfig('allow_negative_stock', e.target.checked)}
+                      />
+                      <span className="slider"></span>
+                    </label>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <div>
                     <h4 className="font-medium text-gray-900">Actualizar precios al registrar compras</h4>

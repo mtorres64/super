@@ -444,7 +444,7 @@ const POSView = ({
                     {paginatedProducts.map((product, idx) => {
                       const cat = categories?.find(c => c.id === product.categoria_id);
                       const CatIcon = getCategoryIcon(cat?.nombre, cat?.icono);
-                      const isBlocked = config?.auto_update_inventory !== false && product.control_stock !== false && (product.stock ?? 0) <= 0;
+                      const isBlocked = config?.auto_update_inventory !== false && !config?.allow_negative_stock && product.control_stock !== false && (product.stock ?? 0) <= 0;
                       return (
                         <div
                           key={product.id}
@@ -476,7 +476,7 @@ const POSView = ({
                 ) : (
                   <div className="products-grid">
                     {paginatedProducts.map((product, idx) => {
-                      const isBlocked = config?.auto_update_inventory !== false && product.control_stock !== false && (product.stock ?? 0) <= 0;
+                      const isBlocked = config?.auto_update_inventory !== false && !config?.allow_negative_stock && product.control_stock !== false && (product.stock ?? 0) <= 0;
                       return (
                       <div
                         key={product.id}
@@ -1204,7 +1204,7 @@ const POSView = ({
                   } else if (e.key === 'Enter') {
                     if (priceCheckFocusedIdx >= 0 && list.length > 0) {
                       const p = list[priceCheckFocusedIdx];
-                      const blocked = config?.auto_update_inventory !== false && p.control_stock !== false && (p.stock ?? 0) <= 0;
+                      const blocked = config?.auto_update_inventory !== false && !config?.allow_negative_stock && p.control_stock !== false && (p.stock ?? 0) <= 0;
                       if (!blocked) { addToCart(p); if (isMobile()) playSuccessSound(); closePriceCheckAnim(); }
                     } else {
                       searchPriceCheck();
@@ -1241,7 +1241,7 @@ const POSView = ({
                   )}
                   {(() => {
                     const p = priceCheckResult[0];
-                    const blocked = config?.auto_update_inventory !== false && p.control_stock !== false && (p.stock ?? 0) <= 0;
+                    const blocked = config?.auto_update_inventory !== false && !config?.allow_negative_stock && p.control_stock !== false && (p.stock ?? 0) <= 0;
                     return (
                       <button
                         className="price-check-add-btn mx-auto mt-3"
@@ -1260,7 +1260,7 @@ const POSView = ({
                   <div className="text-xs text-gray-500 mb-2">{priceCheckResult.length} productos encontrados</div>
                   <div ref={priceCheckListRef}>
                     {priceCheckResult.map((product, idx) => {
-                      const blocked = config?.auto_update_inventory !== false && product.control_stock !== false && (product.stock ?? 0) <= 0;
+                      const blocked = config?.auto_update_inventory !== false && !config?.allow_negative_stock && product.control_stock !== false && (product.stock ?? 0) <= 0;
                       return (
                         <div
                           key={product.id}

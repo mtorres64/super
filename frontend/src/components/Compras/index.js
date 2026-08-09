@@ -704,6 +704,12 @@ const Compras = () => {
         handleSelectProduct(idx, options[autocompleteHighlight]);
         setAutocompleteHighlight(-1);
         setOpenAutocompleteIndex(null);
+      } else if (options.length === 1) {
+        // Resultado único (típico al escanear con pistola de códigos, que dispara
+        // Enter automáticamente): cargar el producto sin requerir selección manual.
+        handleSelectProduct(idx, options[0]);
+        setAutocompleteHighlight(-1);
+        setOpenAutocompleteIndex(null);
       }
     } else if (e.key === 'Escape') {
       setOpenAutocompleteIndex(null);

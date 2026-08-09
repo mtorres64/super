@@ -669,6 +669,7 @@ class Configuration(BaseModel):
     default_minimum_stock: int = 10
     low_stock_alert_enabled: bool = True
     auto_update_inventory: bool = True
+    allow_negative_stock: bool = False  # sólo aplica si auto_update_inventory está activo
     auto_update_prices: bool = True
 
     # System Settings
@@ -729,6 +730,7 @@ class ConfigurationUpdate(BaseModel):
     default_minimum_stock: Optional[int] = None
     low_stock_alert_enabled: Optional[bool] = None
     auto_update_inventory: Optional[bool] = None
+    allow_negative_stock: Optional[bool] = None
     auto_update_prices: Optional[bool] = None
     date_format: Optional[str] = None
     time_format: Optional[str] = None
@@ -886,6 +888,12 @@ class SaleItem(BaseModel):
     subtotal: Optional[float] = None
     total: Optional[float] = None
     descuento: Optional[float] = 0.0
+    # Si el stock efectivamente se descontó al confirmar la venta (False si se vendió sin
+    # stock suficiente con "Permitir venta sin stock" activo). None = no aplica (producto sin
+    # control de stock, o es un combo y el detalle está en combo_components_deducted).
+    stock_deducted: Optional[bool] = True
+    # Para productos kind=combo: qué componentes (product_id) se descontaron realmente.
+    combo_components_deducted: Optional[dict] = None
 
     @property
     def total_item(self):
@@ -3431,6 +3439,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
     config = await db.configuration.find_one({"empresa_id": user.empresa_id})
     tax_rate = config['tax_rate'] if config else 0.12  # Default 12%
     auto_update_inventory = config.get('auto_update_inventory', True) if config else True
+    allow_negative_stock = config.get('allow_negative_stock', False) if config else False
 
     # Verify products and calculate totals
     total_amount = 0
@@ -3465,6 +3474,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
 
             # Deduct stock from each combo component
             combo_items = global_product.get('combo_items', [])
+            combo_components_deducted = {}
             for ci in combo_items:
                 comp = await db.products.find_one({"id": ci['product_id'], "empresa_id": user.empresa_id})
                 comp_control = comp.get('control_stock', True) if comp else False
@@ -3472,6 +3482,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
                     continue
                 comp_cantidad = ci['cantidad'] * item.cantidad
                 deducted = False
+                comp_stock_ok = True
                 if user.branch_id:
                     comp_bp = await db.branch_products.find_one({
                         "product_id": ci['product_id'],
@@ -3481,23 +3492,31 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
                     })
                     if comp_bp:
                         if comp_bp.get('stock', 0) < comp_cantidad:
-                            raise HTTPException(status_code=400, detail=f"Stock insuficiente para {comp['nombre']} (componente del combo)")
-                        await db.branch_products.update_one(
-                            {"product_id": ci['product_id'], "branch_id": user.branch_id, "empresa_id": user.empresa_id},
-                            {"$inc": {"stock": -int(comp_cantidad)}}
-                        )
+                            if not allow_negative_stock:
+                                raise HTTPException(status_code=400, detail=f"Stock insuficiente para {comp['nombre']} (componente del combo)")
+                            comp_stock_ok = False
+                        else:
+                            await db.branch_products.update_one(
+                                {"product_id": ci['product_id'], "branch_id": user.branch_id, "empresa_id": user.empresa_id},
+                                {"$inc": {"stock": -int(comp_cantidad)}}
+                            )
                         deducted = True
                 if not deducted:
                     if comp.get('stock', 0) < comp_cantidad:
-                        raise HTTPException(status_code=400, detail=f"Stock insuficiente para {comp['nombre']} (componente del combo)")
-                    await db.products.update_one(
-                        {"id": ci['product_id'], "empresa_id": user.empresa_id},
-                        {"$inc": {"stock": -int(comp_cantidad)}}
-                    )
+                        if not allow_negative_stock:
+                            raise HTTPException(status_code=400, detail=f"Stock insuficiente para {comp['nombre']} (componente del combo)")
+                        comp_stock_ok = False
+                    else:
+                        await db.products.update_one(
+                            {"id": ci['product_id'], "empresa_id": user.empresa_id},
+                            {"$inc": {"stock": -int(comp_cantidad)}}
+                        )
+                combo_components_deducted[ci['product_id']] = comp_stock_ok
 
         else:
             # Normal product: try branch first
             manage_stock = control_stock and auto_update_inventory
+            stock_deducted = True
             if user.branch_id:
                 branch_product = await db.branch_products.find_one({
                     "product_id": item.producto_id,
@@ -3506,27 +3525,35 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
                     "activo": True
                 })
                 if branch_product:
-                    if manage_stock and branch_product.get('stock', 0) < item.cantidad:
+                    insuficiente = manage_stock and branch_product.get('stock', 0) < item.cantidad
+                    if insuficiente and not allow_negative_stock:
                         raise HTTPException(status_code=400, detail=f"Stock insuficiente para {global_product['nombre']}")
                     precio_unitario = branch_product.get('precio_por_peso') or branch_product.get('precio')
                     if manage_stock:
-                        await db.branch_products.update_one(
-                            {"product_id": item.producto_id, "branch_id": user.branch_id, "empresa_id": user.empresa_id},
-                            {"$inc": {"stock": -int(item.cantidad)}}
-                        )
+                        if insuficiente:
+                            stock_deducted = False
+                        else:
+                            await db.branch_products.update_one(
+                                {"product_id": item.producto_id, "branch_id": user.branch_id, "empresa_id": user.empresa_id},
+                                {"$inc": {"stock": -int(item.cantidad)}}
+                            )
                     product_nombre = global_product['nombre']
 
             # Fall back to global product
             if precio_unitario is None:
-                if manage_stock and global_product.get('stock', 0) < item.cantidad:
+                insuficiente = manage_stock and global_product.get('stock', 0) < item.cantidad
+                if insuficiente and not allow_negative_stock:
                     raise HTTPException(status_code=400, detail=f"Stock insuficiente para {global_product['nombre']}")
                 precio_unitario = global_product.get('precio_por_peso') or global_product.get('precio')
                 product_nombre = global_product['nombre']
                 if manage_stock:
-                    await db.products.update_one(
-                        {"id": item.producto_id, "empresa_id": user.empresa_id},
-                        {"$inc": {"stock": -int(item.cantidad)}}
-                    )
+                    if insuficiente:
+                        stock_deducted = False
+                    else:
+                        await db.products.update_one(
+                            {"id": item.producto_id, "empresa_id": user.empresa_id},
+                            {"$inc": {"stock": -int(item.cantidad)}}
+                        )
 
         # Calculate subtotal
         if precio_unitario is None:
@@ -3539,6 +3566,8 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
             precio_unitario=precio_unitario,
             subtotal=subtotal,
             descuento=item.descuento or 0.0,
+            stock_deducted=None if product_kind == 'combo' else stock_deducted,
+            combo_components_deducted=combo_components_deducted if product_kind == 'combo' else None,
         ))
         total_amount += subtotal
 
@@ -3683,6 +3712,7 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
     config = await db.configuration.find_one({"empresa_id": user.empresa_id})
     tax_rate = config['tax_rate'] if config else 0.12
     auto_update_inventory = config.get('auto_update_inventory', True) if config else True
+    allow_negative_stock = config.get('allow_negative_stock', False) if config else False
 
     # Restore stock from original items
     if auto_update_inventory:
@@ -3697,10 +3727,13 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
                 continue
             product_kind = global_prod.get('kind', 'normal')
             if product_kind == 'combo':
+                orig_components_deducted = orig_item.get('combo_components_deducted') or {}
                 for ci in global_prod.get('combo_items', []):
                     comp = await db.products.find_one({"id": ci['product_id'], "empresa_id": user.empresa_id})
                     if not comp or not comp.get('control_stock', True):
                         continue
+                    if orig_components_deducted.get(ci['product_id'], True) is False:
+                        continue  # nunca se descontó (venta sin stock suficiente, permitida)
                     comp_cantidad = ci['cantidad'] * cantidad
                     restored = False
                     if user.branch_id:
@@ -3711,6 +3744,8 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
                     if not restored:
                         await db.products.update_one({"id": ci['product_id'], "empresa_id": user.empresa_id}, {"$inc": {"stock": int(comp_cantidad)}})
             else:
+                if orig_item.get('stock_deducted', True) is False:
+                    continue  # nunca se descontó (venta sin stock suficiente, permitida)
                 restored = False
                 if user.branch_id:
                     bp = await db.branch_products.find_one({"product_id": prod_id, "branch_id": user.branch_id, "empresa_id": user.empresa_id, "activo": True})
@@ -3741,6 +3776,7 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
             if precio_unitario is None:
                 precio_unitario = global_product.get('precio_por_peso') or global_product['precio']
             product_nombre = global_product['nombre']
+            combo_components_deducted = {}
             for ci in global_product.get('combo_items', []):
                 comp = await db.products.find_one({"id": ci['product_id'], "empresa_id": user.empresa_id})
                 comp_control = comp.get('control_stock', True) if comp else False
@@ -3748,39 +3784,65 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
                     continue
                 comp_cantidad = ci['cantidad'] * item.cantidad
                 deducted = False
+                comp_stock_ok = True
                 if user.branch_id:
                     comp_bp = await db.branch_products.find_one({"product_id": ci['product_id'], "branch_id": user.branch_id, "empresa_id": user.empresa_id, "activo": True})
                     if comp_bp:
                         if comp_bp.get('stock', 0) < comp_cantidad:
-                            raise HTTPException(status_code=400, detail=f"Stock insuficiente para {comp['nombre']}")
-                        await db.branch_products.update_one({"product_id": ci['product_id'], "branch_id": user.branch_id, "empresa_id": user.empresa_id}, {"$inc": {"stock": -int(comp_cantidad)}})
+                            if not allow_negative_stock:
+                                raise HTTPException(status_code=400, detail=f"Stock insuficiente para {comp['nombre']}")
+                            comp_stock_ok = False
+                        else:
+                            await db.branch_products.update_one({"product_id": ci['product_id'], "branch_id": user.branch_id, "empresa_id": user.empresa_id}, {"$inc": {"stock": -int(comp_cantidad)}})
                         deducted = True
                 if not deducted:
                     if comp.get('stock', 0) < comp_cantidad:
-                        raise HTTPException(status_code=400, detail=f"Stock insuficiente para {comp['nombre']}")
-                    await db.products.update_one({"id": ci['product_id'], "empresa_id": user.empresa_id}, {"$inc": {"stock": -int(comp_cantidad)}})
+                        if not allow_negative_stock:
+                            raise HTTPException(status_code=400, detail=f"Stock insuficiente para {comp['nombre']}")
+                        comp_stock_ok = False
+                    else:
+                        await db.products.update_one({"id": ci['product_id'], "empresa_id": user.empresa_id}, {"$inc": {"stock": -int(comp_cantidad)}})
+                combo_components_deducted[ci['product_id']] = comp_stock_ok
         else:
+            stock_deducted = True
             if user.branch_id:
                 branch_product = await db.branch_products.find_one({"product_id": item.producto_id, "branch_id": user.branch_id, "empresa_id": user.empresa_id, "activo": True})
                 if branch_product:
-                    if manage_stock and branch_product.get('stock', 0) < item.cantidad:
+                    insuficiente = manage_stock and branch_product.get('stock', 0) < item.cantidad
+                    if insuficiente and not allow_negative_stock:
                         raise HTTPException(status_code=400, detail=f"Stock insuficiente para {global_product['nombre']}")
                     precio_unitario = branch_product.get('precio_por_peso') or branch_product.get('precio')
                     if manage_stock:
-                        await db.branch_products.update_one({"product_id": item.producto_id, "branch_id": user.branch_id, "empresa_id": user.empresa_id}, {"$inc": {"stock": -int(item.cantidad)}})
+                        if insuficiente:
+                            stock_deducted = False
+                        else:
+                            await db.branch_products.update_one({"product_id": item.producto_id, "branch_id": user.branch_id, "empresa_id": user.empresa_id}, {"$inc": {"stock": -int(item.cantidad)}})
                     product_nombre = global_product['nombre']
             if precio_unitario is None:
-                if manage_stock and global_product.get('stock', 0) < item.cantidad:
+                insuficiente = manage_stock and global_product.get('stock', 0) < item.cantidad
+                if insuficiente and not allow_negative_stock:
                     raise HTTPException(status_code=400, detail=f"Stock insuficiente para {global_product['nombre']}")
                 precio_unitario = global_product.get('precio_por_peso') or global_product.get('precio')
                 product_nombre = global_product['nombre']
                 if manage_stock:
-                    await db.products.update_one({"id": item.producto_id, "empresa_id": user.empresa_id}, {"$inc": {"stock": -int(item.cantidad)}})
+                    if insuficiente:
+                        stock_deducted = False
+                    else:
+                        await db.products.update_one({"id": item.producto_id, "empresa_id": user.empresa_id}, {"$inc": {"stock": -int(item.cantidad)}})
 
         if precio_unitario is None:
             raise HTTPException(status_code=400, detail=f"No se pudo determinar el precio para {product_nombre or item.producto_id}")
         subtotal_item = item.cantidad * precio_unitario
-        validated_items.append(SaleItem(producto_id=item.producto_id, nombre=product_nombre, cantidad=item.cantidad, precio_unitario=precio_unitario, subtotal=subtotal_item, descuento=item.descuento or 0.0))
+        validated_items.append(SaleItem(
+            producto_id=item.producto_id,
+            nombre=product_nombre,
+            cantidad=item.cantidad,
+            precio_unitario=precio_unitario,
+            subtotal=subtotal_item,
+            descuento=item.descuento or 0.0,
+            stock_deducted=None if product_kind == 'combo' else stock_deducted,
+            combo_components_deducted=combo_components_deducted if product_kind == 'combo' else None,
+        ))
         total_amount += subtotal_item
 
     # Recalculate totals

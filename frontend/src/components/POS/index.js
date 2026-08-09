@@ -570,7 +570,7 @@ const POS = () => {
       toast.error(`No hay caja abierta en ${sucursal}. Abrí la caja desde Gestión de Caja para poder vender.`);
       return false;
     }
-    const stockControlActive = config?.auto_update_inventory !== false;
+    const stockControlActive = config?.auto_update_inventory !== false && !config?.allow_negative_stock;
     const productControlsStock = product.control_stock !== false;
     if (stockControlActive && productControlsStock && (product.stock ?? 0) <= 0) {
       playErrorSound();
@@ -632,7 +632,7 @@ const POS = () => {
       return;
     }
 
-    const stockControlActive = config?.auto_update_inventory !== false;
+    const stockControlActive = config?.auto_update_inventory !== false && !config?.allow_negative_stock;
     const item = cart.find(i => i.id === productId);
     if (item && stockControlActive && item.control_stock !== false) {
       const maxStock = item.stock ?? 0;
