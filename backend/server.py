@@ -6,8 +6,11 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import io
+import csv
 import re
 import json
+import gc
+import ctypes
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, root_validator
@@ -20,6 +23,7 @@ from passlib.hash import bcrypt
 from enum import Enum
 import base64
 import pandas as pd
+from openpyxl import Workbook
 import mercadopago
 import httpx
 import asyncio
@@ -445,6 +449,80 @@ def calcular_modules_activos(plan_tipo: str, modules_extra: list, modules_removi
         if m not in activos and m in MODULES:
             activos.append(m)
     return activos
+
+
+# --- Memory helpers ---
+# glibc (el allocator de C que usa Python en el contenedor de Railway) no le devuelve
+# memoria al SO apenas la liberás: la retiene "por las dudas" para no tener que pedirla
+# de nuevo. Resultado: un reporte o export pesado deja un piso de RSS más alto para
+# siempre, aunque el garbage collector de Python ya liberó todo. malloc_trim(0) le pide
+# a glibc explícitamente que devuelva ese excedente al SO. No existe en Windows (por eso
+# el try/except), pero el contenedor de producción (python:3.12-slim / Debian) sí lo tiene.
+try:
+    _libc = ctypes.CDLL("libc.so.6")
+except OSError:
+    _libc = None
+
+def _trim_memory() -> None:
+    """Llamar después de un endpoint que movió mucha memoria (reportes, exports,
+    importaciones) para que el pico no quede como piso permanente."""
+    gc.collect()
+    if _libc is not None:
+        _libc.malloc_trim(0)
+
+
+# --- Export helpers ---
+# Antes cada endpoint de export armaba un pd.DataFrame en memoria (duplica el dataset:
+# lista de dicts + DataFrame + buffer de escritura) solo para volcar filas planas a
+# CSV/XLSX. Estos helpers escriben directo desde la lista de dicts, sin pasar por pandas.
+def _rows_to_export_response(rows: List[dict], filename_base: str, format: str = "csv", sheet_name: str = "Datos") -> StreamingResponse:
+    if format not in ("csv", "xlsx"):
+        format = "csv"
+
+    columns = list(rows[0].keys()) if rows else []
+
+    if format == "xlsx":
+        wb = Workbook(write_only=True)
+        ws = wb.create_sheet(sheet_name)
+        ws.append(columns)
+        for row in rows:
+            ws.append([row.get(c) for c in columns])
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        del wb, rows
+        _trim_memory()
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename_base}.xlsx"},
+        )
+    else:
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(columns)
+        for row in rows:
+            writer.writerow([row.get(c) for c in columns])
+        csv_bytes = buf.getvalue().encode("utf-8-sig")
+        del buf, rows
+        _trim_memory()
+        return StreamingResponse(
+            io.BytesIO(csv_bytes),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename_base}.csv"},
+        )
+
+
+# --- Reportes helpers ---
+def _validar_rango_fechas(desde_local: datetime, hasta_local: datetime, max_dias: int = 92) -> None:
+    """Evita que un reporte sin paginar traiga años de ventas a memoria de una sola vez."""
+    if hasta_local < desde_local:
+        raise HTTPException(status_code=400, detail="fecha_hasta no puede ser anterior a fecha_desde")
+    if (hasta_local - desde_local).days > max_dias:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El rango de fechas no puede superar los {max_dias} días. Elegí un período más corto."
+        )
 
 
 # --- Empresa models ---
@@ -1273,28 +1351,8 @@ async def export_branch_products(
             "stock_minimo_sucursal": bp.get("stock_minimo") if bp else "",
         })
 
-    df = pd.DataFrame(rows)
     branch_nombre = branch.get("nombre", branch_id).replace(" ", "_")
-
-    if format == "xlsx":
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            df.to_excel(writer, index=False, sheet_name="Productos")
-        output.seek(0)
-        filename = f"productos_{branch_nombre}.xlsx"
-        return StreamingResponse(
-            output,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename={filename}"},
-        )
-    else:
-        csv_bytes = df.to_csv(index=False).encode("utf-8-sig")
-        filename = f"productos_{branch_nombre}.csv"
-        return StreamingResponse(
-            io.BytesIO(csv_bytes),
-            media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename={filename}"},
-        )
+    return _rows_to_export_response(rows, f"productos_{branch_nombre}", format, sheet_name="Productos")
 
 @api_router.get("/branches/{branch_id}/products")
 async def get_branch_products_admin(
@@ -2219,25 +2277,7 @@ async def export_products(
             "activo": p.get("activo"),
         })
 
-    df = pd.DataFrame(rows)
-
-    if format == "xlsx":
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            df.to_excel(writer, index=False, sheet_name="Productos")
-        output.seek(0)
-        return StreamingResponse(
-            output,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": "attachment; filename=productos.xlsx"},
-        )
-    else:
-        csv_bytes = df.to_csv(index=False).encode("utf-8-sig")
-        return StreamingResponse(
-            io.BytesIO(csv_bytes),
-            media_type="text/csv",
-            headers={"Content-Disposition": "attachment; filename=productos.csv"},
-        )
+    return _rows_to_export_response(rows, "productos", format, sheet_name="Productos")
 
 @api_router.get("/products/import-template")
 async def get_import_template(user: User = Depends(require_role([UserRole.ADMIN]))):
@@ -3949,6 +3989,7 @@ async def get_reporte_margenes(
     hasta_local = datetime.strptime(fecha_hasta, "%Y-%m-%d").replace(
         hour=23, minute=59, second=59, tzinfo=AR_TZ
     )
+    _validar_rango_fechas(desde_local, hasta_local)
     desde_utc = desde_local.astimezone(timezone.utc)
     hasta_utc = hasta_local.astimezone(timezone.utc)
 
@@ -3960,7 +4001,13 @@ async def get_reporte_margenes(
     if branch_id and branch_id != "all":
         filtro["branch_id"] = branch_id
 
-    sales = await db.sales.find(filtro).sort("fecha", 1).to_list(100000)
+    # Proyección: este reporte solo necesita fecha/sucursal/items, no hace falta traer
+    # los campos de AFIP/cliente/pago de cada venta a memoria.
+    sales = await db.sales.find(filtro, {
+        "id": 1, "fecha": 1, "branch_id": 1, "numero_factura": 1,
+        "items.producto_id": 1, "items.nombre": 1, "items.cantidad": 1,
+        "items.precio_unitario": 1, "items.subtotal": 1, "items.total": 1,
+    }).sort("fecha", 1).to_list(100000)
 
     # Cargar costos de branch_products en batch: {(product_id, branch_id): costo}
     product_ids = list({item["producto_id"] for s in sales for item in s.get("items", [])})
@@ -4120,7 +4167,7 @@ async def get_reporte_margenes(
         for v in por_sucursal_agg.values()
     ], key=lambda x: x["ventas_total"], reverse=True)
 
-    return {
+    resultado = {
         "resumen": {
             "ventas_total": round(total_ventas, 2),
             "costo_total": round(total_costo, 2),
@@ -4133,6 +4180,9 @@ async def get_reporte_margenes(
         "por_sucursal": por_sucursal_list,
         "por_venta": por_venta_list,
     }
+    del sales, bp_cursor, por_venta_list
+    _trim_memory()
+    return resultado
 
 @api_router.get("/reportes/ingresos-egresos")
 async def get_reporte_ingresos_egresos(
@@ -4145,6 +4195,9 @@ async def get_reporte_ingresos_egresos(
 
     desde_local = datetime.strptime(fecha_desde, "%Y-%m-%d").replace(hour=0, minute=0, second=0, tzinfo=AR_TZ)
     hasta_local = datetime.strptime(fecha_hasta, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=AR_TZ)
+    # Reporte mensual: permitimos hasta ~1 año (vista anual), pero seguimos acotando
+    # para que un rango sin fin no traiga toda la historia de ventas a memoria.
+    _validar_rango_fechas(desde_local, hasta_local, max_dias=366)
     desde_utc = desde_local.astimezone(timezone.utc)
     hasta_utc = hasta_local.astimezone(timezone.utc)
 
@@ -4221,6 +4274,7 @@ async def get_reporte_productos_vendidos(
     hasta_local = datetime.strptime(fecha_hasta, "%Y-%m-%d").replace(
         hour=23, minute=59, second=59, tzinfo=AR_TZ
     )
+    _validar_rango_fechas(desde_local, hasta_local, max_dias=366)
     desde_utc = desde_local.astimezone(timezone.utc)
     hasta_utc = hasta_local.astimezone(timezone.utc)
 
@@ -4316,6 +4370,8 @@ async def get_reporte_productos_vendidos(
         result.append(entry)
 
     result.sort(key=lambda x: (x["nombre"].lower(), x["branch_nombre"]))
+    del sales, bp_cursor, by_key
+    _trim_memory()
     return result
 
 
@@ -4822,25 +4878,7 @@ async def export_stock_alerts(
             "Diferencia": bp.get("stock", 0) - bp.get("stock_minimo", 0)
         })
 
-    df = pd.DataFrame(rows)
-    output = io.BytesIO()
-
-    if format == "xlsx":
-        df.to_excel(output, index=False)
-        output.seek(0)
-        return StreamingResponse(
-            output,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": "attachment; filename=stock_bajo.xlsx"}
-        )
-    else:
-        df.to_csv(output, index=False)
-        output.seek(0)
-        return StreamingResponse(
-            output,
-            media_type="text/csv",
-            headers={"Content-Disposition": "attachment; filename=stock_bajo.csv"}
-        )
+    return _rows_to_export_response(rows, "stock_bajo", format, sheet_name="Stock bajo")
 
 # Proveedores routes
 @api_router.post("/proveedores", response_model=Proveedor)
