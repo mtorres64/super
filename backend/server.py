@@ -4640,9 +4640,15 @@ async def get_dashboard_stats(user: User = Depends(get_current_user)):
     if not is_admin_or_supervisor and user.branch_id:
         sales_filter["branch_id"] = user.branch_id
 
-    today_sales = await db.sales.find(sales_filter).to_list(1000)
+    # Proyección: este resumen solo usa id/total/branch_id de cada venta, no hace falta
+    # traer los items ni los campos de AFIP de cada una (esto se llama en cada carga
+    # del home, es el endpoint más golpeado de toda la app).
+    today_sales = await db.sales.find(sales_filter, {"id": 1, "total": 1, "branch_id": 1}).to_list(1000)
     today_sale_ids = [s['id'] for s in today_sales]
-    today_returns = await db.sale_returns.find({"sale_id": {"$in": today_sale_ids}, "empresa_id": user.empresa_id}).to_list(1000)
+    today_returns = await db.sale_returns.find(
+        {"sale_id": {"$in": today_sale_ids}, "empresa_id": user.empresa_id},
+        {"sale_id": 1, "total": 1}
+    ).to_list(1000)
     returned_by_sale_today = {}
     for ret in today_returns:
         returned_by_sale_today[ret["sale_id"]] = returned_by_sale_today.get(ret["sale_id"], 0) + ret["total"]
