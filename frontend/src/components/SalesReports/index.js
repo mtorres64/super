@@ -15,6 +15,14 @@ const PAYMENT_COLORS = {
   transferencia: '#7c3aed'
 };
 
+const EMPTY_STATS = { totalSales: 0, totalRevenue: 0, averageSale: 0, paymentMethods: {}, branchStats: {} };
+
+// Tope de filas para exportar PDF/Excel: el reporte en sí pagina en el backend
+// (ver fetchSales), pero exportar tiene que traer TODAS las ventas del período
+// elegido, no solo la página visible. Se acota para no pedir un documento de
+// decenas de miles de filas de una sola vez.
+const EXPORT_LIMIT = 5000;
+
 const SalesReports = () => {
   const { user: currentUser, activeBranch } = useContext(AuthContext);
   const [searchParams] = useSearchParams();
@@ -22,9 +30,15 @@ const SalesReports = () => {
   const canFilterByUser = ['admin', 'supervisor'].includes(currentUser?.rol);
   const isCajero = currentUser?.rol === 'cajero';
 
-  const [sales, setSales] = useState([]);
-  const [allReturns, setAllReturns] = useState([]);
-  const [allCreditNotes, setAllCreditNotes] = useState([]);
+  // `items`: solo la página actual (detalle completo, para la tabla/acciones).
+  // `total`/`stats`/`dailyData`/`topProducts`/`creditNotes`: calculados en el
+  // backend sobre TODO el rango filtrado, no solo la página — ver /reportes/ventas.
+  const [items, setItems] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [stats, setStats] = useState(EMPTY_STATS);
+  const [dailyData, setDailyData] = useState([]);
+  const [topProducts, setTopProducts] = useState([]);
+  const [creditNotes, setCreditNotes] = useState([]);
   const [branches, setBranches] = useState([]);
   const [users, setUsers] = useState([]);
   const [config, setConfig] = useState(null);
@@ -43,6 +57,7 @@ const SalesReports = () => {
   const [customDateFrom, setCustomDateFrom] = useState('');
   const [customDateTo, setCustomDateTo] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
   const resetFilters = () => {
     setDateFilter('today');
@@ -67,28 +82,103 @@ const SalesReports = () => {
   }, [activeBranch?.id]);
 
   useEffect(() => {
-    fetchSales();
     fetchBranches();
     fetchConfiguration();
     fetchAfipConfig();
     if (canFilterByUser) fetchUsers();
   }, []);
 
+  // Debounce de la búsqueda: ahora cada tecla implica una request al backend
+  // (antes filtraba en memoria sobre lo ya cargado), así que esperamos a que
+  // el usuario termine de tipear en vez de pedir en cada cambio.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  const itemsPerPage = config?.items_per_page || 10;
+
+  useEffect(() => {
+    fetchSales();
+  }, [dateFilter, customDateFrom, customDateTo, branchFilter, userFilter, debouncedSearch, page, itemsPerPage]);
+
+  // Igual que en MargensReport/IncomeExpenseReport: traducimos el filtro de fecha de
+  // la UI a un rango concreto para pedirle al backend solo esas ventas, en vez de
+  // traer el historial completo (eso era lo que tumbaba la instancia por memoria).
+  // "Todas" ahora significa "último año" — el mismo tope que exige el backend en
+  // /reportes/ventas (_validar_rango_fechas, max_dias=366) para no traer años enteros
+  // de historial de una sola vez.
+  const getDateRangeParams = () => {
+    const today = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+    switch (dateFilter) {
+      case 'today':
+        return { desde: fmt(today), hasta: fmt(today) };
+      case 'week': {
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        return { desde: fmt(weekAgo), hasta: fmt(today) };
+      }
+      case 'month': {
+        const monthAgo = new Date(today);
+        monthAgo.setMonth(monthAgo.getMonth() - 1);
+        return { desde: fmt(monthAgo), hasta: fmt(today) };
+      }
+      case 'all': {
+        const yearAgo = new Date(today);
+        yearAgo.setDate(yearAgo.getDate() - 365);
+        return { desde: fmt(yearAgo), hasta: fmt(today) };
+      }
+      case 'custom':
+        if (!customDateFrom || !customDateTo) return null;
+        return { desde: customDateFrom, hasta: customDateTo };
+      default:
+        return null;
+    }
+  };
+
+  const buildParams = (extra = {}) => {
+    const range = getDateRangeParams();
+    if (!range) return null;
+    const params = { fecha_desde: range.desde, fecha_hasta: range.hasta, ...extra };
+    if (branchFilter !== 'all') params.branch_id = branchFilter;
+    if (userFilter !== 'all') params.cajero_id = userFilter;
+    if (debouncedSearch) params.search = debouncedSearch;
+    return params;
+  };
+
   const fetchSales = async () => {
+    const params = buildParams({ page, per_page: itemsPerPage });
+    if (!params) return; // "custom" esperando a que elijan ambas fechas
+    setLoading(true);
     try {
-      const [salesRes, returnsRes, creditNotesRes] = await Promise.all([
-        axios.get(`${API}/sales`, { params: { for_report: true } }),
-        axios.get(`${API}/returns`),
-        axios.get(`${API}/credit-notes`),
-      ]);
-      setSales(salesRes.data);
-      setAllReturns(returnsRes.data);
-      setAllCreditNotes(creditNotesRes.data);
+      const res = await axios.get(`${API}/reportes/ventas`, { params });
+      setItems(res.data.items);
+      setTotal(res.data.total);
+      setStats(res.data.stats);
+      setDailyData(res.data.daily);
+      setTopProducts(res.data.topProducts);
+      setCreditNotes(res.data.creditNotes);
     } catch (error) {
-      toast.error('Error al cargar las ventas');
+      toast.error(error.response?.data?.detail || 'Error al cargar las ventas');
     } finally {
       setLoading(false);
     }
+  };
+
+  // Trae TODAS las ventas que matchean el filtro actual (no solo la página visible)
+  // para exportar PDF/Excel. Usa el mismo endpoint pero sin paginar, acotado a
+  // EXPORT_LIMIT filas.
+  const fetchAllForExport = async () => {
+    const params = buildParams({ page: 1, per_page: EXPORT_LIMIT });
+    if (!params) return null;
+    const res = await axios.get(`${API}/reportes/ventas`, { params });
+    if (res.data.total > EXPORT_LIMIT) {
+      toast.info(`El período tiene ${res.data.total} ventas; se exportaron las primeras ${EXPORT_LIMIT}. Achicá el rango para exportar todo.`);
+    }
+    return res.data.items;
   };
 
   const fetchBranches = async () => {
@@ -145,114 +235,6 @@ const SalesReports = () => {
     if (!branchId || branchId === 'global') return 'Sin sucursal';
     const branch = branches.find(b => b.id === branchId);
     return branch ? branch.nombre : branchId;
-  };
-
-  const getFilteredSales = () => {
-    const now = new Date();
-    let filteredSales = [...sales];
-
-    if (branchFilter !== 'all') {
-      filteredSales = filteredSales.filter(sale => sale.branch_id === branchFilter);
-    }
-
-    if (userFilter !== 'all') {
-      filteredSales = filteredSales.filter(sale => sale.cajero_id === userFilter);
-    }
-
-    // Argentina is UTC-3: midnight Argentina = 03:00 UTC of the same calendar day
-    const arMidnight = (y, m, d) => new Date(Date.UTC(y, m, d, 3, 0, 0));
-
-    switch (dateFilter) {
-      case 'today': {
-        const today = arMidnight(now.getFullYear(), now.getMonth(), now.getDate());
-        filteredSales = filteredSales.filter(sale => new Date(sale.fecha) >= today);
-        break;
-      }
-      case 'week': {
-        const weekAgo = arMidnight(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-        filteredSales = filteredSales.filter(sale => new Date(sale.fecha) >= weekAgo);
-        break;
-      }
-      case 'month': {
-        const monthAgo = arMidnight(now.getFullYear(), now.getMonth() - 1, now.getDate());
-        filteredSales = filteredSales.filter(sale => new Date(sale.fecha) >= monthAgo);
-        break;
-      }
-      case 'custom':
-        if (customDateFrom && customDateTo) {
-          const [fy, fm, fd] = customDateFrom.split('-').map(Number);
-          const [ty, tm, td] = customDateTo.split('-').map(Number);
-          const fromDate = arMidnight(fy, fm - 1, fd);
-          // End of the selected Argentina day = start of next Argentina day - 1ms
-          const toDate = new Date(Date.UTC(ty, tm - 1, td + 1, 3, 0, 0) - 1);
-          filteredSales = filteredSales.filter(sale => {
-            const saleDate = new Date(sale.fecha);
-            return saleDate >= fromDate && saleDate <= toDate;
-          });
-        }
-        break;
-      default:
-        break;
-    }
-
-    if (searchQuery.trim()) {
-      const terms = searchQuery.trim().toLowerCase().split(/[\s,;]+/).filter(Boolean);
-      filteredSales = filteredSales.filter(sale =>
-        terms.every(term =>
-          sale.numero_factura?.toLowerCase().includes(term) ||
-          sale.items?.some(item => item.nombre?.toLowerCase().includes(term))
-        )
-      );
-    }
-
-    return filteredSales.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
-  };
-
-  const calculateStats = (salesData, netTotals = {}) => {
-    const totalSales = salesData.length;
-    const totalRevenue = salesData.reduce((sum, sale) => sum + Math.max(0, sale.total - (netTotals[sale.id] || 0)), 0);
-    const averageSale = totalSales > 0 ? totalRevenue / totalSales : 0;
-
-    const paymentMethods = {};
-    salesData.forEach(sale => {
-      const net = sale.total - (netTotals[sale.id] || 0);
-      if (sale.pagos && sale.pagos.length > 1) {
-        const totalPagos = sale.pagos.reduce((s, p) => s + p.monto, 0);
-        sale.pagos.forEach(p => {
-          const key = p.metodo;
-          const share = totalPagos > 0 ? (p.monto / totalPagos) * net : 0;
-          if (paymentMethods[key]) {
-            paymentMethods[key].count++;
-            paymentMethods[key].total += share;
-          } else {
-            paymentMethods[key] = { count: 1, total: share };
-          }
-        });
-      } else {
-        const key = sale.metodo_pago;
-        if (paymentMethods[key]) {
-          paymentMethods[key].count++;
-          paymentMethods[key].total += net;
-        } else {
-          paymentMethods[key] = { count: 1, total: net };
-        }
-      }
-    });
-
-    const branchStats = {};
-    if (branchFilter === 'all') {
-      salesData.forEach(sale => {
-        const key = sale.branch_id || 'global';
-        if (branchStats[key]) {
-          branchStats[key].count++;
-          branchStats[key].total += sale.total;
-        } else {
-          branchStats[key] = { count: 1, total: sale.total, nombre: getBranchName(key) };
-        }
-      });
-    }
-
-    return { totalSales, totalRevenue, averageSale, paymentMethods, branchStats };
   };
 
   const formatDate = (dateString) => {
@@ -340,12 +322,13 @@ const SalesReports = () => {
     }
   };
 
-  const handleExportPDF = () => {
-    const filteredSales = getFilteredSales();
-    if (filteredSales.length === 0) return;
+  const handleExportPDF = async () => {
+    if (total === 0) return;
     setGeneratingPdf(true);
     try {
-      const stats = calculateStats(filteredSales);
+      const allSales = await fetchAllForExport();
+      if (!allSales) return;
+
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const W = 210;
       const margin = 20;
@@ -379,7 +362,7 @@ const SalesReports = () => {
       pdf.text('REPORTE DE VENTAS', W / 2, 13, { align: 'center' });
       pdf.setFontSize(9);
       pdf.setFont('helvetica', 'normal');
-      const periodoLabel = { today: 'Hoy', week: 'Última semana', month: 'Último mes', all: 'Todas', custom: 'Rango personalizado' }[dateFilter] || dateFilter;
+      const periodoLabel = { today: 'Hoy', week: 'Última semana', month: 'Último mes', all: 'Último año', custom: 'Rango personalizado' }[dateFilter] || dateFilter;
       const sucursalLabel = branchFilter === 'all' ? 'Todas las sucursales' : getBranchName(branchFilter);
       pdf.text(`Período: ${periodoLabel}   |   Sucursal: ${sucursalLabel}   |   Generado: ${new Date().toLocaleDateString('es-ES')}`, W / 2, 22, { align: 'center' });
       pdf.setTextColor(0, 0, 0);
@@ -419,7 +402,7 @@ const SalesReports = () => {
       y += 7;
 
       pdf.setFont('helvetica', 'normal');
-      filteredSales.forEach((sale, i) => {
+      allSales.forEach((sale, i) => {
         if (y > 270) { pdf.addPage(); y = 20; }
         if (i % 2 === 0) {
           pdf.setFillColor(248, 248, 248);
@@ -455,108 +438,47 @@ const SalesReports = () => {
     }
   };
 
-  const exportToXLSX = () => {
-    const filteredSales = getFilteredSales();
-    if (filteredSales.length === 0) return;
-    const rows = filteredSales.map(sale => ({
-      Factura: sale.numero_factura,
-      Fecha: formatDate(sale.fecha),
-      Sucursal: getBranchName(sale.branch_id),
-      Cajero: getCajeroName(sale.cajero_id) || sale.cajero_id,
-      Total: sale.total,
-      'Metodo Pago': sale.pagos?.length > 1
-        ? sale.pagos.map(p => `${getPaymentMethodLabel(p.metodo)} $${p.monto}`).join(' + ')
-        : getPaymentMethodLabel(sale.metodo_pago),
-      Items: sale.items.length,
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [
-      { wch: 16 }, { wch: 18 }, { wch: 22 }, { wch: 22 },
-      { wch: 12 }, { wch: 16 }, { wch: 8 },
-    ];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Ventas');
-    XLSX.writeFile(wb, `ventas_${dateFilter}_${new Date().toISOString().split('T')[0]}.xlsx`);
-    toast.success('Reporte exportado exitosamente');
+  const exportToXLSX = async () => {
+    if (total === 0) return;
+    try {
+      const allSales = await fetchAllForExport();
+      if (!allSales) return;
+      const rows = allSales.map(sale => ({
+        Factura: sale.numero_factura,
+        Fecha: formatDate(sale.fecha),
+        Sucursal: getBranchName(sale.branch_id),
+        Cajero: getCajeroName(sale.cajero_id) || sale.cajero_id,
+        Total: sale.total,
+        'Metodo Pago': sale.pagos?.length > 1
+          ? sale.pagos.map(p => `${getPaymentMethodLabel(p.metodo)} $${p.monto}`).join(' + ')
+          : getPaymentMethodLabel(sale.metodo_pago),
+        Items: sale.items.length,
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = [
+        { wch: 16 }, { wch: 18 }, { wch: 22 }, { wch: 22 },
+        { wch: 12 }, { wch: 16 }, { wch: 8 },
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Ventas');
+      XLSX.writeFile(wb, `ventas_${dateFilter}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      toast.success('Reporte exportado exitosamente');
+    } catch (error) {
+      toast.error('Error al exportar el reporte');
+    }
   };
 
-  const getDailyData = (data) => {
-    const byDay = {};
-    data.forEach(item => {
-      const net = Math.max(0, item.total - (saleNetTotal[item.id] || 0));
-      const d = new Date(item.fecha);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const label = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
-      if (byDay[key]) {
-        byDay[key].total += net;
-        byDay[key].count++;
-      } else {
-        byDay[key] = { fecha: label, total: net, count: 1, key };
-      }
-    });
-    return Object.values(byDay).sort((a, b) => a.key.localeCompare(b.key));
-  };
+  const { sortedItems, sortConfig, requestSort } = useSortableData(items);
+  const totalPages = Math.ceil(total / itemsPerPage);
 
-  const getTopProducts = (salesData) => {
-    // Acumular totales vendidos
-    const productTotals = {};
-    salesData.forEach(sale => {
-      if (sale.estado === 'cancelado') return;
-      sale.items.forEach(item => {
-        const key = item.producto_id;
-        if (productTotals[key]) {
-          productTotals[key].cantidad += item.cantidad;
-          productTotals[key].total += item.precio_unitario * item.cantidad;
-        } else {
-          productTotals[key] = {
-            nombre: item.nombre || item.producto_id,
-            cantidad: item.cantidad,
-            total: item.precio_unitario * item.cantidad
-          };
-        }
-      });
-    });
-
-    // Restar devoluciones globales por producto
-    const saleIds = new Set(salesData.map(s => s.id));
-    allReturns.forEach(ret => {
-      if (!saleIds.has(ret.sale_id)) return;
-      ret.items.forEach(item => {
-        if (productTotals[item.producto_id]) {
-          productTotals[item.producto_id].cantidad -= item.cantidad;
-          productTotals[item.producto_id].total -= item.precio_unitario * item.cantidad;
-        }
-      });
-    });
-
-    return Object.values(productTotals)
-      .filter(p => p.cantidad > 0)
-      .sort((a, b) => b.cantidad - a.cantidad)
-      .slice(0, 5)
-      .map(p => ({ ...p, nombre: p.nombre.length > 20 ? p.nombre.slice(0, 18) + '…' : p.nombre }));
-  };
-
-  const filteredSales = getFilteredSales();
-  const { sortedItems: sortedSales, sortConfig, requestSort } = useSortableData(filteredSales);
-  const itemsPerPage = config?.items_per_page || 10;
-  const totalPages = Math.ceil(sortedSales.length / itemsPerPage);
-  const pagedSales = sortedSales.slice((page - 1) * itemsPerPage, page * itemsPerPage);
-
-  // Mapa de total neto por venta (total original - devoluciones)
-  const saleNetTotal = {};
-  allReturns.forEach(ret => {
-    saleNetTotal[ret.sale_id] = (saleNetTotal[ret.sale_id] || 0) + ret.total;
-  });
-
-  // Mapa de notas de crédito por venta
+  // Mapa de notas de crédito por venta (para el badge en la fila de la tabla).
+  // `creditNotes` ya viene acotado por el backend a las ventas del rango filtrado.
   const saleCreditNotesMap = {};
-  allCreditNotes.forEach(nc => {
+  creditNotes.forEach(nc => {
     if (!saleCreditNotesMap[nc.sale_id]) saleCreditNotesMap[nc.sale_id] = [];
     saleCreditNotesMap[nc.sale_id].push(nc);
   });
-  const stats = calculateStats(filteredSales, saleNetTotal);
-  const dailyData = getDailyData(filteredSales);
-  const topProducts = getTopProducts(filteredSales);
+
   const paymentPieData = Object.entries(stats.paymentMethods).map(([method, data]) => ({
     name: getPaymentMethodLabel(method),
     value: parseFloat(data.total.toFixed(2)),
@@ -580,7 +502,6 @@ const SalesReports = () => {
   return (
     <SalesReportsView
       loading={loading}
-      sales={sales}
       branches={branches}
       users={users}
       config={config}
@@ -599,18 +520,17 @@ const SalesReports = () => {
       fromCaja={fromCaja}
       canFilterByUser={canFilterByUser}
       currentUser={currentUser}
-      filteredSales={sortedSales}
+      totalCount={total}
       itemsPerPage={itemsPerPage}
       totalPages={totalPages}
-      pagedSales={pagedSales}
+      pagedSales={sortedItems}
       sortConfig={sortConfig}
       requestSort={requestSort}
       stats={stats}
       dailyData={dailyData}
       topProducts={topProducts}
       paymentPieData={paymentPieData}
-      saleNetTotal={saleNetTotal}
-      allCreditNotes={allCreditNotes}
+      creditNotes={creditNotes}
       saleCreditNotesMap={saleCreditNotesMap}
       TIPO_CBTE_NOMBRES={TIPO_CBTE_NOMBRES}
       searchQuery={searchQuery}
@@ -619,8 +539,8 @@ const SalesReports = () => {
       onSetBranchFilter={(val) => { setBranchFilter(val); setPage(1); }}
       onSetUserFilter={(val) => { setUserFilter(val); setPage(1); }}
       onSetPage={setPage}
-      onSetCustomDateFrom={setCustomDateFrom}
-      onSetCustomDateTo={setCustomDateTo}
+      onSetCustomDateFrom={(val) => { setCustomDateFrom(val); setPage(1); }}
+      onSetCustomDateTo={(val) => { setCustomDateTo(val); setPage(1); }}
       onResetFilters={resetFilters}
       onSetReturnModal={setReturnModal}
       onSetReprintSale={setReprintSale}

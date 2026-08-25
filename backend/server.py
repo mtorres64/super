@@ -3931,7 +3931,13 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
 
 
 @api_router.get("/sales", response_model=List[Sale])
-async def get_sales(customer_id: Optional[str] = None, for_report: bool = False, user: User = Depends(get_current_user)):
+async def get_sales(
+    customer_id: Optional[str] = None,
+    for_report: bool = False,
+    fecha_desde: Optional[str] = None,
+    fecha_hasta: Optional[str] = None,
+    user: User = Depends(get_current_user)
+):
     query: dict = {"empresa_id": user.empresa_id}
     if user.branch_id and user.rol not in [UserRole.ADMIN, UserRole.SUPERVISOR]:
         query["branch_id"] = user.branch_id
@@ -3940,7 +3946,20 @@ async def get_sales(customer_id: Optional[str] = None, for_report: bool = False,
     if customer_id:
         query["cliente_id"] = customer_id
     if for_report and user.rol in [UserRole.ADMIN, UserRole.SUPERVISOR]:
-        limit = None
+        # Antes traía TODO el historial de ventas de la empresa (documento completo:
+        # items, AFIP, pagos) en una sola respuesta apenas se abría Reportes > Ventas,
+        # lo que tumbaba la instancia por memoria. Ahora se acota por rango de fechas
+        # (como el resto de los reportes); si no llega rango (ej. filtro "Todas"), se
+        # topea la cantidad de filas en vez de traer todo.
+        if fecha_desde and fecha_hasta:
+            AR_TZ = timezone(timedelta(hours=-3))
+            desde_local = datetime.strptime(fecha_desde, "%Y-%m-%d").replace(hour=0, minute=0, second=0, tzinfo=AR_TZ)
+            hasta_local = datetime.strptime(fecha_hasta, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=AR_TZ)
+            _validar_rango_fechas(desde_local, hasta_local)
+            query["fecha"] = {"$gte": desde_local.astimezone(timezone.utc), "$lte": hasta_local.astimezone(timezone.utc)}
+            limit = None
+        else:
+            limit = 5000
     else:
         limit = 500 if customer_id else (100 if user.rol == UserRole.CAJERO else 1000)
     sales = await db.sales.find(query).sort("fecha", -1).to_list(limit)
@@ -4373,6 +4392,213 @@ async def get_reporte_productos_vendidos(
     del sales, bp_cursor, by_key
     _trim_memory()
     return result
+
+
+@api_router.get("/reportes/ventas")
+async def get_reporte_ventas(
+    fecha_desde: str = Query(...),
+    fecha_hasta: str = Query(...),
+    branch_id: Optional[str] = Query(None),
+    cajero_id: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=5000),  # el tope alto es para el export (todo el rango, no paginado)
+    user: User = Depends(get_current_user),
+):
+    """Reemplaza a /sales?for_report=true, que traía TODO el historial de ventas
+    (documento completo: items, AFIP, pagos) a memoria de una sola vez y tumbaba
+    la instancia apenas se abría Reportes > Ventas. Acá:
+      - Totales/gráfico diario/top productos se calculan iterando el cursor en
+        streaming (sin to_list), con una proyección liviana: el pico de memoria
+        no depende de cuántas ventas haya en el rango.
+      - La tabla solo trae la página pedida, con el detalle completo de esas
+        ventas nomás.
+    """
+    AR_TZ = timezone(timedelta(hours=-3))
+    desde_local = datetime.strptime(fecha_desde, "%Y-%m-%d").replace(hour=0, minute=0, second=0, tzinfo=AR_TZ)
+    hasta_local = datetime.strptime(fecha_hasta, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=AR_TZ)
+    # A diferencia de márgenes/productos-vendidos (92 días), acá permitimos hasta un
+    # año: el cálculo de stats/gráfico es streaming (no materializa la lista completa),
+    # así que el costo de un rango largo es acotado y predecible, no una explosión de RAM.
+    _validar_rango_fechas(desde_local, hasta_local, max_dias=366)
+    desde_utc = desde_local.astimezone(timezone.utc)
+    hasta_utc = hasta_local.astimezone(timezone.utc)
+
+    query: dict = {
+        "empresa_id": user.empresa_id,
+        "fecha": {"$gte": desde_utc, "$lte": hasta_utc},
+    }
+    if user.rol == UserRole.CAJERO:
+        query["cajero_id"] = user.id
+        if user.branch_id:
+            query["branch_id"] = user.branch_id
+    else:
+        if branch_id and branch_id != "all":
+            query["branch_id"] = branch_id
+        if cajero_id and cajero_id != "all":
+            query["cajero_id"] = cajero_id
+    if search and search.strip():
+        term = re.escape(search.strip())
+        query["$or"] = [
+            {"numero_factura": {"$regex": term, "$options": "i"}},
+            {"items.nombre": {"$regex": term, "$options": "i"}},
+        ]
+
+    # --- Paso 1: stats/gráfico/top productos en streaming, sin materializar la lista completa ---
+    stats_projection = {
+        "id": 1, "fecha": 1, "branch_id": 1, "total": 1, "metodo_pago": 1,
+        "pagos": 1, "estado": 1,
+        "items.producto_id": 1, "items.nombre": 1, "items.cantidad": 1, "items.precio_unitario": 1,
+    }
+    total_sales = 0
+    branch_stats: dict = {}
+    product_totals: dict = {}
+    sale_summaries: list = []
+    sale_ids: list = []
+
+    async for s in db.sales.find(query, stats_projection):
+        sid = s.get("id")
+        sale_ids.append(sid)
+        total_sales += 1
+        total = float(s.get("total") or 0)
+
+        fecha_dt = s.get("fecha")
+        if isinstance(fecha_dt, str):
+            fecha_dt = datetime.fromisoformat(fecha_dt.replace("Z", "+00:00"))
+        if fecha_dt and fecha_dt.tzinfo is None:
+            fecha_dt = fecha_dt.replace(tzinfo=timezone.utc)
+        day_key = fecha_dt.astimezone(AR_TZ).strftime("%Y-%m-%d") if fecha_dt else None
+
+        sale_summaries.append({
+            "id": sid, "total": total, "metodo_pago": s.get("metodo_pago"),
+            "pagos": s.get("pagos") or [], "day_key": day_key,
+        })
+
+        bkey = s.get("branch_id") or "global"
+        bs = branch_stats.setdefault(bkey, {"count": 0, "total": 0.0})
+        bs["count"] += 1
+        bs["total"] += total
+
+        if s.get("estado") != "cancelado":
+            for item in s.get("items", []):
+                pkey = item.get("producto_id")
+                if not pkey:
+                    continue
+                qty = float(item.get("cantidad") or 0)
+                precio = float(item.get("precio_unitario") or 0)
+                pt = product_totals.setdefault(pkey, {"nombre": item.get("nombre") or pkey, "cantidad": 0.0, "total": 0.0})
+                pt["cantidad"] += qty
+                pt["total"] += qty * precio
+
+    # --- Paso 2: netear con devoluciones de esas mismas ventas ---
+    returns_by_sale: dict = {}
+    if sale_ids:
+        async for r in db.sale_returns.find(
+            {"sale_id": {"$in": sale_ids}, "empresa_id": user.empresa_id},
+            {"sale_id": 1, "total": 1, "items.producto_id": 1, "items.cantidad": 1, "items.precio_unitario": 1},
+        ):
+            rid = r.get("sale_id")
+            returns_by_sale[rid] = returns_by_sale.get(rid, 0.0) + float(r.get("total") or 0)
+            for item in r.get("items", []):
+                pkey = item.get("producto_id")
+                if pkey in product_totals:
+                    qty = float(item.get("cantidad") or 0)
+                    product_totals[pkey]["cantidad"] -= qty
+                    product_totals[pkey]["total"] -= qty * float(item.get("precio_unitario") or 0)
+
+    total_revenue = 0.0
+    payment_methods: dict = {}
+    daily: dict = {}
+    for s in sale_summaries:
+        net = max(0.0, s["total"] - returns_by_sale.get(s["id"], 0.0))
+        total_revenue += net
+
+        if s["day_key"]:
+            d = daily.setdefault(s["day_key"], {"total": 0.0, "count": 0})
+            d["total"] += net
+            d["count"] += 1
+
+        pagos = s["pagos"]
+        if pagos and len(pagos) > 1:
+            total_pagos = sum(p.get("monto", 0) for p in pagos)
+            for p in pagos:
+                key = p.get("metodo")
+                share = (p.get("monto", 0) / total_pagos * net) if total_pagos > 0 else 0.0
+                pm = payment_methods.setdefault(key, {"count": 0, "total": 0.0})
+                pm["count"] += 1
+                pm["total"] += share
+        else:
+            key = s["metodo_pago"]
+            pm = payment_methods.setdefault(key, {"count": 0, "total": 0.0})
+            pm["count"] += 1
+            pm["total"] += net
+
+    average_sale = (total_revenue / total_sales) if total_sales else 0.0
+
+    branches_list = await db.branches.find({"empresa_id": user.empresa_id}, {"id": 1, "nombre": 1}).to_list(1000)
+    branch_name_map = {b["id"]: b["nombre"] for b in branches_list}
+    for bkey, bs in branch_stats.items():
+        bs["total"] = round(bs["total"], 2)
+        bs["nombre"] = branch_name_map.get(bkey, "Sin sucursal" if bkey == "global" else bkey)
+
+    for pm in payment_methods.values():
+        pm["total"] = round(pm["total"], 2)
+
+    daily_list = sorted([
+        {"key": k, "fecha": f"{k[8:10]}/{k[5:7]}", "total": round(v["total"], 2), "count": v["count"]}
+        for k, v in daily.items()
+    ], key=lambda x: x["key"])
+
+    top_products = sorted(
+        [{"nombre": p["nombre"], "cantidad": round(p["cantidad"], 2), "total": round(p["total"], 2)}
+         for p in product_totals.values() if p["cantidad"] > 0],
+        key=lambda x: x["cantidad"], reverse=True
+    )[:5]
+    for p in top_products:
+        if len(p["nombre"]) > 20:
+            p["nombre"] = p["nombre"][:18] + "…"
+
+    # --- Paso 3: página de detalle completo para la tabla ---
+    raw_page = await db.sales.find(query).sort("fecha", -1).skip((page - 1) * per_page).limit(per_page).to_list(per_page)
+    items = []
+    for sale in raw_page:
+        try:
+            sale_obj = Sale(**sale)
+        except Exception as e:
+            logger.warning(f"Skipping invalid sale {sale.get('id')} in reporte de ventas: {e}")
+            continue
+        item = sale_obj.dict()
+        item["net_total"] = round(max(0.0, sale_obj.total - returns_by_sale.get(sale_obj.id, 0.0)), 2)
+        items.append(item)
+
+    # --- Notas de crédito de las ventas del rango filtrado (sección de la tabla) ---
+    credit_notes: list = []
+    if sale_ids:
+        async for cn in db.credit_notes.find({"sale_id": {"$in": sale_ids}, "empresa_id": user.empresa_id}):
+            try:
+                credit_notes.append(CreditNote(**cn).dict())
+            except Exception:
+                continue
+
+    del sale_summaries, product_totals, returns_by_sale
+    _trim_memory()
+
+    return {
+        "items": items,
+        "total": total_sales,
+        "page": page,
+        "per_page": per_page,
+        "stats": {
+            "totalSales": total_sales,
+            "totalRevenue": round(total_revenue, 2),
+            "averageSale": round(average_sale, 2),
+            "paymentMethods": payment_methods,
+            "branchStats": branch_stats,
+        },
+        "daily": daily_list,
+        "topProducts": top_products,
+        "creditNotes": credit_notes,
+    }
 
 
 @api_router.post("/sales/{sale_id}/return")

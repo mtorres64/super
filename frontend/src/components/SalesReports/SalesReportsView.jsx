@@ -45,7 +45,7 @@ const SalesReportsView = ({
   fromCaja,
   canFilterByUser,
   currentUser,
-  filteredSales,
+  totalCount,
   itemsPerPage,
   totalPages,
   pagedSales,
@@ -53,8 +53,7 @@ const SalesReportsView = ({
   dailyData,
   topProducts,
   paymentPieData,
-  saleNetTotal,
-  allCreditNotes,
+  creditNotes,
   saleCreditNotesMap,
   onSetDateFilter,
   onSetBranchFilter,
@@ -106,7 +105,7 @@ const SalesReportsView = ({
           <button
             onClick={onHandleExportPDF}
             className="btn btn-secondary flex items-center gap-2"
-            disabled={filteredSales.length === 0 || generatingPdf}
+            disabled={totalCount === 0 || generatingPdf}
           >
             <Printer className="w-4 h-4" />
             {generatingPdf ? 'Generando PDF...' : 'Descargar PDF'}
@@ -114,7 +113,7 @@ const SalesReportsView = ({
           <button
             onClick={onExportToXLSX}
             className="btn btn-secondary"
-            disabled={filteredSales.length === 0}
+            disabled={totalCount === 0}
           >
             <Download className="w-4 h-4" />
             Exportar Excel
@@ -191,7 +190,7 @@ const SalesReportsView = ({
               <option value="today">Hoy</option>
               <option value="week">Última semana</option>
               <option value="month">Último mes</option>
-              <option value="all">Todas</option>
+              <option value="all">Todas (último año)</option>
               <option value="custom">Rango personalizado</option>
             </select>
             {dateFilter === 'custom' && (
@@ -239,7 +238,7 @@ const SalesReportsView = ({
       </div>
 
       {/* Gráficos */}
-      {filteredSales.length > 0 && (
+      {totalCount > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           {/* Ventas por día */}
           <div className="bg-white rounded-lg shadow p-6">
@@ -349,7 +348,7 @@ const SalesReportsView = ({
       <div className="table-container">
         <div className="flex justify-between items-center p-4 border-b border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900">
-            Historial de Ventas ({filteredSales.length})
+            Historial de Ventas ({totalCount})
             {branchFilter !== 'all' && (
               <span className="ml-2 text-sm font-normal text-gray-500">
                 — {getBranchName(branchFilter)}
@@ -364,7 +363,7 @@ const SalesReportsView = ({
           />
         </div>
 
-        {filteredSales.length === 0 ? (
+        {pagedSales.length === 0 ? (
           <div className="text-center py-12">
             <ShoppingBag className="w-12 h-12 text-gray-300 mx-auto mb-4" />
             <p className="text-gray-500">No hay ventas en el periodo seleccionado</p>
@@ -429,7 +428,7 @@ const SalesReportsView = ({
                   </td>
                   <td className="text-right" data-label="Total">
                     <span className="font-semibold text-green-600">
-                      ${formatAmount(Math.max(0, sale.total - (saleNetTotal?.[sale.id] || 0)))}
+                      ${formatAmount(sale.net_total ?? sale.total)}
                     </span>
                   </td>
                   <td className="text-center" data-label="Pago">
@@ -504,24 +503,22 @@ const SalesReportsView = ({
         <Pagination
           currentPage={page}
           totalPages={totalPages}
-          totalItems={filteredSales.length}
+          totalItems={totalCount}
           itemsPerPage={itemsPerPage}
           onPageChange={onSetPage}
           itemName="ventas"
         />
       </div>
 
-      {/* Notas de Crédito */}
+      {/* Notas de Crédito — ya vienen acotadas del backend a las ventas del rango filtrado */}
       {(() => {
-        const filteredSaleIds = new Set(filteredSales.map(s => s.id));
-        const filteredNotes = (allCreditNotes || []).filter(nc => filteredSaleIds.has(nc.sale_id));
-        if (filteredNotes.length === 0) return null;
+        if (!creditNotes || creditNotes.length === 0) return null;
         return (
           <div className="table-container mt-6">
             <div className="flex items-center gap-2 p-4 border-b border-gray-200">
               <FileText className="w-5 h-5 text-amber-600" />
               <h3 className="text-lg font-semibold text-gray-900">
-                Notas de Crédito ({filteredNotes.length})
+                Notas de Crédito ({creditNotes.length})
               </h3>
             </div>
             <table className="table">
@@ -537,7 +534,7 @@ const SalesReportsView = ({
                 </tr>
               </thead>
               <tbody>
-                {filteredNotes.map(nc => (
+                {creditNotes.map(nc => (
                   <tr key={nc.id}>
                     <td>
                       <div className="flex flex-col gap-0.5">
