@@ -963,6 +963,11 @@ class SaleItem(BaseModel):
     nombre: Optional[str] = None
     cantidad: float
     precio_unitario: float
+    # Precio de catálogo antes del descuento por ítem (None si no tuvo descuento,
+    # en cuyo caso es igual a precio_unitario). Se usa para mostrar en el ticket
+    # el precio de lista + el % de descuento, aunque precio_unitario/subtotal ya
+    # vengan netos.
+    precio_unitario_bruto: Optional[float] = None
     subtotal: Optional[float] = None
     total: Optional[float] = None
     descuento: Optional[float] = 0.0
@@ -3482,7 +3487,8 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
     allow_negative_stock = config.get('allow_negative_stock', False) if config else False
 
     # Verify products and calculate totals
-    total_amount = 0
+    total_amount = 0          # neto (con descuento por ítem aplicado)
+    total_bruto = 0           # sin descuento por ítem (para calcular descuento_items)
     validated_items = []
 
     for item in sale_data.items:
@@ -3595,21 +3601,25 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
                             {"$inc": {"stock": -int(item.cantidad)}}
                         )
 
-        # Calculate subtotal
+        # Calculate subtotal (aplica el % de descuento por ítem, si lo hay)
         if precio_unitario is None:
             raise HTTPException(status_code=400, detail=f"No se pudo determinar el precio para {product_nombre or item.producto_id}")
-        subtotal = item.cantidad * precio_unitario
+        descuento_pct = item.descuento or 0.0
+        precio_neto = precio_unitario * (1 - descuento_pct / 100.0) if descuento_pct else precio_unitario
+        subtotal = item.cantidad * precio_neto
         validated_items.append(SaleItem(
             producto_id=item.producto_id,
             nombre=product_nombre,
             cantidad=item.cantidad,
-            precio_unitario=precio_unitario,
+            precio_unitario=precio_neto,
+            precio_unitario_bruto=precio_unitario if descuento_pct else None,
             subtotal=subtotal,
-            descuento=item.descuento or 0.0,
+            descuento=descuento_pct,
             stock_deducted=None if product_kind == 'combo' else stock_deducted,
             combo_components_deducted=combo_components_deducted if product_kind == 'combo' else None,
         ))
         total_amount += subtotal
+        total_bruto += item.cantidad * precio_unitario
 
     # Generate invoice number
     branch_id_for_sale = current_session.get('branch_id') or user.branch_id
@@ -3623,8 +3633,9 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
     else:
         numero_factura = "FAC-000001"
 
-    # Calculate totals
+    # Calculate totals (total_amount ya viene neto de descuentos por ítem)
     subtotal = total_amount
+    descuento_items = round(total_bruto - total_amount, 2)
     impuestos = total_amount * tax_rate
     base_total = total_amount * (1 + tax_rate)
     # Apply payment method adjustment
@@ -3653,7 +3664,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
         numero_factura=numero_factura,
         cliente_id=sale_data.cliente_id,
         descuento=descuento,
-        descuento_items=sale_data.descuento_items or 0.0,
+        descuento_items=descuento_items,
         impuestos_extra_total=impuestos_extra_total,
         condicion_iva_receptor=sale_data.condicion_iva_receptor,
         observaciones_comprobante=sale_data.observaciones_comprobante,
@@ -3796,7 +3807,8 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
                     await db.products.update_one({"id": prod_id, "empresa_id": user.empresa_id}, {"$inc": {"stock": int(cantidad)}})
 
     # Process new items (same validation + stock deduction as create_sale)
-    total_amount = 0
+    total_amount = 0          # neto (con descuento por ítem aplicado)
+    total_bruto = 0           # sin descuento por ítem
     validated_items = []
     for item in sale_data.items:
         precio_unitario = None
@@ -3872,21 +3884,26 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
 
         if precio_unitario is None:
             raise HTTPException(status_code=400, detail=f"No se pudo determinar el precio para {product_nombre or item.producto_id}")
-        subtotal_item = item.cantidad * precio_unitario
+        descuento_pct = item.descuento or 0.0
+        precio_neto = precio_unitario * (1 - descuento_pct / 100.0) if descuento_pct else precio_unitario
+        subtotal_item = item.cantidad * precio_neto
         validated_items.append(SaleItem(
             producto_id=item.producto_id,
             nombre=product_nombre,
             cantidad=item.cantidad,
-            precio_unitario=precio_unitario,
+            precio_unitario=precio_neto,
+            precio_unitario_bruto=precio_unitario if descuento_pct else None,
             subtotal=subtotal_item,
-            descuento=item.descuento or 0.0,
+            descuento=descuento_pct,
             stock_deducted=None if product_kind == 'combo' else stock_deducted,
             combo_components_deducted=combo_components_deducted if product_kind == 'combo' else None,
         ))
         total_amount += subtotal_item
+        total_bruto += item.cantidad * precio_unitario
 
-    # Recalculate totals
+    # Recalculate totals (total_amount ya viene neto de descuentos por ítem)
     subtotal = total_amount
+    descuento_items = round(total_bruto - total_amount, 2)
     impuestos = total_amount * tax_rate
     base_total = total_amount * (1 + tax_rate)
     adjustments = (config.get('payment_method_adjustments') or {}) if config else {}
@@ -3910,6 +3927,7 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
         "pagos": [p.dict() for p in sale_data.pagos] if (sale_data.pagos and len(sale_data.pagos) > 1) else None,
         "cliente_id": sale_data.cliente_id,
         "descuento": descuento,
+        "descuento_items": descuento_items,
         "impuestos_extra_total": impuestos_extra_total,
         "condicion_iva_receptor": sale_data.condicion_iva_receptor,
         "observaciones_comprobante": sale_data.observaciones_comprobante,

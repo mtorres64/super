@@ -209,11 +209,16 @@ export function printDocumentA4(sale, {
       pdf.setFillColor(248, 248, 248);
       pdf.rect(margin, y - 1, right - margin, 7, 'F');
     }
+    // precio_unitario/subtotal ya vienen netos (con el desc. por ítem aplicado); en esta
+    // tabla mostramos precio de lista + columna DESC., y el acumulado neto va en "Desc. por
+    // producto" más abajo — así la columna TOTAL suma contra "Subtotal".
+    const precioLista = item.precio_unitario_bruto ?? item.precio_unitario;
+    const totalLista = precioLista * item.cantidad;
     pdf.setFontSize(8);
     const nameLines = pdf.splitTextToSize(item.nombre, 91);
     pdf.text(nameLines[0], margin + 2, y + 4);
     pdf.text(String(item.cantidad),                          margin + 97,  y + 4, { align: 'right' });
-    pdf.text(`${sym}${formatAmount(item.precio_unitario)}`,  margin + 128, y + 4, { align: 'right' });
+    pdf.text(`${sym}${formatAmount(precioLista)}`,           margin + 128, y + 4, { align: 'right' });
     if (hasItemDiscounts) {
       if (item.descuento > 0) {
         pdf.setTextColor(22, 163, 74);
@@ -221,7 +226,7 @@ export function printDocumentA4(sale, {
         pdf.setTextColor(0, 0, 0);
       }
     }
-    pdf.text(`${sym}${formatAmount(item.subtotal)}`,         right - 2,    y + 4, { align: 'right' });
+    pdf.text(`${sym}${formatAmount(totalLista)}`,            right - 2,    y + 4, { align: 'right' });
     y += 7;
   });
 

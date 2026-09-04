@@ -204,15 +204,27 @@ const TicketModalView = ({ sale, returns = [], config, afipConfig, cajeroName, t
             <span>PRODUCTO</span>
             <span>TOTAL</span>
           </div>
-          {sale.items.map((item, idx) => (
-            <div key={idx} className="ticket-item">
-              <div className="ticket-item-name">{item.nombre}</div>
-              <div className="ticket-item-detail">
-                <span>{item.cantidad} x {sym}{formatAmount(item.precio_unitario)}</span>
-                <span>{sym}{formatAmount(item.subtotal)}</span>
+          {sale.items.map((item, idx) => {
+            // precio_unitario/subtotal ya vienen netos (con el desc. por ítem aplicado);
+            // para que la línea sume contra "Subtotal" mostramos el precio de lista y
+            // el % de descuento, y dejamos el neto acumulado en "Desc. por producto".
+            const precioLista = item.precio_unitario_bruto ?? item.precio_unitario;
+            const totalLista = precioLista * item.cantidad;
+            return (
+              <div key={idx} className="ticket-item">
+                <div className="ticket-item-name" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{item.nombre}</span>
+                  {item.descuento > 0 && (
+                    <span style={{ color: '#16a34a', fontWeight: 600 }}>-{item.descuento}%</span>
+                  )}
+                </div>
+                <div className="ticket-item-detail">
+                  <span>{item.cantidad} x {sym}{formatAmount(precioLista)}</span>
+                  <span>{sym}{formatAmount(totalLista)}</span>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           <div className="ticket-separator" />
 

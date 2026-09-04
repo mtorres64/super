@@ -109,14 +109,19 @@ const POS = () => {
       : null;
     setPresupuestoReceipt({
       _esPresupuesto: true,
-      items: cart.map(item => ({
-        nombre: item.nombre,
-        cantidad: item.quantity,
-        precio_unitario: getEffectivePrice(item),
-        subtotal: getEffectivePrice(item) * item.quantity,
-        ...(item.descuento > 0 && { descuento: item.descuento }),
-      })),
+      items: cart.map(item => {
+        const originalPrice = item.tipo === 'por_peso' && item.precio_por_peso ? item.precio_por_peso : item.precio;
+        return {
+          nombre: item.nombre,
+          cantidad: item.quantity,
+          precio_unitario: getEffectivePrice(item),
+          ...(item.descuento > 0 && { precio_unitario_bruto: originalPrice }),
+          subtotal: getEffectivePrice(item) * item.quantity,
+          ...(item.descuento > 0 && { descuento: item.descuento }),
+        };
+      }),
       subtotal: sub,
+      descuento_items: calculateItemDiscounts(),
       impuestos: tax,
       total: sub + tax + adj,
       metodo_pago: pagoSplit && pagosFilled?.length > 0 ? pagosFilled[0].metodo : paymentMethod,
