@@ -273,13 +273,17 @@ const POS = () => {
   // Confirm text search on Enter press (immediate, no debounce)
   const commitSearch = () => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    if (config?.unified_barcode_search && isAutoScanning) {
+    const term = searchTerm.trim();
+    // En modo unificado, si viene de escaneo o el texto es claramente un código
+    // de barras (solo dígitos, 8+), resolver por código para que salte la alerta
+    // de "producto no encontrado" en lugar de quedar como filtro de texto.
+    if (config?.unified_barcode_search && (isAutoScanning || /^\d{8,}$/.test(term))) {
       clearTimeout(barcodeTimerRef.current);
-      searchProductByBarcode(searchTerm);
+      searchProductByBarcode(term);
       setIsAutoScanning(false);
       return;
     }
-    setDebouncedSearch(searchTerm.trim());
+    setDebouncedSearch(term);
     setCurrentPage(1);
   };
 
@@ -381,17 +385,23 @@ const POS = () => {
       if (match) {
         const added = addToCart(match);
         setBarcode('');
+        clearSearch();
         if (added) {
           playSuccessSound();
           toast.success(`${match.nombre} agregado al carrito`);
         }
+        focusSearch();
       } else {
         playErrorSound();
         toast.error('Producto no encontrado en esta sucursal');
-        setBarcode('');
+        // Limpiar el input (diferido: deja que termine el evento de escaneo /
+        // Enter en curso antes de borrar, y no interfiere con el render del toast)
+        setTimeout(() => {
+          setBarcode('');
+          clearSearch();
+          focusSearch();
+        }, 0);
       }
-
-      focusSearch();
     } catch (error) {
       playErrorSound();
       toast.error('Error al buscar producto');

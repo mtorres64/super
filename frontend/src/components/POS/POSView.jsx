@@ -211,11 +211,15 @@ const POSView = ({
       e.preventDefault();
       setFocusedIdx(i => Math.max(i - 1, -1));
     } else if (e.key === 'Enter') {
-      if (focusedIdx >= 0 && paginatedProducts[focusedIdx]) {
+      // Un código escaneado (solo dígitos, largo de código de barras) siempre
+      // debe resolverse como búsqueda por código, nunca como "agregar el único
+      // producto visible" — así se dispara la alerta de "no encontrado".
+      const looksLikeScan = isAutoScanning || /^\d{8,}$/.test((searchTerm || '').trim());
+      if (!looksLikeScan && focusedIdx >= 0 && paginatedProducts[focusedIdx]) {
         addToCart(paginatedProducts[focusedIdx]);
         playSuccessSound();
         setFocusedIdx(-1);
-      } else if (paginatedProducts.length === 1) {
+      } else if (!looksLikeScan && paginatedProducts.length === 1) {
         addToCart(paginatedProducts[0]);
         playSuccessSound();
         setFocusedIdx(-1);
