@@ -968,6 +968,10 @@ class SaleItem(BaseModel):
     # el precio de lista + el % de descuento, aunque precio_unitario/subtotal ya
     # vengan netos.
     precio_unitario_bruto: Optional[float] = None
+    # Costo unitario del producto al momento de la venta (snapshot). Permite que el
+    # reporte de márgenes calcule la ganancia histórica real, sin que un cambio de
+    # costo posterior recalcule para atrás ventas ya realizadas.
+    costo_unitario: Optional[float] = None
     subtotal: Optional[float] = None
     total: Optional[float] = None
     descuento: Optional[float] = 0.0
@@ -3493,6 +3497,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
 
     for item in sale_data.items:
         precio_unitario = None
+        costo_unitario = None
         product_nombre = None
 
         # Always fetch global product to know kind/control_stock
@@ -3514,6 +3519,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
                 })
                 if branch_product:
                     precio_unitario = branch_product.get('precio_por_peso') or branch_product['precio']
+                    costo_unitario = branch_product.get('costo')
             if precio_unitario is None:
                 precio_unitario = global_product.get('precio_por_peso') or global_product['precio']
             product_nombre = global_product['nombre']
@@ -3575,6 +3581,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
                     if insuficiente and not allow_negative_stock:
                         raise HTTPException(status_code=400, detail=f"Stock insuficiente para {global_product['nombre']}")
                     precio_unitario = branch_product.get('precio_por_peso') or branch_product.get('precio')
+                    costo_unitario = branch_product.get('costo')
                     if manage_stock:
                         if insuficiente:
                             stock_deducted = False
@@ -3601,6 +3608,11 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
                             {"$inc": {"stock": -int(item.cantidad)}}
                         )
 
+        # Costo unitario al momento de la venta (snapshot): branch_product si lo hubo,
+        # si no el costo global del producto.
+        if costo_unitario is None:
+            costo_unitario = global_product.get('costo')
+
         # Calculate subtotal (aplica el % de descuento por ítem, si lo hay)
         if precio_unitario is None:
             raise HTTPException(status_code=400, detail=f"No se pudo determinar el precio para {product_nombre or item.producto_id}")
@@ -3613,6 +3625,7 @@ async def create_sale(sale_data: SaleCreate, user: User = Depends(get_current_us
             cantidad=item.cantidad,
             precio_unitario=precio_neto,
             precio_unitario_bruto=precio_unitario if descuento_pct else None,
+            costo_unitario=costo_unitario,
             subtotal=subtotal,
             descuento=descuento_pct,
             stock_deducted=None if product_kind == 'combo' else stock_deducted,
@@ -3812,6 +3825,7 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
     validated_items = []
     for item in sale_data.items:
         precio_unitario = None
+        costo_unitario = None
         product_nombre = None
         global_product = await db.products.find_one({"id": item.producto_id, "empresa_id": user.empresa_id, "activo": True})
         if not global_product:
@@ -3825,6 +3839,7 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
                 branch_product = await db.branch_products.find_one({"product_id": item.producto_id, "branch_id": user.branch_id, "empresa_id": user.empresa_id, "activo": True})
                 if branch_product:
                     precio_unitario = branch_product.get('precio_por_peso') or branch_product['precio']
+                    costo_unitario = branch_product.get('costo')
             if precio_unitario is None:
                 precio_unitario = global_product.get('precio_por_peso') or global_product['precio']
             product_nombre = global_product['nombre']
@@ -3864,6 +3879,7 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
                     if insuficiente and not allow_negative_stock:
                         raise HTTPException(status_code=400, detail=f"Stock insuficiente para {global_product['nombre']}")
                     precio_unitario = branch_product.get('precio_por_peso') or branch_product.get('precio')
+                    costo_unitario = branch_product.get('costo')
                     if manage_stock:
                         if insuficiente:
                             stock_deducted = False
@@ -3882,6 +3898,9 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
                     else:
                         await db.products.update_one({"id": item.producto_id, "empresa_id": user.empresa_id}, {"$inc": {"stock": -int(item.cantidad)}})
 
+        if costo_unitario is None:
+            costo_unitario = global_product.get('costo')
+
         if precio_unitario is None:
             raise HTTPException(status_code=400, detail=f"No se pudo determinar el precio para {product_nombre or item.producto_id}")
         descuento_pct = item.descuento or 0.0
@@ -3893,6 +3912,7 @@ async def update_sale(sale_id: str, sale_data: SaleCreate, user: User = Depends(
             cantidad=item.cantidad,
             precio_unitario=precio_neto,
             precio_unitario_bruto=precio_unitario if descuento_pct else None,
+            costo_unitario=costo_unitario,
             subtotal=subtotal_item,
             descuento=descuento_pct,
             stock_deducted=None if product_kind == 'combo' else stock_deducted,
@@ -4044,9 +4064,11 @@ async def get_reporte_margenes(
         "id": 1, "fecha": 1, "branch_id": 1, "numero_factura": 1,
         "items.producto_id": 1, "items.nombre": 1, "items.cantidad": 1,
         "items.precio_unitario": 1, "items.subtotal": 1, "items.total": 1,
+        "items.costo_unitario": 1,
     }).sort("fecha", 1).to_list(100000)
 
-    # Cargar costos de branch_products en batch: {(product_id, branch_id): costo}
+    # Costo actual de branch_products, SOLO como fallback para ventas anteriores al fix
+    # que no tienen costo_unitario guardado en el ítem (snapshot al momento de vender).
     product_ids = list({item["producto_id"] for s in sales for item in s.get("items", [])})
     branch_ids_needed = list({s.get("branch_id") for s in sales if s.get("branch_id")})
     bp_cursor = await db.branch_products.find(
@@ -4090,7 +4112,11 @@ async def get_reporte_margenes(
             qty = float(item.get("cantidad", 0))
             precio = float(item.get("precio_unitario", 0))
             subtotal_venta = float(item.get("subtotal") or item.get("total") or (qty * precio))
-            costo_unit = costo_map.get((pid, bid))
+            # Costo al momento de la venta si quedó guardado (ventas posteriores al fix);
+            # si no, costo actual como aproximación (ventas viejas, sin snapshot).
+            costo_unit = item.get("costo_unitario")
+            if costo_unit is None:
+                costo_unit = costo_map.get((pid, bid))
             subtotal_costo = qty * costo_unit if costo_unit is not None else None
             margen_item = (subtotal_venta - subtotal_costo) if subtotal_costo is not None else None
             margen_pct_item = (margen_item / subtotal_costo * 100) if (subtotal_costo and subtotal_costo > 0) else None
