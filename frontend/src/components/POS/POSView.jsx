@@ -227,7 +227,9 @@ const POSView = ({
 
   const commitWeightDraft = (itemId) => {
     if (weightInputDraft[itemId] !== undefined) {
-      const val = parseFloat(weightInputDraft[itemId]);
+      const item = cart.find(i => i.id === itemId);
+      const raw = weightInputDraft[itemId];
+      const val = item?.tipo === 'por_peso' ? parseFloat(raw) : parseInt(raw, 10);
       if (!isNaN(val) && val > 0) updateQuantity(itemId, val);
       setWeightInputDraft(prev => { const next = { ...prev }; delete next[itemId]; return next; });
     }
@@ -779,11 +781,7 @@ const POSView = ({
                             step={item.tipo === 'por_peso' ? '0.001' : '1'}
                             value={weightInputDraft[item.id] !== undefined ? weightInputDraft[item.id] : item.quantity}
                             onChange={(e) => {
-                              if (item.tipo === 'por_peso') {
-                                setWeightInputDraft(prev => ({ ...prev, [item.id]: e.target.value }));
-                              } else {
-                                updateQuantity(item.id, parseInt(e.target.value) || 1);
-                              }
+                              setWeightInputDraft(prev => ({ ...prev, [item.id]: e.target.value }));
                             }}
                             onBlur={() => commitWeightDraft(item.id)}
                             onClick={(e) => e.target.select()}
