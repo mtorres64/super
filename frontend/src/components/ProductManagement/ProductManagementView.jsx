@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Plus, Edit, Trash2, Package, Save, X,
   Download, Upload, FileText, Tag, Layers, Minus, CircleDot, SlidersHorizontal, ChevronDown, MoreVertical,
+  ArrowLeftRight,
 } from 'lucide-react';
 import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
@@ -9,6 +10,7 @@ import SearchInput from '../ui/SearchInput';
 import { getCategoryIcon, ICON_OPTIONS } from '../../utils/categoryIcons';
 import BulkEditModal from './BulkEditModal';
 import NuevoProductoModal from './NuevoProductoModal';
+import TransferirModal from './TransferirModal';
 import { useFormValidation } from '../../hooks/useFormValidation';
 import FieldError from '../ui/FieldError';
 
@@ -29,6 +31,13 @@ const ProductManagementView = ({
   products,
   total,
   categories,
+  branches,
+  config,
+  showTransferModal,
+  setShowTransferModal,
+  transferModalClosing,
+  closeTransferModalAnim,
+  refreshProducts,
   loading,
   showModal,
   showNuevoProductoModal,
@@ -227,6 +236,12 @@ const ProductManagementView = ({
             {showMobileMenu && (
               <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1">
                 <button
+                  onClick={() => { setShowTransferModal(true); setShowMobileMenu(false); }}
+                  className="flex items-center gap-2 w-full px-4 py-2.5 text-sm hover:bg-gray-50 text-gray-700"
+                >
+                  <ArrowLeftRight className="w-4 h-4" />Transferir
+                </button>
+                <button
                   onClick={() => { setShowImportModal(true); setShowMobileMenu(false); }}
                   className="flex items-center gap-2 w-full px-4 py-2.5 text-sm hover:bg-gray-50"
                   style={{ color: 'var(--secondary-text)' }}
@@ -271,6 +286,9 @@ const ProductManagementView = ({
             </button>
           </div>
           <div className="flex flex-wrap gap-2 items-center">
+            <button onClick={() => setShowTransferModal(true)} className="btn btn-secondary">
+              <ArrowLeftRight className="w-4 h-4" />Transferir
+            </button>
             <button onClick={() => setShowImportModal(true)} className="btn" style={{ background: 'var(--secondary)', color: 'var(--secondary-text)' }}>
               <Upload className="w-4 h-4" />Importar
             </button>
@@ -1383,6 +1401,16 @@ const ProductManagementView = ({
         <NuevoProductoModal
           onClose={() => setShowNuevoProductoModal(false)}
           onProductCreated={handleNuevoProductoCreated}
+        />
+      )}
+
+      {(showTransferModal || transferModalClosing) && (
+        <TransferirModal
+          branches={branches}
+          config={config}
+          closing={transferModalClosing}
+          onClose={closeTransferModalAnim}
+          onCompleted={refreshProducts}
         />
       )}
     </div>

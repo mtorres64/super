@@ -18,6 +18,8 @@ const ProductManagement = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [comboProducts, setComboProducts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [showTransferModal, setShowTransferModal] = useState(false);
   const [config, setConfig] = useState(null);
   const [configLoaded, setConfigLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -119,9 +121,19 @@ const ProductManagement = () => {
     }
   };
 
+  const fetchBranches = async () => {
+    try {
+      const response = await axios.get(`${API}/branches`);
+      setBranches(response.data || []);
+    } catch (error) {
+      /* no-op: transfer modal will show no branches */
+    }
+  };
+
   useEffect(() => {
     fetchCategories();
     fetchConfiguration();
+    fetchBranches();
   }, []);
 
   // Auto-search while typing (from 2nd character), with debounce
@@ -438,6 +450,14 @@ const ProductManagement = () => {
     }
   };
 
+  const refreshProducts = () =>
+    loadProducts(currentPage, debouncedSearch, config?.items_per_page || 50, selectedCategory, selectedKind, selectedActivo);
+
+  const [transferModalClosing, closeTransferModalAnim] = useModalClose(() => {
+    setShowTransferModal(false);
+    refreshProducts();
+  });
+
   const [productModalClosing, closeProductModal] = useModalClose(closeModal);
   const [importModalClosing, closeImportModalAnim] = useModalClose(() => { setShowImportModal(false); setImportFile(null); setImportResult(null); setImportProgress(0); });
   const [categoryModalClosing, closeCategoryModal] = useModalClose(() => setShowCategoryModal(false));
@@ -632,6 +652,13 @@ const ProductManagement = () => {
       products={comboProducts}
       total={total}
       categories={categories}
+      branches={branches}
+      config={config}
+      showTransferModal={showTransferModal}
+      setShowTransferModal={setShowTransferModal}
+      transferModalClosing={transferModalClosing}
+      closeTransferModalAnim={closeTransferModalAnim}
+      refreshProducts={refreshProducts}
       loading={loading}
       showModal={showModal}
       showNuevoProductoModal={showNuevoProductoModal}

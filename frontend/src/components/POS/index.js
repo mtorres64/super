@@ -254,7 +254,12 @@ const POS = () => {
       const elapsed = currentTime - lastKeyTime.current;
       lastKeyTime.current = currentTime;
 
-      if (elapsed < scanTimeout && value.length >= 8) {
+      // Solo tratamos la entrada como escaneo de pistola si además de venir a
+      // velocidad de scanner, el contenido parece un código de barras (solo
+      // dígitos, 8+). Así una palabra tipeada rápido a mano (p. ej. "tortillas")
+      // sigue el flujo de búsqueda por texto y no dispara "producto no
+      // encontrado" ni borra el input.
+      if (elapsed < scanTimeout && /^\d{8,}$/.test(value)) {
         setIsAutoScanning(true);
         clearTimeout(barcodeTimerRef.current);
         barcodeTimerRef.current = setTimeout(() => {

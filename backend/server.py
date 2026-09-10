@@ -1442,6 +1442,33 @@ async def get_branch_products_admin(
         "total_pages": 1 if all else max(1, -(-total // per_page))
     }
 
+@api_router.get("/branches/{branch_id}/product/{product_id}")
+async def get_branch_product_single(branch_id: str, product_id: str, user: User = Depends(get_current_user)):
+    """Datos de un producto en una sucursal puntual (precio/costo/margen/stock propios o globales)."""
+    if user.rol not in [UserRole.ADMIN, UserRole.SUPERVISOR]:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    product = await db.products.find_one({"id": product_id, "empresa_id": user.empresa_id})
+    if not product:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    bp = await db.branch_products.find_one({
+        "product_id": product_id, "branch_id": branch_id, "empresa_id": user.empresa_id
+    })
+    return {
+        "product_id": product_id,
+        "nombre": product.get("nombre"),
+        "codigo_barras": product.get("codigo_barras"),
+        "precio_global": product.get("precio"),
+        "stock_global": product.get("stock", 0),
+        "branch_product_id": bp.get("id") if bp else None,
+        "precio_sucursal": bp.get("precio") if bp else None,
+        "precio_por_peso_sucursal": bp.get("precio_por_peso") if bp else None,
+        "stock_sucursal": bp.get("stock") if bp else None,
+        "stock_minimo_sucursal": bp.get("stock_minimo") if bp else None,
+        "margen_sucursal": bp.get("margen") if bp else None,
+        "costo_sucursal": bp.get("costo") if bp else None,
+        "activo_sucursal": bp.get("activo", True) if bp else True,
+    }
+
 @api_router.get("/branches/{branch_id}", response_model=Branch)
 async def get_branch(branch_id: str, user: User = Depends(get_current_user)):
     branch = await db.branches.find_one({"id": branch_id, "empresa_id": user.empresa_id})
@@ -5458,6 +5485,193 @@ async def distribuir_compra(
     await db.compras.update_one({"id": compra_id}, {"$push": {"distribuciones": distribucion}})
     updated = await db.compras.find_one({"id": compra_id})
     return Compra(**updated)
+
+# ─────────────────────────────────────────────
+# TRANSFERENCIAS entre sucursales
+# ─────────────────────────────────────────────
+
+class TransferenciaItemInput(BaseModel):
+    product_id: str
+    cantidad: float
+    actualizar_costo: bool = True
+    actualizar_precio_venta: bool = True
+
+class TransferenciaCreate(BaseModel):
+    sucursal_origen_id: str
+    sucursal_destino_id: str
+    notas: Optional[str] = None
+    items: List[TransferenciaItemInput]
+
+
+@api_router.post("/transferencias")
+async def crear_transferencia(
+    data: TransferenciaCreate,
+    user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR]))
+):
+    if data.sucursal_origen_id == data.sucursal_destino_id:
+        raise HTTPException(status_code=400, detail="La sucursal de origen y la de destino deben ser distintas")
+    if not data.items:
+        raise HTTPException(status_code=400, detail="La transferencia no tiene productos")
+
+    origen = await db.branches.find_one({"id": data.sucursal_origen_id, "empresa_id": user.empresa_id})
+    destino = await db.branches.find_one({"id": data.sucursal_destino_id, "empresa_id": user.empresa_id})
+    if not origen or not destino:
+        raise HTTPException(status_code=404, detail="Sucursal no encontrada")
+
+    cfg = await db.configuration.find_one({"empresa_id": user.empresa_id}) or {}
+    redondeo = cfg.get("redondeo_precio", 100)
+    allow_negative = cfg.get("allow_negative_stock", False)
+
+    def _redondear(valor: float) -> float:
+        import math
+        if not redondeo:
+            return round(valor, 2)
+        return math.ceil(valor / redondeo) * redondeo
+
+    prod_ids = [it.product_id for it in data.items]
+    productos = {p["id"]: p for p in await db.products.find(
+        {"id": {"$in": prod_ids}, "empresa_id": user.empresa_id}
+    ).to_list(None)}
+    bps_origen = {bp["product_id"]: bp for bp in await db.branch_products.find(
+        {"product_id": {"$in": prod_ids}, "branch_id": data.sucursal_origen_id, "empresa_id": user.empresa_id}
+    ).to_list(None)}
+    bps_destino = {bp["product_id"]: bp for bp in await db.branch_products.find(
+        {"product_id": {"$in": prod_ids}, "branch_id": data.sucursal_destino_id, "empresa_id": user.empresa_id}
+    ).to_list(None)}
+
+    # Validación previa (no aplicar nada hasta que todo sea válido)
+    for it in data.items:
+        if it.product_id not in productos:
+            raise HTTPException(status_code=404, detail="Producto de la transferencia no encontrado")
+        if it.cantidad is None or it.cantidad <= 0:
+            raise HTTPException(status_code=400, detail=f"Cantidad inválida para {productos[it.product_id]['nombre']}")
+        stock_origen = (bps_origen.get(it.product_id) or {}).get("stock", 0)
+        if not allow_negative and it.cantidad > stock_origen:
+            raise HTTPException(
+                status_code=400,
+                detail=(f"Stock insuficiente en {origen['nombre']} para {productos[it.product_id]['nombre']} "
+                        f"(disponible {stock_origen}, solicitado {int(it.cantidad)})")
+            )
+
+    items_registro = []
+    total_unidades = 0.0
+    total_valor = 0.0
+
+    for it in data.items:
+        prod = productos[it.product_id]
+        bp_o = bps_origen.get(it.product_id)
+        bp_d = bps_destino.get(it.product_id)
+        cantidad = float(it.cantidad)
+
+        costo_origen = float((bp_o or {}).get("costo") or 0)
+        costo_destino_ant = float(bp_d["costo"]) if bp_d and bp_d.get("costo") is not None else None
+        precio_destino_ant = float(bp_d["precio"]) if bp_d and bp_d.get("precio") is not None else None
+        margen_destino = bp_d.get("margen") if bp_d else None
+        if margen_destino is None:
+            margen_destino = (bp_o or {}).get("margen")
+
+        costo_destino_nuevo = costo_origen if it.actualizar_costo else costo_destino_ant
+
+        precio_destino_nuevo = precio_destino_ant
+        if it.actualizar_precio_venta:
+            base_costo = costo_destino_nuevo if costo_destino_nuevo is not None else costo_origen
+            if margen_destino is not None and base_costo:
+                precio_destino_nuevo = _redondear(base_costo * (1 + float(margen_destino) / 100))
+
+        # Descontar del origen
+        if bp_o:
+            await db.branch_products.update_one({"id": bp_o["id"]}, {"$inc": {"stock": -int(cantidad)}})
+        else:
+            nb = BranchProduct(
+                empresa_id=user.empresa_id, product_id=it.product_id, branch_id=data.sucursal_origen_id,
+                precio=prod.get("precio", 0), stock=-int(cantidad),
+                stock_minimo=prod.get("stock_minimo", 10),
+            )
+            await db.branch_products.insert_one(nb.dict())
+
+        # Sumar al destino
+        set_fields = {}
+        if it.actualizar_costo and costo_destino_nuevo is not None:
+            set_fields["costo"] = costo_destino_nuevo
+        if it.actualizar_precio_venta and precio_destino_nuevo is not None:
+            set_fields["precio"] = precio_destino_nuevo
+        if bp_d:
+            upd = {"$inc": {"stock": int(cantidad)}}
+            if set_fields:
+                upd["$set"] = set_fields
+            await db.branch_products.update_one({"id": bp_d["id"]}, upd)
+        else:
+            nb_kwargs = dict(
+                empresa_id=user.empresa_id, product_id=it.product_id, branch_id=data.sucursal_destino_id,
+                precio=precio_destino_nuevo if precio_destino_nuevo is not None else prod.get("precio", 0),
+                stock=int(cantidad), stock_minimo=prod.get("stock_minimo", 10),
+            )
+            if costo_destino_nuevo is not None:
+                nb_kwargs["costo"] = costo_destino_nuevo
+            if margen_destino is not None:
+                nb_kwargs["margen"] = float(margen_destino)
+            await db.branch_products.insert_one(BranchProduct(**nb_kwargs).dict())
+
+        subtotal = round(cantidad * costo_origen, 2)
+        total_unidades += cantidad
+        total_valor += subtotal
+
+        items_registro.append({
+            "product_id": it.product_id,
+            "nombre": prod.get("nombre"),
+            "codigo_barras": prod.get("codigo_barras"),
+            "cantidad": cantidad,
+            "costo_origen": costo_origen,
+            "costo_destino_anterior": costo_destino_ant,
+            "costo_destino_nuevo": costo_destino_nuevo if it.actualizar_costo else costo_destino_ant,
+            "precio_destino_anterior": precio_destino_ant,
+            "precio_destino_nuevo": precio_destino_nuevo if it.actualizar_precio_venta else precio_destino_ant,
+            "margen_destino": float(margen_destino) if margen_destino is not None else None,
+            "actualizo_costo": it.actualizar_costo,
+            "actualizo_precio_venta": it.actualizar_precio_venta,
+            "subtotal": subtotal,
+        })
+
+    doc = {
+        "id": str(uuid.uuid4()),
+        "empresa_id": user.empresa_id,
+        "sucursal_origen_id": data.sucursal_origen_id,
+        "sucursal_origen_nombre": origen.get("nombre", ""),
+        "sucursal_destino_id": data.sucursal_destino_id,
+        "sucursal_destino_nombre": destino.get("nombre", ""),
+        "fecha": datetime.now(timezone.utc),
+        "registrado_por": user.id,
+        "registrado_por_nombre": user.nombre,
+        "notas": data.notas,
+        "items": items_registro,
+        "total_unidades": total_unidades,
+        "total_valor": round(total_valor, 2),
+    }
+    await db.transferencias.insert_one({**doc})
+    return doc
+
+
+@api_router.get("/transferencias")
+async def listar_transferencias(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=200),
+    sucursal_id: Optional[str] = Query(None),
+    user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR]))
+):
+    query = {"empresa_id": user.empresa_id}
+    if sucursal_id:
+        query["$or"] = [{"sucursal_origen_id": sucursal_id}, {"sucursal_destino_id": sucursal_id}]
+    total = await db.transferencias.count_documents(query)
+    skip = (page - 1) * per_page
+    docs = await db.transferencias.find(query, {"_id": 0}).sort("fecha", -1).skip(skip).limit(per_page).to_list(per_page)
+    return {
+        "items": docs,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, -(-total // per_page)),
+    }
+
 
 # ─────────────────────────────────────────────
 # CUENTA / SUSCRIPCIÓN routes
