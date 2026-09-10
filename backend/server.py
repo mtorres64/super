@@ -513,6 +513,46 @@ def _rows_to_export_response(rows: List[dict], filename_base: str, format: str =
         )
 
 
+# Grupos de letras equivalentes para búsqueda sin distinción de acentos.
+_ACCENT_GROUPS = [
+    "aáàäâãAÁÀÄÂÃ", "eéèëêEÉÈËÊ", "iíìïîIÍÌÏÎ",
+    "oóòöôõOÓÒÖÔÕ", "uúùüûUÚÙÜÛ", "nñNÑ", "cçCÇ",
+]
+_ACCENT_MAP = {ch: g for g in _ACCENT_GROUPS for ch in g}
+
+
+def _accent_insensitive_pattern(text: str) -> str:
+    """Regex donde cada vocal / ñ / ç matchea también sus variantes acentuadas,
+    para que 'jamon' encuentre 'Jamón' y viceversa."""
+    out = []
+    for ch in text:
+        group = _ACCENT_MAP.get(ch)
+        out.append(f"[{re.escape(group)}]" if group else re.escape(ch))
+    return "".join(out)
+
+
+def _product_search_or(search: str) -> List[dict]:
+    """Condiciones `$or` para buscar productos por nombre / código de barras.
+
+    Búsqueda por tokens y sin distinción de acentos: cada palabra del término
+    debe aparecer en el nombre (en cualquier orden), de modo que 'tortilla sin
+    tac' encuentra 'Tortillas sin TACC' y 'jamon' encuentra 'Jamón'. El término
+    completo también se prueba, literal, contra el código de barras.
+    """
+    term = (search or "").strip()
+    if not term:
+        return []
+    tokens = term.split()
+    if len(tokens) > 1:
+        nombre_cond = {"$and": [
+            {"nombre": {"$regex": _accent_insensitive_pattern(tok), "$options": "i"}}
+            for tok in tokens
+        ]}
+    else:
+        nombre_cond = {"nombre": {"$regex": _accent_insensitive_pattern(term), "$options": "i"}}
+    return [nombre_cond, {"codigo_barras": {"$regex": re.escape(term), "$options": "i"}}]
+
+
 # --- Reportes helpers ---
 def _validar_rango_fechas(desde_local: datetime, hasta_local: datetime, max_dias: int = 92) -> None:
     """Evita que un reporte sin paginar traiga años de ventas a memoria de una sola vez."""
@@ -1382,8 +1422,7 @@ async def get_branch_products_admin(
         raise HTTPException(status_code=404, detail="Branch not found")
     query = {"empresa_id": user.empresa_id, "activo": True}
     if search:
-        regex = {"$regex": re.escape(search), "$options": "i"}
-        query["$or"] = [{"nombre": regex}, {"codigo_barras": regex}]
+        query["$or"] = _product_search_or(search)
     if category_id:
         query["categoria_id"] = category_id
     if kind:
@@ -2178,8 +2217,7 @@ async def get_branch_products(
     ]
 
     if search:
-        regex = {"$regex": re.escape(search), "$options": "i"}
-        base_pipeline.append({"$match": {"$or": [{"nombre": regex}, {"codigo_barras": regex}]}})
+        base_pipeline.append({"$match": {"$or": _product_search_or(search)}})
 
     count_result = await db.branch_products.aggregate(base_pipeline + [{"$count": "total"}]).to_list(1)
     total = count_result[0]["total"] if count_result else 0
@@ -2260,8 +2298,7 @@ async def get_products(
     query = {"empresa_id": user.empresa_id}
     query["activo"] = True if activo is None else activo
     if search:
-        regex = {"$regex": re.escape(search), "$options": "i"}
-        query["$or"] = [{"nombre": regex}, {"codigo_barras": regex}]
+        query["$or"] = _product_search_or(search)
     if category_id:
         query["categoria_id"] = category_id
     if kind:
