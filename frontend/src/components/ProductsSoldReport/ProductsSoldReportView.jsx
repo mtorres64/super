@@ -12,6 +12,7 @@ import {
   ShoppingCart,
   Building2,
   RotateCcw,
+  TrendingUp,
 } from 'lucide-react';
 import SortIcon from '../ui/SortIcon';
 import PaginationView from '../Pagination/PaginationView';
@@ -19,6 +20,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer
 } from 'recharts';
+import ProductMovementsModal from './ProductMovementsModal';
+import AutocompleteSelect from '../ui/AutocompleteSelect';
 
 const ProductsSoldReportView = ({
   pagedItems,
@@ -51,6 +54,15 @@ const ProductsSoldReportView = ({
   setPage,
   totalPages,
   itemsPerPage,
+  selectedProductoNombre,
+  movimientosRange,
+  config,
+  afipConfig,
+  movimientosProducto,
+  movimientosBranchId,
+  onVerMovimientos,
+  movimientosClosing,
+  onCloseMovimientos,
 }) => {
   return (
     <div className="p-6">
@@ -143,19 +155,18 @@ const ProductsSoldReportView = ({
           </div>
 
           {/* Producto */}
-          <div className="flex items-center gap-2">
-            <Package className="w-4 h-4 text-gray-400" />
-            <select
-              className="form-select"
-              value={productoFilter}
-              onChange={(e) => setProductoFilter(e.target.value)}
-            >
-              <option value="all">Todos los productos</option>
-              {productosParaFiltro.map(p => (
-                <option key={p.nombre} value={p.nombre.toLowerCase()}>{p.nombre}</option>
-              ))}
-            </select>
-          </div>
+          <AutocompleteSelect
+            icon={Package}
+            wrapperClassName="flex-shrink-0"
+            style={{ width: '15rem' }}
+            inputClassName="form-select pl-9"
+            options={productosParaFiltro.map(p => p.nombre)}
+            value={selectedProductoNombre || ''}
+            onSelect={(label) => setProductoFilter(label.toLowerCase())}
+            onClear={() => setProductoFilter('all')}
+            placeholder="Todos los productos"
+            historyKey="productos_vendidos_producto"
+          />
           <button onClick={onResetFilters} className="btn btn-secondary btn-sm flex items-center gap-1.5 flex-shrink-0 ml-auto" title="Restablecer filtros">
             <RotateCcw className="w-3.5 h-3.5" />
             Restablecer
@@ -219,6 +230,15 @@ const ProductsSoldReportView = ({
           <h3 className="text-lg font-semibold text-gray-900">
             Detalle por Producto ({sortedItems.length})
           </h3>
+          {productoFilter !== 'all' && selectedProductoNombre && (
+            <button
+              onClick={() => onVerMovimientos(selectedProductoNombre, branchFilter)}
+              className="btn btn-secondary btn-sm flex items-center gap-1.5"
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
+              Ver movimientos
+            </button>
+          )}
         </div>
 
         {sortedItems.length === 0 ? (
@@ -284,6 +304,7 @@ const ProductsSoldReportView = ({
                   >
                     Total <SortIcon columnKey="total_recaudado" sortConfig={sortConfig} />
                   </th>
+                  <th style={{ width: '1rem' }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -327,6 +348,15 @@ const ProductsSoldReportView = ({
                         ${formatAmount(p.total_recaudado)}
                       </span>
                     </td>
+                    <td className="text-center">
+                      <button
+                        onClick={() => onVerMovimientos(p.nombre, p.branch_id)}
+                        className="btn btn-color-secondary btn-icon-sm"
+                        title="Ver movimientos"
+                      >
+                        <TrendingUp className="w-4 h-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -342,6 +372,20 @@ const ProductsSoldReportView = ({
           </>
         )}
       </div>
+
+      {(movimientosProducto || movimientosClosing) && (
+        <ProductMovementsModal
+          producto={movimientosProducto}
+          fechaDesde={movimientosRange?.desde}
+          fechaHasta={movimientosRange?.hasta}
+          branchId={movimientosBranchId}
+          branches={branches}
+          closing={movimientosClosing}
+          onClose={onCloseMovimientos}
+          config={config}
+          afipConfig={afipConfig}
+        />
+      )}
     </div>
   );
 };

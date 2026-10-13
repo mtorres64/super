@@ -6,6 +6,7 @@ import { formatAmount } from '../../lib/utils';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
+import useModalClose from '../../useModalClose';
 import ProductsSoldReportView from './ProductsSoldReportView';
 
 const ProductsSoldReport = () => {
@@ -19,6 +20,16 @@ const ProductsSoldReport = () => {
   const [branchFilter, setBranchFilter] = useState('all');
   const [categoriaFilter, setCategoriaFilter] = useState('all');
   const [productoFilter, setProductoFilter] = useState('all');
+  const [config, setConfig] = useState(null);
+  const [afipConfig, setAfipConfig] = useState(null);
+  const [movimientosProducto, setMovimientosProducto] = useState(null);
+  const [movimientosBranchId, setMovimientosBranchId] = useState('all');
+  const [movimientosClosing, closeMovimientos] = useModalClose(() => setMovimientosProducto(null));
+
+  const openMovimientos = (nombre, branchIdForModal) => {
+    setMovimientosProducto(nombre);
+    setMovimientosBranchId(branchIdForModal);
+  };
 
   const resetFilters = () => {
     setDateFilter('month');
@@ -68,6 +79,8 @@ const ProductsSoldReport = () => {
         if (r.data.length === 1) setBranchFilter(r.data[0].id);
       })
       .catch(() => {});
+    axios.get(`${API}/config`).then(r => setConfig(r.data)).catch(() => {});
+    axios.get(`${API}/afip/config`).then(r => setAfipConfig(r.data)).catch(() => {});
   }, []);
 
   const fetchData = useCallback(async () => {
@@ -286,6 +299,12 @@ const ProductsSoldReport = () => {
     .slice(0, 10)
     .map(p => ({ nombre: p.nombre.length > 20 ? p.nombre.slice(0, 18) + '…' : p.nombre, cantidad: p.cantidad_vendida }));
 
+  // Nombre "original" (con mayúsculas) del único producto filtrado, para el modal de movimientos
+  const selectedProductoNombre = productoFilter !== 'all'
+    ? (sortedItems[0]?.nombre || productosParaFiltro.find(p => p.nombre.toLowerCase() === productoFilter)?.nombre || null)
+    : null;
+  const movimientosRange = getDateRange();
+
   if (loading) {
     return (
       <div className="p-6 flex items-center justify-center h-64">
@@ -326,6 +345,15 @@ const ProductsSoldReport = () => {
       setPage={setPage}
       totalPages={totalPages}
       itemsPerPage={itemsPerPage}
+      selectedProductoNombre={selectedProductoNombre}
+      movimientosRange={movimientosRange}
+      config={config}
+      afipConfig={afipConfig}
+      movimientosProducto={movimientosProducto}
+      movimientosBranchId={movimientosBranchId}
+      onVerMovimientos={openMovimientos}
+      movimientosClosing={movimientosClosing}
+      onCloseMovimientos={closeMovimientos}
     />
   );
 };

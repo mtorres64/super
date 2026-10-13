@@ -4502,6 +4502,72 @@ async def get_reporte_productos_vendidos(
     return result
 
 
+@api_router.get("/reportes/productos-vendidos/movimientos")
+async def get_movimientos_producto_vendido(
+    producto_nombre: str = Query(...),
+    fecha_desde: str = Query(...),
+    fecha_hasta: str = Query(...),
+    branch_id: Optional[str] = Query(None),
+    user: User = Depends(get_current_user)
+):
+    """Ventas individuales de un único producto en el período, para el modal
+    de movimientos (gráfico de evolución + detalle con acceso al ticket)."""
+    AR_TZ = timezone(timedelta(hours=-3))
+
+    desde_local = datetime.strptime(fecha_desde, "%Y-%m-%d").replace(
+        hour=0, minute=0, second=0, tzinfo=AR_TZ
+    )
+    hasta_local = datetime.strptime(fecha_hasta, "%Y-%m-%d").replace(
+        hour=23, minute=59, second=59, tzinfo=AR_TZ
+    )
+    _validar_rango_fechas(desde_local, hasta_local, max_dias=366)
+    desde_utc = desde_local.astimezone(timezone.utc)
+    hasta_utc = hasta_local.astimezone(timezone.utc)
+
+    nombre = producto_nombre.strip()
+    filtro = {
+        "empresa_id": user.empresa_id,
+        "fecha": {"$gte": desde_utc, "$lte": hasta_utc},
+        "estado": {"$ne": "cancelado"},
+        "branch_id": {"$nin": ["global", "", None]},
+        "items.nombre": {"$regex": f"^{re.escape(nombre)}$", "$options": "i"},
+    }
+    if branch_id and branch_id != "all":
+        filtro["branch_id"] = branch_id
+
+    sales = await db.sales.find(filtro).sort("fecha", 1).to_list(20000)
+
+    branches_cursor = await db.branches.find(
+        {"empresa_id": user.empresa_id}, {"id": 1, "nombre": 1, "_id": 0}
+    ).to_list(1000)
+    branch_name_map = {b["id"]: b["nombre"] for b in branches_cursor}
+
+    nombre_lower = nombre.lower()
+    result = []
+    for sale in sales:
+        cantidad = 0.0
+        subtotal = 0.0
+        for item in sale.get("items", []):
+            if (item.get("nombre") or "").strip().lower() == nombre_lower:
+                cantidad += float(item.get("cantidad", 0))
+                subtotal += float(item.get("subtotal") or item.get("total") or 0)
+        if cantidad <= 0:
+            continue
+        try:
+            sale_dict = Sale(**sale).dict()
+        except Exception as e:
+            logger.warning(f"Skipping invalid sale {sale.get('id')} en movimientos de producto: {e}")
+            continue
+        sale_dict["cantidad_producto"] = round(cantidad, 2)
+        sale_dict["subtotal_producto"] = round(subtotal, 2)
+        sale_dict["branch_nombre"] = branch_name_map.get(sale_dict.get("branch_id"), sale_dict.get("branch_id") or "Sin sucursal")
+        result.append(sale_dict)
+
+    del sales
+    _trim_memory()
+    return result
+
+
 @api_router.get("/reportes/ventas")
 async def get_reporte_ventas(
     fecha_desde: str = Query(...),

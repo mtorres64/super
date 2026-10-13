@@ -1,19 +1,21 @@
 import { useState } from 'react';
 
-const STORAGE_KEY = 'super_search_history';
+const DEFAULT_STORAGE_KEY = 'super_search_history';
 
 const getMaxItems = () => {
   const v = parseInt(localStorage.getItem('search_history_count'));
   return isNaN(v) ? 3 : v;
 };
 
-export const useSearchHistory = () => {
+// `storageKey` permite que distintos buscadores (ej. texto libre vs. un filtro
+// de producto puntual) tengan su propio historial en vez de compartir uno solo.
+export const useSearchHistory = (storageKey = DEFAULT_STORAGE_KEY) => {
   const maxItems = getMaxItems();
 
   const [history, setHistory] = useState(() => {
     if (maxItems === 0) return [];
     try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+      return JSON.parse(localStorage.getItem(storageKey)) || [];
     } catch {
       return [];
     }
@@ -25,7 +27,7 @@ export const useSearchHistory = () => {
     setHistory(prev => {
       const filtered = prev.filter(h => h.toLowerCase() !== normalized.toLowerCase());
       const next = [normalized, ...filtered].slice(0, maxItems);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      localStorage.setItem(storageKey, JSON.stringify(next));
       return next;
     });
   };
@@ -34,7 +36,7 @@ export const useSearchHistory = () => {
     if (maxItems === 0) return;
     setHistory(prev => {
       const next = prev.filter(h => h !== term);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      localStorage.setItem(storageKey, JSON.stringify(next));
       return next;
     });
   };
