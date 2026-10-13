@@ -14,7 +14,7 @@ const AutocompleteSelect = ({
   historyKey,
   icon: Icon = Search,
   wrapperClassName = '',
-  inputClassName = 'form-input pl-9',
+  inputClassName = 'form-input',
   maxOptions = 100,
   style,
 }) => {
@@ -79,7 +79,8 @@ const AutocompleteSelect = ({
       <input
         type="text"
         placeholder={placeholder}
-        className={text ? `${inputClassName} pr-9` : inputClassName}
+        className={inputClassName}
+        style={{ paddingLeft: '2.25rem', paddingRight: text ? '2.25rem' : undefined }}
         value={text}
         autoComplete="off"
         onChange={e => { setText(e.target.value); setOpen(true); }}

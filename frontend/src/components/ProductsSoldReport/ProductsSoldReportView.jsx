@@ -159,7 +159,7 @@ const ProductsSoldReportView = ({
             icon={Package}
             wrapperClassName="flex-shrink-0"
             style={{ width: '15rem' }}
-            inputClassName="form-select pl-9"
+            inputClassName="form-select"
             options={productosParaFiltro.map(p => p.nombre)}
             value={selectedProductoNombre || ''}
             onSelect={(label) => setProductoFilter(label.toLowerCase())}
