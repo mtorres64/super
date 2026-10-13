@@ -158,7 +158,7 @@ const ProductsSoldReportView = ({
           <AutocompleteSelect
             icon={Package}
             wrapperClassName="flex-shrink-0"
-            style={{ width: '15rem' }}
+            style={{ width: '30rem' }}
             inputClassName="form-select"
             options={productosParaFiltro.map(p => p.nombre)}
             value={selectedProductoNombre || ''}
