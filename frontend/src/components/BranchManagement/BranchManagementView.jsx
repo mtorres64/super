@@ -121,6 +121,7 @@ const BranchManagementView = ({
   onSaveProductChanges,
   onToggleBranchProductActive,
   onExportBranch,
+  exportingBranch,
   onSetShowExportMenu,
   onSetFormData,
   onSetBulkMargenTipo,
@@ -291,12 +292,15 @@ const BranchManagementView = ({
               <button
                 onClick={() => onSetShowExportMenu(prev => !prev)}
                 className="btn btn-secondary"
+                disabled={exportingBranch}
               >
-                <Download className="w-4 h-4" />
-                Exportar
-                <ChevronDown className="w-3 h-3 ml-1" />
+                {exportingBranch ? (
+                  <><div className="spinner w-4 h-4" /> Exportando...</>
+                ) : (
+                  <><Download className="w-4 h-4" /> Exportar <ChevronDown className="w-3 h-3 ml-1" /></>
+                )}
               </button>
-              {showExportMenu && (
+              {showExportMenu && !exportingBranch && (
                 <div className="absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
                   <button
                     onClick={() => onExportBranch('csv')}

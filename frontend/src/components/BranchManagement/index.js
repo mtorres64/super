@@ -24,6 +24,7 @@ const BranchManagement = () => {
   const [pendingChanges, setPendingChanges] = useState({});
   const [savingChanges, setSavingChanges] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exportingBranch, setExportingBranch] = useState(false);
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [selectAllGlobal, setSelectAllGlobal] = useState(false);
   const [showBulkMargenModal, setShowBulkMargenModal] = useState(false);
@@ -682,6 +683,7 @@ const BranchManagement = () => {
 
   const handleExportBranch = async (format) => {
     setShowExportMenu(false);
+    setExportingBranch(true);
     try {
       const response = await axios.get(`${API}/branches/${selectedBranch.id}/products/export`, {
         params: { format },
@@ -700,6 +702,8 @@ const BranchManagement = () => {
       toast.success(`Productos exportados en ${ext.toUpperCase()}`);
     } catch (error) {
       toast.error('Error al exportar productos de la sucursal');
+    } finally {
+      setExportingBranch(false);
     }
   };
 
@@ -938,6 +942,7 @@ const BranchManagement = () => {
       onSaveProductChanges={saveProductChanges}
       onToggleBranchProductActive={toggleBranchProductActive}
       onExportBranch={handleExportBranch}
+      exportingBranch={exportingBranch}
       onSetShowExportMenu={setShowExportMenu}
       onSetFormData={setFormData}
       onSetBulkMargenTipo={setBulkMargenTipo}
