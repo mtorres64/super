@@ -204,7 +204,7 @@ const POSView = ({
   }, [focusedIdx]);
 
   const [recentOpen, setRecentOpen] = React.useState(false);
-  const { history: recentSearches, addSearch, removeSearch } = useSearchHistory('pos_search_history');
+  const { history: recentSearches, addSearch, removeSearch } = useSearchHistory();
 
   // Los códigos de barras escaneados no se guardan como búsquedas recientes.
   const saveRecentSearch = () => {
