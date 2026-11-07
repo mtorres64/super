@@ -577,6 +577,7 @@ const ProductManagement = () => {
 
   const handleBulkEditSave = async () => {
     setBulkEditSaving(true);
+    const auditHeaders = { 'X-Pantalla': 'productos', 'X-Accion': 'edicion_masiva', 'X-Lote-Id': crypto.randomUUID() };
     const results = await Promise.allSettled(
       bulkEditItems.map(item =>
         axios.put(`${API}/products/${item.id}`, {
@@ -591,7 +592,7 @@ const ProductManagement = () => {
           stock: item.control_stock ? (parseInt(item.stock) || 0) : 0,
           stock_minimo: item.control_stock ? (parseInt(item.stock_minimo) || 0) : 0,
           combo_items: item.kind === 'combo' ? [] : [],
-        })
+        }, { headers: auditHeaders })
       )
     );
     const ok = results.filter(r => r.status === 'fulfilled').length;

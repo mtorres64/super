@@ -310,7 +310,8 @@ const NuevoProductoModal = ({ onClose, onProductCreated, initialNombre = '' }) =
         stock_minimo: formData.control_stock ? (parseInt(formData.stock_minimo) || 0) : 0,
         combo_items: formData.kind === 'combo' ? formData.combo_items : [],
       };
-      const res = await axios.post(`${API}/products`, productData);
+      const auditHeaders = { 'X-Pantalla': 'nuevo_producto', 'X-Accion': 'edicion_precios_alta', 'X-Lote-Id': crypto.randomUUID() };
+      const res = await axios.post(`${API}/products`, productData, { headers: { ...auditHeaders, 'X-Accion': 'alta' } });
       const createdId = res.data.id;
 
       // POST /products auto-crea branch_products con precio=0 en todas las sucursales.
@@ -333,7 +334,7 @@ const NuevoProductoModal = ({ onClose, onProductCreated, initialNombre = '' }) =
               margen: bp.margen !== '' ? parseFloat(bp.margen) : null,
               costo: bp.costo !== '' ? parseFloat(bp.costo) : null,
               activo: bp.activo,
-            });
+            }, { headers: auditHeaders });
           }
         })
       );

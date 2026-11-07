@@ -606,6 +606,7 @@ const BranchManagement = () => {
 
   const handleBranchBulkEditSave = async () => {
     setBranchBulkEditSaving(true);
+    const auditHeaders = { 'X-Pantalla': 'sucursales', 'X-Accion': 'edicion_masiva', 'X-Lote-Id': crypto.randomUUID() };
     const results = await Promise.allSettled(
       branchBulkEditItems.map(item => {
         const payload = {
@@ -615,13 +616,13 @@ const BranchManagement = () => {
           stock: parseInt(item.stock) || 0,
         };
         if (item.branch_product_id) {
-          return axios.put(`${API}/branch-products/${item.branch_product_id}`, payload);
+          return axios.put(`${API}/branch-products/${item.branch_product_id}`, payload, { headers: auditHeaders });
         }
         return axios.post(`${API}/branch-products`, {
           product_id: item.product_id,
           branch_id: selectedBranch.id,
           ...payload,
-        });
+        }, { headers: auditHeaders });
       })
     );
     const ok = results.filter(r => r.status === 'fulfilled').length;
@@ -638,6 +639,7 @@ const BranchManagement = () => {
     const entries = Object.entries(pendingChanges);
     if (entries.length === 0) return;
     setSavingChanges(true);
+    const auditHeaders = { 'X-Pantalla': 'sucursales', 'X-Accion': 'edicion_en_linea', 'X-Lote-Id': crypto.randomUUID() };
     const results = await Promise.allSettled(
       entries.map(async ([productId, changes]) => {
         const product = branchProductsCache[productId];
@@ -645,7 +647,7 @@ const BranchManagement = () => {
         const { costo_calculado, ...apiChanges } = changes;
         const costoPayload = costo_calculado != null ? { costo: costo_calculado } : {};
         if (product.branch_product_id) {
-          await axios.put(`${API}/branch-products/${product.branch_product_id}`, { ...apiChanges, ...costoPayload });
+          await axios.put(`${API}/branch-products/${product.branch_product_id}`, { ...apiChanges, ...costoPayload }, { headers: auditHeaders });
         } else {
           await axios.post(`${API}/branch-products`, {
             product_id: productId,
@@ -655,7 +657,7 @@ const BranchManagement = () => {
             stock: changes.stock ?? product.stock_global,
             stock_minimo: changes.stock_minimo ?? 10,
             ...costoPayload,
-          });
+          }, { headers: auditHeaders });
         }
       })
     );

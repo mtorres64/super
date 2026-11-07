@@ -19,6 +19,7 @@ const DistribuirModal = ({
   loading,
   closing,
   formatMoney,
+  readOnly = false, // solo consulta: no permite modificar ni aplicar
 }) => {
   const itemsSinProducto = compra.items.filter(it => !it.product_id);
   const distribuirV = useFormValidation(DISTRIBUIR_RULES);
@@ -34,13 +35,14 @@ const DistribuirModal = ({
           <h2 className="modal-title flex items-center gap-2">
             <GitBranch className="w-5 h-5 text-primary" />
             Aplicar a sucursal — {compra.numero_factura || '(sin número)'}
+            {readOnly && <span className="text-xs font-medium text-gray-500 bg-gray-100 rounded px-2 py-0.5">Solo lectura</span>}
           </h2>
           <button onClick={onClose} className="modal-close">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form noValidate onSubmit={(e) => { e.preventDefault(); if (distribuirV.validate({ sucursal_id: form.sucursal_id })) onSubmit(e); }} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '1.25rem 1.5rem 0' }}>
+        <form noValidate onSubmit={(e) => { e.preventDefault(); if (readOnly) return; if (distribuirV.validate({ sucursal_id: form.sucursal_id })) onSubmit(e); }} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '1.25rem 1.5rem 0' }}>
 
           {/* Sucursal + opciones — fijo arriba */}
           <div className="flex gap-4 items-end mb-5 flex-shrink-0">
@@ -51,6 +53,7 @@ const DistribuirModal = ({
                 value={form.sucursal_id}
                 onChange={e => { onSucursalChange(e.target.value); distribuirV.clearError('sucursal_id'); }}
                 required
+                disabled={readOnly}
               >
                 <option value="">— Seleccioná una sucursal —</option>
                 {branches.filter(b => b.activo).map(b => (
@@ -66,6 +69,7 @@ const DistribuirModal = ({
                   className="w-4 h-4 accent-blue-600"
                   checked={form.opcion_stock}
                   onChange={e => onOpcionChange('opcion_stock', e.target.checked)}
+                  disabled={readOnly}
                 />
                 <span className="font-medium text-gray-700">Actualizar stock</span>
               </label>
@@ -75,6 +79,7 @@ const DistribuirModal = ({
                   className="w-4 h-4 accent-green-600"
                   checked={form.opcion_precio}
                   onChange={e => onOpcionChange('opcion_precio', e.target.checked)}
+                  disabled={readOnly}
                 />
                 <span className="font-medium text-gray-700">Actualizar precio / margen</span>
               </label>
@@ -129,7 +134,7 @@ const DistribuirModal = ({
                           value={item.cantidad_aplicar}
                           onChange={e => onItemChange(item.product_id, 'cantidad_aplicar', e.target.value)}
                           onClick={e => e.target.select()}
-                          disabled={item.saldo === 0}
+                          disabled={readOnly || item.saldo === 0}
                         />
                       </td>
                     )}
@@ -163,6 +168,7 @@ const DistribuirModal = ({
                               onClick={e => e.target.select()}
                               onFocus={e => e.target.select()}
                               placeholder="0"
+                              disabled={readOnly}
                             />
                           </div>
                         </td>
@@ -178,6 +184,7 @@ const DistribuirModal = ({
                               onClick={e => e.target.select()}
                               onFocus={e => e.target.select()}
                               placeholder="0"
+                              disabled={readOnly}
                             />
                             <span className="text-gray-400 text-xs">%</span>
                           </div>
@@ -217,7 +224,7 @@ const DistribuirModal = ({
               <button type="button" onClick={onClose} className="btn btn-secondary">
                 Cerrar
               </button>
-              <button
+              {!readOnly && <button
                 type="submit"
                 className="btn btn-primary"
                 disabled={loading || !form.sucursal_id || (!form.opcion_stock && !form.opcion_precio)}
@@ -227,7 +234,7 @@ const DistribuirModal = ({
                   : <GitBranch className="w-4 h-4" />
                 }
                 Aplicar
-              </button>
+              </button>}
             </div>
           </div>
 

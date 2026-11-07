@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import useModalClose from '../../useModalClose';
 import axios from 'axios';
+import useDistribuirCompra from './useDistribuirCompra';
 import { API } from '../../App';
 import { useSortableData } from '../../hooks/useSortableData';
 import { parseApiDate } from '../../lib/utils';
@@ -68,11 +69,6 @@ const Compras = () => {
   // Remito modal
   const [remitoModal, setRemitoModal] = useState(null); // compra object
 
-  // Distribuir modal
-  const [distribuirModal, setDistribuirModal] = useState(null); // { compra }
-  const emptyDistribuirForm = { sucursal_id: '', opcion_stock: true, opcion_precio: true, items: [] };
-  const [distribuirForm, setDistribuirForm] = useState(emptyDistribuirForm);
-  const [distribuirLoading, setDistribuirLoading] = useState(false);
 
   // Delete confirmation modal
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -165,189 +161,25 @@ const Compras = () => {
     }
   };
 
-  const getSaldo = (compra, productId) => {
-    const original = compra.items
-      .filter(it => it.product_id === productId)
-      .reduce((s, it) => s + (parseFloat(it.cantidad) || 0), 0);
-    const distribuido = (compra.distribuciones || [])
-      .flatMap(d => d.items || [])
-      .filter(it => it.product_id === productId)
-      .reduce((s, it) => s + (parseFloat(it.cantidad) || 0), 0);
-    return Math.max(0, original - distribuido);
-  };
-
-  const handleOpenDistribuirModal = (compra) => {
-    const productMap = {};
-    for (const it of compra.items) {
-      if (!it.product_id) continue;
-      if (!productMap[it.product_id]) {
-        productMap[it.product_id] = {
-          product_id: it.product_id,
-          nombre: it.descripcion,
-          costo_unitario: parseFloat(it.precio_unitario) || 0,
-          cantidad_original: 0,
-          saldo: 0,
-          cantidad_aplicar: 0,
-          precio_sucursal: null,
-          margen_sucursal: null,
-          nuevo_precio: '',
-          nuevo_margen: '',
-          precio_edited: false,
-          margen_edited: false,
-        };
-      }
-      productMap[it.product_id].cantidad_original += parseFloat(it.cantidad) || 0;
-    }
-    for (const pid of Object.keys(productMap)) {
-      const saldo = getSaldo(compra, pid);
-      productMap[pid].saldo = saldo;
-      productMap[pid].cantidad_aplicar = saldo;
-    }
-    const autoSucursal = branches.length === 1 ? branches[0].id : '';
-    setDistribuirModal({ compra });
-    setDistribuirForm({ sucursal_id: autoSucursal, opcion_stock: true, opcion_precio: true, items: Object.values(productMap) });
-    if (autoSucursal) {
-      handleSucursalDistribuirChange(autoSucursal);
-    }
-  };
+  const distribuir = useDistribuirCompra({
+    branches,
+    onCompraUpdated: (updated) => setCompras(prev => prev.map(c => c.id === updated.id ? updated : c)),
+  });
+  const {
+    modal: distribuirModal,
+    form: distribuirForm,
+    loading: distribuirLoading,
+    closing: distribuirModalClosing,
+    open: handleOpenDistribuirModal,
+    closeAnim: closeDistribuirModalAnim,
+    handleSucursalChange: handleSucursalDistribuirChange,
+    handleOpcionChange: handleDistribuirOpcionChange,
+    handleItemChange: handleDistribuirItemChange,
+    handleSubmit: handleDistribuirSubmit,
+  } = distribuir;
 
   const handleOpenRemitoModal = (compra) => setRemitoModal(compra);
   const closeRemitoModal = () => setRemitoModal(null);
-
-  const closeDistribuirModal = () => {
-    setDistribuirModal(null);
-    setDistribuirForm(emptyDistribuirForm);
-  };
-
-  const handleSucursalDistribuirChange = async (branchId) => {
-    setDistribuirForm(prev => ({ ...prev, sucursal_id: branchId }));
-    if (!branchId) return;
-    try {
-      const res = await axios.get(`${API}/branches/${branchId}/products`, { params: { all: true } });
-      const bps = Array.isArray(res.data) ? res.data : (res.data.items || []);
-      setDistribuirForm(prev => ({
-        ...prev,
-        items: prev.items.map(it => {
-          const bp = bps.find(p => p.product_id === it.product_id);
-          const precio = bp?.precio_sucursal ?? null;
-          const margen = bp?.margen_sucursal ?? null;
-          const costo = it.costo_unitario || 0;
-          // Mantener margen almacenado y recalcular precio sobre el costo de la factura
-          const nuevo_precio = margen != null && costo > 0
-            ? Math.ceil(costo * (1 + margen / 100) / 100) * 100
-            : (precio ?? it.nuevo_precio);
-          return {
-            ...it,
-            precio_sucursal: precio,
-            margen_sucursal: margen,
-            nuevo_precio,
-            nuevo_margen: margen ?? it.nuevo_margen,
-            precio_edited: false,
-            margen_edited: false,
-          };
-        }),
-      }));
-    } catch {
-      toast.error('Error al cargar productos de la sucursal');
-    }
-  };
-
-  const handleDistribuirOpcionChange = (field, value) => {
-    setDistribuirForm(prev => ({ ...prev, [field]: value }));
-  };
-
-  const handleDistribuirItemChange = (productId, field, value) => {
-    setDistribuirForm(prev => ({
-      ...prev,
-      items: prev.items.map(it => {
-        if (it.product_id !== productId) return it;
-        const updated = { ...it, [field]: value };
-        if (field === 'nuevo_precio') {
-          updated.precio_edited = true;
-          const precio = parseFloat(value) || 0;
-          const costo = it.costo_unitario;
-          if (precio > 0 && costo > 0) {
-            updated.nuevo_margen = parseFloat(((precio / costo - 1) * 100).toFixed(2));
-          }
-        }
-        if (field === 'nuevo_margen') {
-          updated.margen_edited = true;
-          const margen = parseFloat(value);
-          const costo = it.costo_unitario;
-          if (!isNaN(margen) && costo > 0) {
-            updated.nuevo_precio = Math.ceil(costo * (1 + margen / 100) / 100) * 100;
-          }
-        }
-        return updated;
-      }),
-    }));
-  };
-
-  const handleDistribuirSubmit = async (e) => {
-    e.preventDefault();
-    if (!distribuirForm.sucursal_id) { toast.error('Seleccioná una sucursal'); return; }
-    if (!distribuirForm.opcion_stock && !distribuirForm.opcion_precio) { toast.error('Seleccioná al menos una opción'); return; }
-
-    const items = distribuirForm.items
-      .filter(it => {
-        const qty = parseFloat(it.cantidad_aplicar) || 0;
-        return (distribuirForm.opcion_stock && qty > 0) || distribuirForm.opcion_precio;
-      })
-      .map(it => ({
-        product_id: it.product_id,
-        cantidad: distribuirForm.opcion_stock ? (parseFloat(it.cantidad_aplicar) || 0) : 0,
-        nuevo_precio: distribuirForm.opcion_precio ? (parseFloat(it.nuevo_precio) || null) : null,
-        nuevo_margen: distribuirForm.opcion_precio ? (it.nuevo_margen !== '' ? parseFloat(it.nuevo_margen) : null) : null,
-        actualizar_stock: distribuirForm.opcion_stock,
-        actualizar_precio: distribuirForm.opcion_precio,
-      }));
-
-    if (items.length === 0) { toast.error('No hay ítems para aplicar'); return; }
-
-    setDistribuirLoading(true);
-    try {
-      const updated = await axios.post(`${API}/compras/${distribuirModal.compra.id}/distribuir`, {
-        sucursal_id: distribuirForm.sucursal_id,
-        items,
-      });
-      toast.success('Aplicado correctamente a la sucursal');
-      const updatedCompra = updated.data;
-      setCompras(prev => prev.map(c => c.id === distribuirModal.compra.id ? updatedCompra : c));
-      // Mantener el modal abierto y actualizar saldos para aplicar a otra sucursal
-      setDistribuirModal({ compra: updatedCompra });
-      const productMap = {};
-      for (const it of updatedCompra.items) {
-        if (!it.product_id) continue;
-        if (!productMap[it.product_id]) {
-          productMap[it.product_id] = {
-            product_id: it.product_id,
-            nombre: it.descripcion,
-            costo_unitario: parseFloat(it.precio_unitario) || 0,
-            cantidad_original: 0,
-            saldo: 0,
-            cantidad_aplicar: 0,
-            precio_sucursal: null,
-            margen_sucursal: null,
-            nuevo_precio: '',
-            nuevo_margen: '',
-            precio_edited: false,
-            margen_edited: false,
-          };
-        }
-        productMap[it.product_id].cantidad_original += parseFloat(it.cantidad) || 0;
-      }
-      for (const pid of Object.keys(productMap)) {
-        const saldo = getSaldo(updatedCompra, pid);
-        productMap[pid].saldo = saldo;
-        productMap[pid].cantidad_aplicar = saldo;
-      }
-      setDistribuirForm({ sucursal_id: '', opcion_stock: true, opcion_precio: true, items: Object.values(productMap) });
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al aplicar');
-    } finally {
-      setDistribuirLoading(false);
-    }
-  };
 
   const handleSucursalChange = (branchId) => {
     setCompraForm(prev => ({
@@ -776,7 +608,6 @@ const Compras = () => {
   const [compraModalClosing, closeCompraModalAnim] = useModalClose(closeCompraModal);
   const [proveedorModalClosing, closeProveedorModalAnim] = useModalClose(closeProveedorModal);
   const [deleteModalClosing, closeDeleteModalAnim] = useModalClose(closeDeleteModal);
-  const [distribuirModalClosing, closeDistribuirModalAnim] = useModalClose(closeDistribuirModal);
   const [remitoModalClosing, closeRemitoModalAnim] = useModalClose(closeRemitoModal);
 
   const handleProveedorSubmit = async (e) => {

@@ -1295,9 +1295,171 @@ def require_role(required_roles: List[UserRole]):
         return user
     return role_checker
 
+# ─────────────────────────────────────────────
+# AUDITORÍA (logs del sistema) — multitenant: todo registro y consulta lleva empresa_id
+# ─────────────────────────────────────────────
+LOG_TIPO_MOV_PRECIO = "movimiento_precio"
+LOG_TIPOS = {LOG_TIPO_MOV_PRECIO: "Movimiento de precio"}
+AUDIT_CAMPOS_PRECIO = ("precio", "costo", "precio_por_peso")
+
+AUDIT_PANTALLAS = {
+    "productos": "Productos",
+    "sucursales": "Sucursales (productos de sucursal)",
+    "alertas_stock": "Alertas de stock",
+    "compras": "Compras",
+    "transferencias": "Transferencias",
+    "nuevo_producto": "Nuevo producto",
+}
+AUDIT_ACCIONES = {
+    "alta": "Alta",
+    "edicion_individual": "Edición individual",
+    "edicion_masiva": "Edición masiva",
+    "edicion_en_linea": "Edición en línea",
+    "importacion": "Importación de archivo",
+    "alta_sucursal": "Alta de sucursal (copia de precios)",
+    "compra": "Registro de compra",
+    "distribucion_compra": "Distribución de compra",
+    "transferencia": "Transferencia entre sucursales",
+    "edicion_precios_alta": "Carga de precios por sucursal",
+}
+
+
+def _audit_origen(request: Request, pantalla: str, accion: str) -> dict:
+    """Origen del cambio. El frontend puede indicar pantalla/acción/lote con headers X-Pantalla, X-Accion y X-Lote-Id;
+    si no vienen se usan los valores por defecto del endpoint."""
+    h = request.headers if request is not None else {}
+    p = (h.get("x-pantalla") or "").strip()[:60] or pantalla
+    a = (h.get("x-accion") or "").strip()[:60] or accion
+    lote = (h.get("x-lote-id") or "").strip()[:64] or str(uuid.uuid4())
+    return {
+        "pantalla": AUDIT_PANTALLAS.get(p, p),
+        "accion": AUDIT_ACCIONES.get(a, a),
+        "lote_id": lote,
+    }
+
+
+def _audit_cambios(producto_id: str, sucursal_id: Optional[str], antes: Optional[dict], despues: dict) -> list:
+    """Compara campos de precio. `antes` None = registro nuevo. Omite los campos sin cambio."""
+    out = []
+    for campo in AUDIT_CAMPOS_PRECIO:
+        if campo not in despues:
+            continue
+        nuevo = despues[campo]
+        previo = (antes or {}).get(campo)
+        if nuevo is None and previo is None:
+            continue
+        if previo is not None and nuevo is not None and abs(float(previo) - float(nuevo)) < 1e-9:
+            continue
+        out.append({
+            "producto_id": producto_id,
+            "sucursal_id": sucursal_id,
+            "campo": campo,
+            "valor_anterior": float(previo) if previo is not None else None,
+            "valor_nuevo": float(nuevo) if nuevo is not None else None,
+        })
+    return out
+
+
+async def registrar_log_precios(user: User, origen: dict, cambios: list, detalle: Optional[str] = None,
+                                referencia_tipo: Optional[str] = None, referencia_id: Optional[str] = None):
+    """Inserta un log por cada cambio de precio (varios productos a la vez comparten lote_id).
+    Nunca interrumpe la operación principal si falla el log."""
+    if not cambios:
+        return
+    try:
+        empresa_id = user.empresa_id
+        pids = list({c["producto_id"] for c in cambios if c.get("producto_id")})
+        bids = list({c["sucursal_id"] for c in cambios if c.get("sucursal_id")} | ({user.active_branch_id} if user.active_branch_id else set()))
+        prods = {p["id"]: p for p in await db.products.find(
+            {"id": {"$in": pids}, "empresa_id": empresa_id}, {"id": 1, "nombre": 1, "codigo_barras": 1}
+        ).to_list(None)} if pids else {}
+        branches = {b["id"]: b.get("nombre", "") for b in await db.branches.find(
+            {"id": {"$in": bids}, "empresa_id": empresa_id}, {"id": 1, "nombre": 1}
+        ).to_list(None)} if bids else {}
+        now = datetime.now(timezone.utc)
+        docs = []
+        for c in cambios:
+            p = prods.get(c["producto_id"], {})
+            sid = c.get("sucursal_id")
+            docs.append({
+                "id": str(uuid.uuid4()),
+                "empresa_id": empresa_id,
+                "tipo": LOG_TIPO_MOV_PRECIO,
+                "fecha": now,
+                "usuario_id": user.id,
+                "usuario_nombre": user.nombre,
+                "usuario_email": user.email,
+                "sucursal_id": sid,
+                "sucursal_nombre": branches.get(sid, "") if sid else "Global (catálogo)",
+                "sucursal_sesion_id": user.active_branch_id,
+                "sucursal_sesion_nombre": branches.get(user.active_branch_id, "") if user.active_branch_id else "",
+                "producto_id": c["producto_id"],
+                "producto_nombre": c.get("producto_nombre") or p.get("nombre", ""),
+                "codigo_barras": c.get("codigo_barras") or p.get("codigo_barras"),
+                "campo": c["campo"],
+                "valor_anterior": c.get("valor_anterior"),
+                "valor_nuevo": c.get("valor_nuevo"),
+                "pantalla": origen["pantalla"],
+                "accion": origen["accion"],
+                "lote_id": origen["lote_id"],
+                "detalle": detalle,
+                "referencia_tipo": referencia_tipo,
+                "referencia_id": referencia_id,
+            })
+        for i in range(0, len(docs), 1000):
+            await db.audit_logs.insert_many(docs[i:i + 1000])
+    except Exception as e:
+        logger.error(f"No se pudo registrar el log de auditoría de precios: {e}")
+
+
+@api_router.get("/audit-logs/tipos")
+async def get_audit_log_tipos(user: User = Depends(require_role([UserRole.ADMIN]))):
+    return [{"id": k, "nombre": v} for k, v in LOG_TIPOS.items()]
+
+
+@api_router.get("/audit-logs")
+async def get_audit_logs(
+    tipo: Optional[str] = Query(None),
+    search: Optional[str] = Query(None, description="Búsqueda multi-campo (usuario, producto, código, sucursal, pantalla, acción)"),
+    fecha_desde: Optional[datetime] = Query(None),
+    fecha_hasta: Optional[datetime] = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
+    user: User = Depends(require_role([UserRole.ADMIN]))
+):
+    query: dict = {"empresa_id": user.empresa_id}  # siempre acotado al tenant
+    if tipo:
+        query["tipo"] = tipo
+    if fecha_desde or fecha_hasta:
+        query["fecha"] = {}
+        if fecha_desde:
+            query["fecha"]["$gte"] = fecha_desde
+        if fecha_hasta:
+            query["fecha"]["$lt"] = fecha_hasta
+    if search and search.strip():
+        # Cada palabra debe aparecer en alguno de los campos (AND entre palabras, OR entre campos)
+        campos = ["usuario_nombre", "usuario_email", "producto_nombre", "codigo_barras",
+                  "sucursal_nombre", "sucursal_sesion_nombre", "pantalla", "accion", "campo", "lote_id", "detalle"]
+        ands = []
+        for term in search.split()[:8]:
+            rx = {"$regex": re.escape(term), "$options": "i"}
+            ands.append({"$or": [{c: rx} for c in campos]})
+        query["$and"] = ands
+    total = await db.audit_logs.count_documents(query)
+    items = await db.audit_logs.find(query, {"_id": 0}).sort("fecha", -1) \
+        .skip((page - 1) * per_page).limit(per_page).to_list(per_page)
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, -(-total // per_page)),
+    }
+
+
 # Branch routes
 @api_router.post("/branches", response_model=Branch)
-async def create_branch(branch_data: BranchCreate, user: User = Depends(require_role([UserRole.ADMIN]))):
+async def create_branch(branch_data: BranchCreate, request: Request, user: User = Depends(require_role([UserRole.ADMIN]))):
     empresa = await db.empresas.find_one({"id": user.empresa_id})
     suscripcion_doc = await db.suscripciones.find_one({"empresa_id": user.empresa_id})
     plan = (suscripcion_doc or {}).get("plan_tier") or (empresa or {}).get("plan", "emprendedor")
@@ -1324,6 +1486,8 @@ async def create_branch(branch_data: BranchCreate, user: User = Depends(require_
 
     # Auto-sync: create branch_products for all existing active products of this empresa
     products = await db.products.find({"empresa_id": user.empresa_id, "activo": True}).to_list(10000)
+    audit_origen = _audit_origen(request, "sucursales", "alta_sucursal")
+    audit_cambios = []
     for product in products:
         existing = await db.branch_products.find_one({
             "product_id": product["id"],
@@ -1357,6 +1521,8 @@ async def create_branch(branch_data: BranchCreate, user: User = Depends(require_
                 costo=base_costo,
             )
             await db.branch_products.insert_one(bp.dict())
+            audit_cambios += _audit_cambios(product["id"], branch.id, None, bp.dict())
+    await registrar_log_precios(user, audit_origen, audit_cambios, detalle=f"Alta de sucursal {branch.nombre}")
     return branch
 
 @api_router.get("/branches", response_model=List[Branch])
@@ -2079,7 +2245,7 @@ async def delete_category(category_id: str, user: User = Depends(require_role([U
 
 # Branch Product routes
 @api_router.post("/branch-products", response_model=BranchProduct)
-async def create_branch_product(product_data: BranchProductCreate, user: User = Depends(require_role([UserRole.ADMIN]))):
+async def create_branch_product(product_data: BranchProductCreate, request: Request, user: User = Depends(require_role([UserRole.ADMIN]))):
     target_branch_id = product_data.branch_id or user.branch_id
     if not target_branch_id:
         raise HTTPException(status_code=400, detail="branch_id requerido")
@@ -2098,16 +2264,22 @@ async def create_branch_product(product_data: BranchProductCreate, user: User = 
     data = {k: v for k, v in product_data.dict().items() if k != "branch_id"}
     branch_product = BranchProduct(**data, branch_id=target_branch_id, empresa_id=user.empresa_id)
     await db.branch_products.insert_one(branch_product.dict())
+    await registrar_log_precios(
+        user, _audit_origen(request, "sucursales", "alta"),
+        _audit_cambios(product_data.product_id, target_branch_id, None, branch_product.dict()))
     return branch_product
 
 @api_router.put("/branch-products/{branch_product_id}", response_model=BranchProduct)
-async def update_branch_product(branch_product_id: str, product_data: BranchProductUpdate, user: User = Depends(require_role([UserRole.ADMIN]))):
+async def update_branch_product(branch_product_id: str, product_data: BranchProductUpdate, request: Request, user: User = Depends(require_role([UserRole.ADMIN]))):
     bp = await db.branch_products.find_one({"id": branch_product_id, "empresa_id": user.empresa_id})
     if not bp:
         raise HTTPException(status_code=404, detail="Branch product not found")
     update_data = {k: v for k, v in product_data.dict().items() if v is not None}
     if update_data:
         await db.branch_products.update_one({"id": branch_product_id, "empresa_id": user.empresa_id}, {"$set": update_data})
+        await registrar_log_precios(
+            user, _audit_origen(request, "sucursales", "edicion_individual"),
+            _audit_cambios(bp["product_id"], bp["branch_id"], bp, update_data))
     updated = await db.branch_products.find_one({"id": branch_product_id, "empresa_id": user.empresa_id})
     return BranchProduct(**updated)
 
@@ -2235,7 +2407,7 @@ async def get_branch_products(
 
 # Product routes
 @api_router.post("/products", response_model=Product)
-async def create_product(product_data: ProductCreate, user: User = Depends(require_role([UserRole.ADMIN]))):
+async def create_product(product_data: ProductCreate, request: Request, user: User = Depends(require_role([UserRole.ADMIN]))):
     # Verify category exists for this empresa
     category = await db.categories.find_one({"id": product_data.categoria_id, "empresa_id": user.empresa_id})
     if not category:
@@ -2259,6 +2431,8 @@ async def create_product(product_data: ProductCreate, user: User = Depends(requi
     if _cb:
         _pdoc['codigo_barras'] = _cb
     await db.products.insert_one(_pdoc)
+    audit_origen = _audit_origen(request, "productos", "alta")
+    audit_cambios = _audit_cambios(product.id, None, None, {"precio": product.precio, "precio_por_peso": product.precio_por_peso})
     # Auto-sync: create branch_products for all active branches of this empresa
     branches = await db.branches.find({"activo": True, "empresa_id": user.empresa_id}).to_list(1000)
     for branch in branches:
@@ -2283,6 +2457,8 @@ async def create_product(product_data: ProductCreate, user: User = Depends(requi
                 bp_kwargs["margen"] = margen
             bp = BranchProduct(**bp_kwargs)
             await db.branch_products.insert_one(bp.dict())
+            audit_cambios += _audit_cambios(product.id, branch["id"], None, bp.dict())
+    await registrar_log_precios(user, audit_origen, audit_cambios)
     return product
 
 @api_router.get("/products")
@@ -2444,9 +2620,11 @@ async def get_import_template(user: User = Depends(require_role([UserRole.ADMIN]
 
 @api_router.post("/products/import")
 async def import_products(
+    request: Request,
     file: UploadFile = File(...),
     user: User = Depends(require_role([UserRole.ADMIN]))
 ):
+    audit_origen = _audit_origen(request, "productos", "importacion")
     content = await file.read()
     filename = file.filename or ""
 
@@ -2569,6 +2747,10 @@ async def import_products(
                         bp_update["costo"] = precio_costo
                     if margen is not None:
                         bp_update["margen"] = margen
+                    audit_row = _audit_cambios(existing["id"], None, existing, {"precio": precio_raw})
+                    for _bp in await db.branch_products.find({"product_id": existing["id"], "empresa_id": empresa_id}).to_list(None):
+                        audit_row += _audit_cambios(existing["id"], _bp["branch_id"], _bp, bp_update)
+                    await registrar_log_precios(user, audit_origen, audit_row, detalle=f"Fila {idx + 2}")
                     await db.branch_products.update_many(
                         {"product_id": existing["id"], "empresa_id": empresa_id},
                         {"$set": bp_update}
@@ -2579,6 +2761,7 @@ async def import_products(
                     product = Product(**product_data, empresa_id=empresa_id)
                     _pdoc = {k: v for k, v in product.model_dump().items() if v is not None}
                     await db.products.insert_one(_pdoc)
+                    audit_row = _audit_cambios(product.id, None, None, {"precio": product.precio, "precio_por_peso": product.precio_por_peso})
                     for branch in branches:
                         bp_exists = await db.branch_products.find_one({
                             "product_id": product.id,
@@ -2601,6 +2784,8 @@ async def import_products(
                                 bp_data["margen"] = margen
                             bp = BranchProduct(**bp_data)
                             await db.branch_products.insert_one(bp.dict())
+                            audit_row += _audit_cambios(product.id, branch["id"], None, bp.dict())
+                    await registrar_log_precios(user, audit_origen, audit_row, detalle=f"Fila {idx + 2}")
                     created += 1
 
             except Exception as e:
@@ -2744,10 +2929,12 @@ async def get_branch_import_template(
 @api_router.post("/branch-products/import")
 async def import_branch_products(
     branch_id: str,
+    request: Request,
     lista_completa: bool = Query(False),
     file: UploadFile = File(...),
     user: User = Depends(require_role([UserRole.ADMIN]))
 ):
+    audit_origen = _audit_origen(request, "sucursales", "importacion")
     branch = await db.branches.find_one({"id": branch_id, "empresa_id": user.empresa_id})
     if not branch:
         raise HTTPException(status_code=404, detail="Sucursal no encontrada")
@@ -2884,6 +3071,11 @@ async def import_branch_products(
                         activo=True,
                     )
                     await db.branch_products.insert_one(new_bp.dict())
+                    await registrar_log_precios(
+                        user, audit_origen,
+                        _audit_cambios(new_product.id, None, None, {"precio": new_product.precio})
+                        + _audit_cambios(new_product.id, branch_id, None, new_bp.dict()),
+                        detalle=f"Fila {idx+2}")
                     imported_barcodes.add(codigo_barras)
                     new_product_ids.append(new_product.id)
                     created += 1
@@ -2924,6 +3116,9 @@ async def import_branch_products(
                         {"id": existing_bp["id"], "empresa_id": empresa_id},
                         {"$set": bp_update}
                     )
+                    await registrar_log_precios(
+                        user, audit_origen, _audit_cambios(product["id"], branch_id, existing_bp, bp_update),
+                        detalle=f"Fila {idx+2}")
                 else:
                     new_bp = BranchProduct(
                         empresa_id=empresa_id,
@@ -2937,6 +3132,9 @@ async def import_branch_products(
                         activo=True,
                     )
                     await db.branch_products.insert_one(new_bp.dict())
+                    await registrar_log_precios(
+                        user, audit_origen, _audit_cambios(product["id"], branch_id, None, new_bp.dict()),
+                        detalle=f"Fila {idx+2}")
 
                 imported_barcodes.add(codigo_barras)
                 updated += 1
@@ -3031,7 +3229,7 @@ async def bulk_update_control_stock(data: BulkUpdateControlStockRequest, user: U
     return {"updated": result.modified_count}
 
 @api_router.put("/products/{product_id}", response_model=Product)
-async def update_product(product_id: str, product_data: ProductUpdate, user: User = Depends(require_role([UserRole.ADMIN]))):
+async def update_product(product_id: str, product_data: ProductUpdate, request: Request, user: User = Depends(require_role([UserRole.ADMIN]))):
     # Check if product exists for this empresa
     existing_product = await db.products.find_one({"id": product_id, "empresa_id": user.empresa_id})
     if not existing_product:
@@ -3056,9 +3254,14 @@ async def update_product(product_id: str, product_data: ProductUpdate, user: Use
     if update_data:
         await db.products.update_one({"id": product_id, "empresa_id": user.empresa_id}, {"$set": update_data})
 
+    audit_origen = _audit_origen(request, "productos", "edicion_individual")
+    audit_cambios = _audit_cambios(product_id, None, existing_product, update_data)
+
     # Update costo/margen in all branch_products if precio_costo provided
     # Use aggregation pipeline so each branch recomputes margen from its own precio
     if precio_costo is not None:
+        for _bp in await db.branch_products.find({"product_id": product_id, "empresa_id": user.empresa_id}).to_list(None):
+            audit_cambios += _audit_cambios(product_id, _bp["branch_id"], _bp, {"costo": precio_costo})
         await db.branch_products.update_many(
             {"product_id": product_id, "empresa_id": user.empresa_id},
             [{"$set": {
@@ -3079,6 +3282,7 @@ async def update_product(product_id: str, product_data: ProductUpdate, user: Use
             }}]
         )
 
+    await registrar_log_precios(user, audit_origen, audit_cambios)
     updated_product = await db.products.find_one({"id": product_id, "empresa_id": user.empresa_id})
     return Product(**updated_product)
 
@@ -5335,6 +5539,7 @@ async def delete_proveedor(
 @api_router.post("/compras", response_model=Compra)
 async def create_compra(
     compra_data: CompraCreate,
+    request: Request,
     user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR]))
 ):
     cfg = await db.configuration.find_one({"empresa_id": user.empresa_id}) or {}
@@ -5352,6 +5557,8 @@ async def create_compra(
         if prov:
             proveedor_nombre = prov["nombre"]
 
+    audit_origen = _audit_origen(request, "compras", "compra")
+    audit_cambios = []
     # Process items: capture costo_anterior and update branch products in one pass
     enriched_items = []
     for item in compra_data.items:
@@ -5377,6 +5584,7 @@ async def create_compra(
                     {"id": bp["id"]},
                     {"$set": bp_update, "$inc": {"stock": int(item.cantidad)}}
                 )
+                audit_cambios += _audit_cambios(item.product_id, compra_data.sucursal_id, bp, bp_update)
             else:
                 global_product = await db.products.find_one({"id": item.product_id, "empresa_id": user.empresa_id})
                 if global_product:
@@ -5390,6 +5598,7 @@ async def create_compra(
                         costo=item.precio_unitario,
                     )
                     await db.branch_products.insert_one(new_bp.dict())
+                    audit_cambios += _audit_cambios(item.product_id, compra_data.sucursal_id, None, new_bp.dict())
         enriched_items.append(item_dict)
 
     compra_dict = compra_data.dict()
@@ -5401,6 +5610,8 @@ async def create_compra(
         registrado_por=user.id
     )
     await db.compras.insert_one(compra.dict())
+    await registrar_log_precios(user, audit_origen, audit_cambios, detalle=f"Compra {compra.id}",
+                                referencia_tipo="compra", referencia_id=compra.id)
     return compra
 
 @api_router.get("/compras", response_model=List[Compra])
@@ -5465,6 +5676,7 @@ async def delete_compra(
 async def distribuir_compra(
     compra_id: str,
     data: DistribucionCreate,
+    request: Request,
     user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR]))
 ):
     compra = await db.compras.find_one({"id": compra_id, "empresa_id": user.empresa_id})
@@ -5510,6 +5722,8 @@ async def distribuir_compra(
             )
 
     # Aplicar a sucursal
+    audit_origen = _audit_origen(request, "compras", "distribucion_compra")
+    audit_cambios = []
     distribucion_items = []
     for item in data.items:
         if not item.actualizar_stock and not item.actualizar_precio:
@@ -5547,6 +5761,7 @@ async def distribuir_compra(
         if update_op:
             if bp:
                 await db.branch_products.update_one({"id": bp["id"]}, update_op)
+                audit_cambios += _audit_cambios(item.product_id, data.sucursal_id, bp, set_fields)
             else:
                 global_product = await db.products.find_one({"id": item.product_id, "empresa_id": user.empresa_id})
                 if global_product:
@@ -5563,6 +5778,7 @@ async def distribuir_compra(
                         bp_data["margen"] = item.nuevo_margen
                     new_bp = BranchProduct(**bp_data)
                     await db.branch_products.insert_one(new_bp.dict())
+                    audit_cambios += _audit_cambios(item.product_id, data.sucursal_id, None, new_bp.dict())
 
         distribucion_items.append({
             "product_id": item.product_id,
@@ -5586,6 +5802,8 @@ async def distribuir_compra(
     }
 
     await db.compras.update_one({"id": compra_id}, {"$push": {"distribuciones": distribucion}})
+    await registrar_log_precios(user, audit_origen, audit_cambios, detalle=f"Compra {compra_id}",
+                                referencia_tipo="compra", referencia_id=compra_id)
     updated = await db.compras.find_one({"id": compra_id})
     return Compra(**updated)
 
@@ -5609,6 +5827,7 @@ class TransferenciaCreate(BaseModel):
 @api_router.post("/transferencias")
 async def crear_transferencia(
     data: TransferenciaCreate,
+    request: Request,
     user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERVISOR]))
 ):
     if data.sucursal_origen_id == data.sucursal_destino_id:
@@ -5656,6 +5875,8 @@ async def crear_transferencia(
                         f"(disponible {stock_origen}, solicitado {int(it.cantidad)})")
             )
 
+    audit_origen = _audit_origen(request, "transferencias", "transferencia")
+    audit_cambios = []
     items_registro = []
     total_unidades = 0.0
     total_valor = 0.0
@@ -5703,6 +5924,7 @@ async def crear_transferencia(
             if set_fields:
                 upd["$set"] = set_fields
             await db.branch_products.update_one({"id": bp_d["id"]}, upd)
+            audit_cambios += _audit_cambios(it.product_id, data.sucursal_destino_id, bp_d, set_fields)
         else:
             nb_kwargs = dict(
                 empresa_id=user.empresa_id, product_id=it.product_id, branch_id=data.sucursal_destino_id,
@@ -5713,7 +5935,9 @@ async def crear_transferencia(
                 nb_kwargs["costo"] = costo_destino_nuevo
             if margen_destino is not None:
                 nb_kwargs["margen"] = float(margen_destino)
-            await db.branch_products.insert_one(BranchProduct(**nb_kwargs).dict())
+            _nb = BranchProduct(**nb_kwargs)
+            await db.branch_products.insert_one(_nb.dict())
+            audit_cambios += _audit_cambios(it.product_id, data.sucursal_destino_id, None, _nb.dict())
 
         subtotal = round(cantidad * costo_origen, 2)
         total_unidades += cantidad
@@ -5751,6 +5975,9 @@ async def crear_transferencia(
         "total_valor": round(total_valor, 2),
     }
     await db.transferencias.insert_one({**doc})
+    await registrar_log_precios(
+        user, audit_origen, audit_cambios,
+        detalle=f"{origen.get('nombre', '')} → {destino.get('nombre', '')}")
     return doc
 
 

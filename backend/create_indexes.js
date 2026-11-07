@@ -87,6 +87,10 @@ idx("categories", { id: 1 }, { unique: true });
 
 // ── Compras / Proveedores ─────────────────────────────────────────────────────
 idx("compras", { empresa_id: 1, fecha: -1 });
+
+// ── Auditoría (logs del sistema) ─────────────────────────────────────────────
+idx("audit_logs", { empresa_id: 1, tipo: 1, fecha: -1 });
+idx("audit_logs", { empresa_id: 1, lote_id: 1 });
 idx("compras", { id: 1 }, { unique: true });
 idx("proveedores", { empresa_id: 1 });
 idx("proveedores", { id: 1 }, { unique: true });

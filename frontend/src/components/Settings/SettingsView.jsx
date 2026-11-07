@@ -2,6 +2,7 @@ import React from 'react';
 import { formatAmount } from '../../lib/utils';
 import LogoUploader from '../LogoUploader';
 import UserManagement from '../UserManagement';
+import AuditLogs from '../AuditLogs';
 import {
   Settings as SettingsIcon,
   Save,
@@ -24,7 +25,8 @@ import {
   Moon,
   Sun,
   FileText,
-  Search
+  Search,
+  ScrollText
 } from 'lucide-react';
 import { COLOR_THEMES, getContrastColor } from './index';
 
@@ -72,6 +74,7 @@ const SettingsView = ({
     { id: 'interface', label: 'Interfaz', icon: Grid3X3 },
     { id: 'receipt', label: 'Recibos', icon: Receipt },
     { id: 'afip', label: 'ARCA / AFIP', icon: FileText },
+    { id: 'logs', label: 'Logs', icon: ScrollText },
   ];
 
   if (loading) {
@@ -199,6 +202,9 @@ const SettingsView = ({
               <UserManagement />
             </div>
           )}
+
+          {/* Logs del sistema */}
+          {activeTab === 'logs' && <AuditLogs />}
 
           {/* Financial Settings */}
           {activeTab === 'financial' && (
