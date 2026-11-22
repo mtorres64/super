@@ -80,6 +80,7 @@ const OtpBlock = ({ otpDigits, otpRefs, email, loading, otpCode,
 const LoginView = ({
   mode,
   step,
+  demoLogging,
   email,
   setEmail,
   password,
@@ -168,6 +169,16 @@ const LoginView = ({
               Ingresá tus datos para continuar
             </p>
 
+            {demoLogging && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#ecfdf5',
+                border: '1px solid #a7f3d0', borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '1.5rem' }}>
+                <div className="spinner" style={{ width: 16, height: 16 }} />
+                <span style={{ fontSize: '0.85rem', color: '#047857', fontWeight: 600 }}>
+                  Ingresando con cuenta demo...
+                </span>
+              </div>
+            )}
+
             <form noValidate onSubmit={(e) => { e.preventDefault(); if (loginV.validate({ email, password })) handleLogin(e); }}>
               <div className="form-group">
                 <label className="form-label">Email</label>
@@ -201,7 +212,7 @@ const LoginView = ({
                 </button>
               </div>
 
-              <button type="submit" className="btn btn-primary btn-lg w-full" disabled={loading}>
+              <button type="submit" className="btn btn-primary btn-lg w-full" disabled={loading || demoLogging}>
                 {loading
                   ? <><div className="spinner" />Iniciando sesión...</>
                   : 'Iniciar Sesión'}

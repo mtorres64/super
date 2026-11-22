@@ -43,21 +43,25 @@ const Login = () => {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     if (params.get('demo') !== DEMO_TOKEN || user) return;
+    setEmail(DEMO_EMAIL);
+    setPassword(DEMO_PASSWORD);
     setDemoLogging(true);
-    axios.post(`${API}/auth/login`, { email: DEMO_EMAIL, password: DEMO_PASSWORD })
-      .then(({ data }) => {
-        login(data.user, data.access_token);
-        toast.success(`¡Bienvenido, ${data.user.nombre}!`);
-      })
-      .catch((err) => {
-        toast.error(err.response?.data?.detail || 'Error al iniciar sesión de demo');
-        setDemoLogging(false);
-      });
+    const timer = setTimeout(() => {
+      axios.post(`${API}/auth/login`, { email: DEMO_EMAIL, password: DEMO_PASSWORD })
+        .then(({ data }) => {
+          login(data.user, data.access_token);
+          toast.success(`¡Bienvenido, ${data.user.nombre}!`);
+        })
+        .catch((err) => {
+          toast.error(err.response?.data?.detail || 'Error al iniciar sesión de demo');
+          setDemoLogging(false);
+        });
+    }, 1200);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (user) return <Navigate to="/dashboard" />;
-  if (demoLogging) return null;
 
   const otpCode = otpDigits.join('');
 
@@ -217,6 +221,7 @@ const Login = () => {
     <LoginView
       mode={mode}
       step={step}
+      demoLogging={demoLogging}
       email={email}
       setEmail={setEmail}
       password={password}
