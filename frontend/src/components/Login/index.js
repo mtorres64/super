@@ -1,4 +1,4 @@
-import React, { useState, useContext, useRef } from 'react';
+import React, { useState, useContext, useRef, useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { AuthContext, API } from '../../App';
@@ -11,6 +11,11 @@ const FEATURES = [
   { text: 'Reportes y exportación Excel' },
   { text: 'Multi-sucursal y multi-usuario' },
 ];
+
+// Autologin para demos: /login?demo=puls-demo-2026 ingresa directo con la cuenta de prueba.
+const DEMO_TOKEN = 'puls-demo-2026';
+const DEMO_EMAIL = 'pruebapuls@gmail.com';
+const DEMO_PASSWORD = 'admin123';
 
 const Login = () => {
   const location = useLocation();
@@ -31,10 +36,28 @@ const Login = () => {
   const [showNueva, setShowNueva]       = useState(false);
 
   const [loading, setLoading]           = useState(false);
+  const [demoLogging, setDemoLogging]   = useState(false);
   const { user, login }                 = useContext(AuthContext);
   const otpRefs                         = [useRef(), useRef(), useRef(), useRef()];
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('demo') !== DEMO_TOKEN || user) return;
+    setDemoLogging(true);
+    axios.post(`${API}/auth/login`, { email: DEMO_EMAIL, password: DEMO_PASSWORD })
+      .then(({ data }) => {
+        login(data.user, data.access_token);
+        toast.success(`¡Bienvenido, ${data.user.nombre}!`);
+      })
+      .catch((err) => {
+        toast.error(err.response?.data?.detail || 'Error al iniciar sesión de demo');
+        setDemoLogging(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   if (user) return <Navigate to="/dashboard" />;
+  if (demoLogging) return null;
 
   const otpCode = otpDigits.join('');
 
