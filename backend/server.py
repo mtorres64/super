@@ -1523,6 +1523,8 @@ async def create_branch(branch_data: BranchCreate, request: Request, user: User 
             await db.branch_products.insert_one(bp.dict())
             audit_cambios += _audit_cambios(product["id"], branch.id, None, bp.dict())
     await registrar_log_precios(user, audit_origen, audit_cambios, detalle=f"Alta de sucursal {branch.nombre}")
+    del products, ref_map, audit_cambios
+    _trim_memory()
     return branch
 
 @api_router.get("/branches", response_model=List[Branch])
@@ -2796,6 +2798,7 @@ async def import_products(
             await asyncio.sleep(0)
 
         yield f"data: {json.dumps({'done': True, 'created': created, 'updated': updated, 'errors': errors, 'total_procesado': created + updated + len(errors), 'new_categories': new_categories})}\n\n"
+        _trim_memory()
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -3191,6 +3194,7 @@ async def import_branch_products(
                             await db.branch_products.insert_one(bp_ob.dict())
 
         yield f"data: {json.dumps({'done': True, 'created': created, 'updated': updated, 'skipped': skipped, 'desactivados': desactivados, 'errors': errors, 'total_procesado': created + updated + skipped + len(errors)})}\n\n"
+        _trim_memory()
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
