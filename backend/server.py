@@ -22,7 +22,6 @@ import jwt
 from passlib.hash import bcrypt
 from enum import Enum
 import base64
-import pandas as pd
 from openpyxl import Workbook
 import mercadopago
 import httpx
@@ -38,7 +37,7 @@ load_dotenv(ROOT_DIR / '.env')
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url, tz_aware=True)
+client = AsyncIOMotorClient(mongo_url, tz_aware=True, maxPoolSize=20)
 db = client[os.environ['DB_NAME']]
 
 # JWT settings
@@ -2626,6 +2625,8 @@ async def import_products(
     file: UploadFile = File(...),
     user: User = Depends(require_role([UserRole.ADMIN]))
 ):
+    import pandas as pd  # import perezoso: pandas/numpy solo se cargan si realmente se usa un import
+
     audit_origen = _audit_origen(request, "productos", "importacion")
     content = await file.read()
     filename = file.filename or ""
@@ -2937,6 +2938,8 @@ async def import_branch_products(
     file: UploadFile = File(...),
     user: User = Depends(require_role([UserRole.ADMIN]))
 ):
+    import pandas as pd  # import perezoso: pandas/numpy solo se cargan si realmente se usa un import
+
     audit_origen = _audit_origen(request, "sucursales", "importacion")
     branch = await db.branches.find_one({"id": branch_id, "empresa_id": user.empresa_id})
     if not branch:
