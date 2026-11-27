@@ -504,6 +504,17 @@ const ProductManagement = () => {
     setSelectedRows(new Set());
   };
 
+  // Click derecho en una fila: la deja como única seleccionada y abre el modal pedido
+  const selectSingleRowAndOpen = (productId, setShowModalFn) => {
+    setSelectAllGlobal(false);
+    setSelectedRows(new Set([productId]));
+    setShowModalFn(true);
+  };
+
+  const [labelProductos, setLabelProductos] = useState(null);
+  const openLabelPrint = (productos) => setLabelProductos(productos);
+  const closeLabelPrint = () => setLabelProductos(null);
+
   const handleBulkDelete = async () => {
     setBulkDeleting(true);
     try {
@@ -759,6 +770,10 @@ const ProductManagement = () => {
       getProductName={getProductName}
       getLowStockProducts={getLowStockProducts}
       normalize={normalize}
+      onSelectSingleRowAndOpen={selectSingleRowAndOpen}
+      labelProductos={labelProductos}
+      onOpenLabelPrint={openLabelPrint}
+      onCloseLabelPrint={closeLabelPrint}
     />
   );
 };

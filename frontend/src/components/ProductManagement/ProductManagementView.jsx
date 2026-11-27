@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Plus, Edit, Trash2, Package, Save, X,
   Download, Upload, FileText, Tag, Layers, Minus, CircleDot, SlidersHorizontal, ChevronDown, MoreVertical,
-  ArrowLeftRight,
+  ArrowLeftRight, Printer,
 } from 'lucide-react';
 import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
@@ -13,6 +13,8 @@ import NuevoProductoModal from './NuevoProductoModal';
 import TransferirModal from './TransferirModal';
 import { useFormValidation } from '../../hooks/useFormValidation';
 import FieldError from '../ui/FieldError';
+import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuSeparator } from '../ui/context-menu';
+import LabelPrintModal from '../ProductLabel/LabelPrintModal';
 
 const PRODUCT_RULES = {
   nombre: { required: true, message: 'El nombre es obligatorio' },
@@ -137,6 +139,10 @@ const ProductManagementView = ({
   closeBulkEditModal,
   updateBulkEditItem,
   handleBulkEditSave,
+  onSelectSingleRowAndOpen,
+  labelProductos,
+  onOpenLabelPrint,
+  onCloseLabelPrint,
 }) => {
   const [categorySearch, setCategorySearch] = useState('');
   const [categoryInputText, setCategoryInputText] = useState('');
@@ -481,6 +487,23 @@ const ProductManagementView = ({
               <Trash2 className="w-4 h-4" />
               Eliminar seleccionados
             </button>
+            {!selectAllGlobal && (
+              <button
+                onClick={() => onOpenLabelPrint(
+                  paginatedProducts.filter(p => selectedRows.has(p.id)).map(p => ({
+                    id: p.id,
+                    nombre: p.nombre,
+                    categoria_nombre: categories.find(c => c.id === p.categoria_id)?.nombre,
+                    codigo_barras: p.codigo_barras,
+                    precio: p.precio,
+                  }))
+                )}
+                className="btn btn-secondary btn-sm"
+              >
+                <Printer className="w-4 h-4" />
+                Imprimir etiquetas
+              </button>
+            )}
             <button
               onClick={handleClearSelection}
               className="btn btn-sm ml-auto text-gray-500 border border-gray-300 hover:bg-gray-100"
@@ -542,8 +565,9 @@ const ProductManagementView = ({
           </thead>
           <tbody>
             {paginatedProducts.map((product, idx) => (
+              <ContextMenu key={product.id}>
+              <ContextMenuTrigger asChild>
               <tr
-                key={product.id}
                 data-pm-focused={focusedIdx === idx ? 'true' : undefined}
                 data-expanded={expandedRows.has(product.id) ? 'true' : undefined}
                 className={focusedIdx === idx ? 'bg-green-50 outline outline-2 outline-green-400' : selectedRows.has(product.id) ? 'bg-blue-50' : ''}
@@ -645,6 +669,32 @@ const ProductManagementView = ({
                   </div>
                 </td>
               </tr>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                <ContextMenuItem onClick={() => openModal(product)}>
+                  <Edit className="w-4 h-4 mr-2" /> Editar
+                </ContextMenuItem>
+                {product.kind !== 'combo' && (
+                  <ContextMenuItem onClick={() => handleToggleControlStock(product)}>
+                    <SlidersHorizontal className="w-4 h-4 mr-2" />
+                    {product.control_stock ? 'Desactivar control stock' : 'Activar control stock'}
+                  </ContextMenuItem>
+                )}
+                <ContextMenuItem onClick={() => onSelectSingleRowAndOpen(product.id, setShowBulkDeleteModal)} className="text-red-600">
+                  <Trash2 className="w-4 h-4 mr-2" /> Eliminar
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem onClick={() => onOpenLabelPrint([{
+                  id: product.id,
+                  nombre: product.nombre,
+                  categoria_nombre: categories.find(c => c.id === product.categoria_id)?.nombre,
+                  codigo_barras: product.codigo_barras,
+                  precio: product.precio,
+                }])}>
+                  <Printer className="w-4 h-4 mr-2" /> Imprimir etiqueta
+                </ContextMenuItem>
+              </ContextMenuContent>
+              </ContextMenu>
             ))}
           </tbody>
         </table>
@@ -1412,6 +1462,10 @@ const ProductManagementView = ({
           onClose={closeTransferModalAnim}
           onCompleted={refreshProducts}
         />
+      )}
+
+      {labelProductos && (
+        <LabelPrintModal productos={labelProductos} onClose={onCloseLabelPrint} />
       )}
     </div>
   );

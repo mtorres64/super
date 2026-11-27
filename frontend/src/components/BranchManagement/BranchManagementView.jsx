@@ -20,6 +20,7 @@ import {
   Layers,
   CircleDot,
   Upload,
+  Printer,
 } from 'lucide-react';
 import Pagination from '../Pagination';
 import SortIcon from '../ui/SortIcon';
@@ -28,6 +29,8 @@ import { getCategoryIcon } from '../../utils/categoryIcons';
 import BranchBulkEditModal from './BranchBulkEditModal';
 import { useFormValidation } from '../../hooks/useFormValidation';
 import FieldError from '../ui/FieldError';
+import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuSeparator } from '../ui/context-menu';
+import LabelPrintModal from '../ProductLabel/LabelPrintModal';
 
 const BRANCH_RULES = {
   nombre: { required: true, message: 'El nombre es obligatorio' },
@@ -153,6 +156,10 @@ const BranchManagementView = ({
   categories,
   getUsersInBranch,
   getProductCurrentMargen,
+  onSelectSingleRowAndOpen,
+  labelProductos,
+  onOpenLabelPrint,
+  onCloseLabelPrint,
   sortConfig,
   requestSort,
   selectedCategory,
@@ -200,6 +207,7 @@ const BranchManagementView = ({
   const [showCategoryFilter, setShowCategoryFilter] = React.useState(false);
   const [showMobileFilters, setShowMobileFilters] = React.useState(false);
   const [expandedRows, setExpandedRows] = React.useState(new Set());
+  const [showBranchSwitcher, setShowBranchSwitcher] = React.useState(false);
   const branchV = useFormValidation(BRANCH_RULES);
   const branchImportV = useFormValidation(BRANCH_IMPORT_RULES);
   const categoryFilterRef = useRef(null);
@@ -250,7 +258,7 @@ const BranchManagementView = ({
   // Branch detail view
   if (selectedBranch) {
     return (
-      <div className="p-6 flex flex-col h-full" onClick={() => onSetShowExportMenu(false)}>
+      <div className="p-6 flex flex-col h-full" onClick={() => { onSetShowExportMenu(false); setShowBranchSwitcher(false); }}>
         <div className="mb-6">
           {/* Fila título */}
           <div className="flex items-center justify-between gap-3">
@@ -263,11 +271,36 @@ const BranchManagementView = ({
                   </button>
                 </div>
               )}
-              <div className="min-w-0">
-                <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2 min-w-0">
-                  <Building2 className="w-6 h-6 text-green-600 flex-shrink-0" />
-                  <span className="truncate">{selectedBranch.nombre}</span>
-                </h1>
+              <div className="min-w-0 relative" onClick={(e) => e.stopPropagation()}>
+                {tieneMultiSucursal && branches.length > 1 ? (
+                  <button
+                    onClick={() => setShowBranchSwitcher(prev => !prev)}
+                    className="text-2xl font-bold text-gray-900 flex items-center gap-2 min-w-0 hover:text-green-700"
+                  >
+                    <Building2 className="w-6 h-6 text-green-600 flex-shrink-0" />
+                    <span className="truncate">{selectedBranch.nombre}</span>
+                    <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  </button>
+                ) : (
+                  <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2 min-w-0">
+                    <Building2 className="w-6 h-6 text-green-600 flex-shrink-0" />
+                    <span className="truncate">{selectedBranch.nombre}</span>
+                  </h1>
+                )}
+                {showBranchSwitcher && (
+                  <div className="absolute left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-20 max-h-80 overflow-y-auto">
+                    {branches.map(b => (
+                      <button
+                        key={b.id}
+                        onClick={() => { onSelectBranch(b); setShowBranchSwitcher(false); }}
+                        className={`flex items-center gap-2 w-full px-4 py-2 text-sm text-left hover:bg-gray-50 ${b.id === selectedBranch.id ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-700'}`}
+                      >
+                        <Building2 className="w-4 h-4 flex-shrink-0" />
+                        <span className="truncate">{b.nombre}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="flex items-center gap-3">
                   <p className="text-gray-500 text-sm truncate">{selectedBranch.direccion}</p>
                   {totalTodosSucursal !== null && (
@@ -520,6 +553,23 @@ const BranchManagementView = ({
                 <EyeOff className="w-4 h-4" />
                 Desactivar seleccionados
               </button>
+              {!selectAllGlobal && (
+                <button
+                  onClick={() => onOpenLabelPrint(
+                    paginatedProducts.filter(p => selectedRows.has(p.product_id)).map(p => ({
+                      id: p.product_id,
+                      nombre: p.nombre,
+                      categoria_nombre: getCategoryName(p.categoria_id),
+                      codigo_barras: p.codigo_barras,
+                      precio: pendingChanges[p.product_id]?.precio ?? (p.precio_sucursal ?? p.precio_global),
+                    }))
+                  )}
+                  className="btn btn-secondary btn-sm"
+                >
+                  <Printer className="w-4 h-4" />
+                  Imprimir etiquetas
+                </button>
+              )}
               <button
                 onClick={onClearSelection}
                 className="btn btn-sm ml-auto text-gray-500 border border-gray-300 hover:bg-gray-100"
@@ -599,8 +649,9 @@ const BranchManagementView = ({
                   const isSelected = selectedRows.has(product.product_id);
 
                   return (
+                    <ContextMenu key={product.product_id}>
+                    <ContextMenuTrigger asChild>
                     <tr
-                      key={product.product_id}
                       data-bm-focused={focusedIdx === idx ? 'true' : undefined}
                       data-expanded={expandedRows.has(product.product_id) ? 'true' : undefined}
                       className={`group ${focusedIdx === idx ? 'bg-green-50 outline outline-2 outline-green-400' : hasChange ? 'bg-amber-50' : isSelected ? 'bg-blue-50' : ''}`}
@@ -724,6 +775,32 @@ const BranchManagementView = ({
                         </button>
                       </td>
                     </tr>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuItem onClick={() => onSelectSingleRowAndOpen(product.product_id, onSetShowBulkMargenModal)}>
+                        <Percent className="w-4 h-4 mr-2" /> Margen
+                      </ContextMenuItem>
+                      <ContextMenuItem onClick={() => onSelectSingleRowAndOpen(product.product_id, onSetShowBulkStockMinModal)}>
+                        <SlidersHorizontal className="w-4 h-4 mr-2" /> Stock Mín.
+                      </ContextMenuItem>
+                      <ContextMenuItem onClick={() => onSelectSingleRowAndOpen(product.product_id, onSetShowBulkStockModal)}>
+                        <Package className="w-4 h-4 mr-2" /> Stock
+                      </ContextMenuItem>
+                      <ContextMenuItem onClick={() => onSelectSingleRowAndOpen(product.product_id, onSetShowBulkDeleteModal)} className="text-red-600">
+                        <EyeOff className="w-4 h-4 mr-2" /> Desactivar
+                      </ContextMenuItem>
+                      <ContextMenuSeparator />
+                      <ContextMenuItem onClick={() => onOpenLabelPrint([{
+                        id: product.product_id,
+                        nombre: product.nombre,
+                        categoria_nombre: getCategoryName(product.categoria_id),
+                        codigo_barras: product.codigo_barras,
+                        precio: currentPrice,
+                      }])}>
+                        <Printer className="w-4 h-4 mr-2" /> Imprimir etiqueta
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                    </ContextMenu>
                   );
                 })}
               </tbody>
@@ -1255,6 +1332,10 @@ const BranchManagementView = ({
             )}
           </div>
         </div>
+      )}
+
+      {labelProductos && (
+        <LabelPrintModal productos={labelProductos} onClose={onCloseLabelPrint} />
       )}
 
       </div>

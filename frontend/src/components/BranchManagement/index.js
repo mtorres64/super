@@ -60,6 +60,7 @@ const BranchManagement = () => {
   const branchImportFileRef = useRef(null);
   const [totalActivosSucursal, setTotalActivosSucursal] = useState(null);
   const [totalTodosSucursal, setTotalTodosSucursal] = useState(null);
+  const [labelProductos, setLabelProductos] = useState(null);
 
   const [formData, setFormData] = useState({
     nombre: '',
@@ -359,6 +360,16 @@ const BranchManagement = () => {
     setPendingChanges({});
     setSelectedRows(new Set());
   };
+
+  // Click derecho en una fila: la deja como única seleccionada y abre el modal pedido
+  const selectSingleRowAndOpen = (productId, setShowModalFn) => {
+    setSelectAllGlobal(false);
+    setSelectedRows(new Set([productId]));
+    setShowModalFn(true);
+  };
+
+  const openLabelPrint = (productos) => setLabelProductos(productos);
+  const closeLabelPrint = () => setLabelProductos(null);
 
   const handleProductFieldChange = (productId, field, value) => {
     setPendingChanges(prev => ({
@@ -976,6 +987,10 @@ const BranchManagement = () => {
       categories={categories}
       getUsersInBranch={getUsersInBranch}
       getProductCurrentMargen={getProductCurrentMargen}
+      onSelectSingleRowAndOpen={selectSingleRowAndOpen}
+      labelProductos={labelProductos}
+      onOpenLabelPrint={openLabelPrint}
+      onCloseLabelPrint={closeLabelPrint}
       selectedCategory={selectedCategory}
       setSelectedCategory={setSelectedCategory}
       selectedKind={selectedKind}

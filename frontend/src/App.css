@@ -2540,6 +2540,77 @@ html.dark .modal-sticky-bottom {
 }
 
 /* ================================================
+   ETIQUETAS DE PRODUCTO (vista previa + impresión)
+   ================================================ */
+.product-label-sheet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2mm;
+}
+
+.product-label {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 1mm;
+  border: 1px dashed #9ca3af;
+  background: #fff;
+  color: #000;
+  text-align: center;
+}
+
+.product-label-categoria {
+  text-transform: uppercase;
+  color: #4b5563;
+  line-height: 1.1;
+}
+
+.product-label-nombre {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.product-label-precio {
+  font-weight: 800;
+  line-height: 1.1;
+  margin: 1px 0;
+}
+
+.product-label-barcode {
+  max-width: 100%;
+  height: auto;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  #label-print-area,
+  #label-print-area * {
+    visibility: visible;
+  }
+
+  #label-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}
+
+/* ================================================
    ANIMATIONS
    ================================================ */
 
